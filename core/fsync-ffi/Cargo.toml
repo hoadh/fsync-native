@@ -1,0 +1,27 @@
+[package]
+name = "fsync-ffi"
+description = "UniFFI exports over fsync-core (FFI contract v1)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "fsync_ffi"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[dependencies]
+fsync-core.workspace = true
+fsync-proto.workspace = true
+thiserror.workspace = true
+# Pinned: uniffi-bindgen-cs v0.10.0+v0.29.4 generates C# for exactly UniFFI 0.29.4 (ADR 008).
+uniffi = "=0.29.4"
+
+[features]
+# Builds the `uniffi-bindgen` binary used by scripts/gen-bindings.sh.
+bindgen = ["uniffi/cli"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]
