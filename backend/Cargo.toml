@@ -1,0 +1,46 @@
+[package]
+name = "fsync-backend"
+description = "Auth, device registry, pairing codes, presence"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "fsync_backend"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fsync-backend"
+path = "src/main.rs"
+
+[dependencies]
+fsync-proto.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+blake3.workspace = true
+tracing.workspace = true
+ed25519-dalek.workspace = true
+base64.workspace = true
+url.workspace = true
+zeroize.workspace = true
+axum = { version = "0.8", features = ["ws"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "migrate", "macros", "uuid"] }
+async-trait = "0.1"
+ipnet = "2"
+hyper = { version = "1", features = ["server", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["server-auto", "server-graceful", "tokio", "http1", "http2"] }
+tower = { version = "0.5", features = ["util"] }
+getrandom = "0.4"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+tokio-tungstenite = "0.28"
+futures-util = "0.3"
+testcontainers = "0.25"
+libc = "0.2"

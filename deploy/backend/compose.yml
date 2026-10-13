@@ -1,0 +1,43 @@
+# docker compose -f deploy/backend/compose.yml --env-file deploy/backend/.env up --build
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fsync}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-fsync}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fsync} -d ${POSTGRES_DB:-fsync}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: deploy/backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-fsync}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fsync}
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY}
+      BIND_ADDR: ${BIND_ADDR:-0.0.0.0:8080}
+      FSYNC_DEV_MODE: ${FSYNC_DEV_MODE:-0}
+      FSYNC_ENV: ${FSYNC_ENV:-production}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      MAX_UNAUTH_WS: ${MAX_UNAUTH_WS:-1000}
+      MAX_UNAUTH_WS_PER_IP: ${MAX_UNAUTH_WS_PER_IP:-10}
+      MAX_IN_FLIGHT: ${MAX_IN_FLIGHT:-512}
+      PRESENCE_TIMEOUT_SECS: ${PRESENCE_TIMEOUT_SECS:-60}
+      RUST_LOG: ${RUST_LOG:-info}
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:

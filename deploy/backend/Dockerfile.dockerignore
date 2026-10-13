@@ -1,0 +1,11 @@
+target
+**/target
+.git
+plans
+apps
+spikes
+docs
+tests
+scripts
+deploy
+.env
