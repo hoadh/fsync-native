@@ -1,0 +1,13 @@
+target/
+.build/
+/build
+**/*.rs.bk
+.DS_Store
+.env
+.env.*
+!.env.example
+*.xcframework
+/apps/macos/**/xcuserdata
+/apps/windows/**/bin
+/apps/windows/**/obj
+/apps/windows/.vs

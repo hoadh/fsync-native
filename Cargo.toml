@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = ["core/fsync-proto", "core/fsync-core", "core/fsync-ffi", "core/fsync-cli", "backend"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "UNLICENSED"
+publish = false
+
+[workspace.dependencies]
+fsync-proto = { path = "core/fsync-proto" }
+fsync-core = { path = "core/fsync-core" }
+serde = { version = "1", features = ["derive"] }
+postcard = { version = "1", features = ["use-std"] }
+thiserror = "2"
+anyhow = "1"
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
+blake3 = "1"
+tracing = "0.1"
+ed25519-dalek = "3"
+base64 = "0.22"
+data-encoding = "2"
+url = "2"
+serde_json = "1"
+zeroize = "1"
+clap = { version = "4", features = ["derive", "env"] }
