@@ -1,0 +1,10 @@
+# ADR 011 — History encrypted at rest
+Status: accepted — validation S1
+
+History DB uses SQLCipher keyed by a 32-byte `history_key`; clipboard blobs are XChaCha20-Poly1305 encrypted (random nonce, AAD = content hash). The key is generated and kept by the app in Keychain/DPAPI (CLI: 0600 file). A key that does not match the database is reported as `HistoryKeyMismatch` and nothing is moved; only a corrupt database is moved aside (see addendum). User files saved to chosen folders are not encrypted.
+
+## Addendum (phase 08 part A, 2026-10-13)
+- Build: `rusqlite 0.32` with `bundled-sqlcipher-vendored-openssl` builds and passes tests on macOS arm64 (FTS5 present). 0.32 is pinned because `sqlx 0.8` (backend + core dev-dep) fixes `libsqlite3-sys 0.30` (`links = "sqlite3"` allows one copy). The documented plain-SQLite fallback was not needed; Windows ARM64 / universal macOS still to be verified in CI.
+- Key: `history_key` is applied as a raw key (`PRAGMA key = "x'<hex>'"`) from a zeroized string. Blob subkeys (AEAD key, staging-id key) are HKDF-SHA256(history_key, salt `fsync-blobs-v1`); the DB key itself never encrypts blobs.
+- Blob format `FSB1 | 19-byte random nonce prefix | 64 KiB STREAM-BE32 segments` (XChaCha20-Poly1305, AAD = plaintext blake3). Per-segment nonce = prefix || counter || last-flag, so it is random per blob, supports random-access reads, and truncation fails authentication. In-progress downloads (`.part`) are staged as plaintext under a keyed id and sealed on `finish`; abandoned staging files are swept after 24 h. Received files exported to user folders stay plaintext.
+- Key loss (a key that differs from the one the database was created with) is reported as `HistoryKeyMismatch` and nothing is moved; only a genuinely corrupt database is reset, which includes the `trust` table (pinned device list): the device must pair again. `FileTrustStore` remains for the CLI/tests where trust must outlive the history key; `SqliteTrustStore` is for apps whose keystore is as durable as the pin.
