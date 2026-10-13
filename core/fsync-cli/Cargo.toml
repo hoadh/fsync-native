@@ -1,0 +1,21 @@
+[package]
+name = "fsync-cli"
+description = "Headless test harness for fsync-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "fsync-cli"
+path = "src/main.rs"
+
+[dependencies]
+fsync-core.workspace = true
+fsync-proto.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+serde_json.workspace = true
+blake3.workspace = true
+getrandom = "0.4"
+zeroize.workspace = true
