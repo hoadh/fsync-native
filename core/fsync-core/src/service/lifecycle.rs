@@ -2,7 +2,7 @@
 
 use super::{
     FsyncService,
-    error::SvcResult,
+    error::{FsyncError, SvcResult},
     inner::{Inner, lock},
 };
 use crate::{config::EngineConfig, engine::Engine, net::Node};
@@ -13,6 +13,7 @@ impl Inner {
         if lock(&self.live)?.engine.is_some() {
             return Ok(());
         }
+        let data_lock = self.lock_data_dir()?;
         let settings = self.history.settings().await?;
         let c = &self.cfg;
         let mut b = Node::builder(self.identity.clone(), self.trust.clone(), self.sink.clone())
@@ -28,16 +29,42 @@ impl Inner {
         let engine =
             Engine::start_with_history(b, self.store.clone(), ecfg, Some(self.history.clone()))
                 .await?;
-        lock(&self.live)?.engine = Some(Arc::new(engine));
+        {
+            let mut live = lock(&self.live)?;
+            live.engine = Some(Arc::new(engine));
+            live.data_lock = Some(data_lock);
+        }
         self.restart_presence()
     }
 
+    /// Two engines on one data dir would split incoming clips and fight over history: only one
+    /// may run. The lock dies with the process, so a crash never leaves the dir blocked.
+    fn lock_data_dir(&self) -> SvcResult<std::fs::File> {
+        let path = self.cfg.data_dir.join("engine.lock");
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&path)
+            .map_err(|e| FsyncError::Io(format!("open {}: {e}", path.display())))?;
+        match file.try_lock() {
+            Ok(()) => Ok(file),
+            Err(std::fs::TryLockError::WouldBlock) => Err(FsyncError::invalid(
+                "another fsync engine is already running on this data directory",
+            )),
+            Err(std::fs::TryLockError::Error(e)) => {
+                Err(FsyncError::Io(format!("lock {}: {e}", path.display())))
+            }
+        }
+    }
+
     pub(super) async fn stop(&self) {
-        let (engine, _presence, tasks) = match lock(&self.live) {
+        let (engine, _presence, tasks, _data_lock) = match lock(&self.live) {
             Ok(mut l) => (
                 l.engine.take(),
                 l.presence.take(),
                 std::mem::take(&mut l.tasks),
+                l.data_lock.take(),
             ),
             Err(_) => return,
         };

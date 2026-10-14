@@ -38,6 +38,8 @@ pub(super) struct Live {
     pub engine: Option<Arc<Engine>>,
     pub presence: Option<super::presence::PresenceRun>,
     pub tasks: Vec<AbortOnDrop>,
+    /// Exclusive lock on `<data_dir>/engine.lock` while the engine runs (released on drop).
+    pub data_lock: Option<std::fs::File>,
 }
 
 #[derive(Clone, Copy, Default)]
