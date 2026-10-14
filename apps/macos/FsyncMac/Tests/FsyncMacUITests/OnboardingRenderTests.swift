@@ -93,6 +93,17 @@ final class OnboardingRenderTests: XCTestCase {
             devices: devices, trust: TrustResetPromptModel(engine: engine), sync: sync, banner: "Paired with Phone.",
             openHistory: {}, openMain: {}, openSettings: {}, addDevice: {}, signOut: {})
         try render(menu, "menu")
+        let transfers = TransfersModel()
+        let files = FilesSync(engine: engine, fetcher: FileFetchService(engine: engine, transfers: transfers)) { false }
+        files.start()
+        let offer = ClipItem(itemId: "0a", from: "n", fromName: "Phone", kind: .files, tsMs: 1, preview: nil, reps: [],
+                             files: [FileInfo(fileId: 0, name: "report.pdf", relPath: "report.pdf", size: 5)], totalSize: 5, push: true)
+        let received = expectation(description: "offer listed")
+        Task { await files.receive(offer: offer); received.fulfill() }
+        wait(for: [received], timeout: 5)
+        XCTAssertEqual(files.offers.count, 1)
+        try render(FilesMenuSection(files: files, transfers: transfers).padding(20), "files section")
+        try render(DeviceRowView(device: try XCTUnwrap(devices.devices.first), onRemove: nil, onSend: { _ in }), "device row send")
         let pairing = PairingModel(engine: engine, onPaired: { _ in }, onSignInRequired: {})
         try render(ReadyView(devices: devices, pairing: pairing, banner: nil, signOut: {}), "ready home")
     }

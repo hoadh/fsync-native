@@ -20,7 +20,8 @@ public struct MenuPopover: View {
         Group {
             if bridge.phase == .ready, let devices = bridge.devicesModel, let trust = bridge.trustModel {
                 MenuBarContentView(
-                    devices: devices, trust: trust, sync: bridge.clipSync, banner: bridge.banner, openHistory: openHistory,
+                    devices: devices, trust: trust, sync: bridge.clipSync, files: bridge.filesSync,
+                    transfers: bridge.transfers, banner: bridge.banner, openHistory: openHistory,
                     openMain: openMain, openSettings: openSettings,
                     addDevice: { bridge.pairingModel?.openJoin(); openMain() },
                     signOut: { Task { await bridge.signOut() } })

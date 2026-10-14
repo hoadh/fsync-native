@@ -5,6 +5,7 @@ import SwiftUI
 /// How long history is kept and how big a clip may be.
 struct StorageSettingsView: View {
     @ObservedObject var settings: ClipSettingsModel
+    @State private var strategy = FileClipStrategy.stored()
 
     var body: some View {
         Form {
@@ -15,6 +16,13 @@ struct StorageSettingsView: View {
             Stepper(value: megabytes(\.maxClipBytes), in: 1...4096, step: 10) {
                 Text("Largest clip: \(Self.label(settings.settings.maxClipBytes))")
             }
+            Picker("Files you paste", selection: Binding(get: { strategy }, set: { strategy = $0; $0.store() })) {
+                Text("Small files copied now, large ones when pasted").tag(FileClipStrategy.hybrid)
+                Text("Always when pasted").tag(FileClipStrategy.lazy)
+                Text("Always copied now").tag(FileClipStrategy.eager)
+            }
+            Text("Applies to the next file clip. Copied-now files are kept in a cache folder and removed with your history.")
+                .font(.caption).foregroundStyle(.secondary)
             Text("Pinned items are kept until you delete them.").font(.caption).foregroundStyle(.secondary)
             if let error = settings.errorMessage { Text(error).font(.caption).foregroundStyle(.red) }
         }

@@ -7,6 +7,8 @@ struct MenuBarContentView: View {
     @ObservedObject var devices: DevicesModel
     @ObservedObject var trust: TrustResetPromptModel
     let sync: ClipboardSync?
+    var files: FilesSync?
+    var transfers: TransfersModel?
     let banner: String?
     let openHistory: () -> Void
     let openMain: () -> Void
@@ -26,7 +28,12 @@ struct MenuBarContentView: View {
                 ClipboardMenuSection(sync: sync, openHistory: openHistory)
                 Divider()
             }
-            DeviceListView(devices: devices.devices, onRemove: nil)
+            if let files, let transfers {
+                FilesMenuSection(files: files, transfers: transfers)
+            }
+            DeviceListView(devices: devices.devices, onRemove: nil, onSend: files.map { files in
+                { device, urls in Task { await files.send(urls, to: device.nodeId) } }
+            })
             Divider()
             Button("Add device…", action: addDevice)
             Button("Open fsync", action: openMain)

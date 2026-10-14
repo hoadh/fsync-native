@@ -20,6 +20,11 @@ struct SyncSettingsView: View {
                 ? "What you copy goes to your other devices, and what they copy lands on your clipboard."
                 : "Send with \(HotkeyManager.sendClipboardLabel) or the menu. Clips from other devices wait under \"Paste from\".")
                 .font(.caption).foregroundStyle(.secondary)
+            Toggle("Receive files from my devices without asking", isOn: Binding(
+                get: { settings.settings.autoAcceptFiles },
+                set: { value in Task { await settings.update { $0.autoAcceptFiles = value } } }))
+            Text("Files go to your Downloads folder. Otherwise each transfer waits for you under the menu.")
+                .font(.caption).foregroundStyle(.secondary)
             if let text = access.explanation, settings.settings.clipMode == .auto {
                 Text(text).font(.caption).foregroundStyle(.orange)
             }
