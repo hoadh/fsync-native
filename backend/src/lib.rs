@@ -15,13 +15,24 @@ pub mod serve;
 pub mod state;
 pub mod util;
 
-use axum::{Router, extract::DefaultBodyLimit, extract::State, middleware, routing::get};
+use axum::{
+    Router, extract::DefaultBodyLimit, extract::State, http::StatusCode, middleware, routing::get,
+};
 use error::ApiResult;
 use state::AppState;
 
 async fn health(State(s): State<AppState>) -> ApiResult<&'static str> {
     sqlx::query("SELECT 1").execute(&s.db).await?;
     Ok("ok")
+}
+
+/// Alert signal: 503 while the global OTP send cap is reached (sign-ins are being refused).
+async fn health_otp(State(s): State<AppState>) -> ApiResult<(StatusCode, &'static str)> {
+    if auth::otp_budget::reached(&s.db, s.cfg.otp_daily_send_cap).await? {
+        Ok((StatusCode::SERVICE_UNAVAILABLE, "otp cap reached"))
+    } else {
+        Ok((StatusCode::OK, "ok"))
+    }
 }
 
 /// Build the full router. Serve with `into_make_service_with_connect_info::<SocketAddr>()`.
@@ -39,6 +50,7 @@ pub fn build_router(state: AppState) -> Router {
         .layer(middleware::from_fn_with_state(state.clone(), limits::guard));
     Router::new()
         .route("/health", get(health))
+        .route("/health/otp", get(health_otp))
         .merge(http)
         .nest("/v1", presence::ws::router())
         .layer(DefaultBodyLimit::max(64 * 1024))

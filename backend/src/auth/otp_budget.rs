@@ -46,6 +46,17 @@ pub async fn reserve(db: &PgPool, cap: u32) -> ApiResult<i64> {
     Ok(id)
 }
 
+/// True when `cap` sends happened in the last 24 h, i.e. new OTP starts are being refused.
+/// Read-only (no lock, no cleanup); feeds `/health/otp` so an external probe can alert on it.
+pub async fn reached(db: &PgPool, cap: u32) -> ApiResult<bool> {
+    let cutoff = now_ms() - WINDOW_MS;
+    let used: i64 = sqlx::query_scalar("SELECT count(*) FROM otp_send_log WHERE sent_at > $1")
+        .bind(cutoff)
+        .fetch_one(db)
+        .await?;
+    Ok(used >= i64::from(cap))
+}
+
 /// Give the slot back after a failed send (nothing was delivered, so it is not spent).
 pub async fn release(db: &PgPool, id: i64) {
     if let Err(e) = sqlx::query("DELETE FROM otp_send_log WHERE id = $1")

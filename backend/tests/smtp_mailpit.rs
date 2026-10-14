@@ -75,7 +75,7 @@ async fn wrong_password_is_an_error_without_secrets() {
     ] {
         assert!(!msg.contains(secret), "{msg}");
     }
-    assert!(mp.messages_to("bob@example.com").await.is_empty());
+    assert!(mp.no_mail_to("bob@example.com").await);
 }
 
 #[tokio::test]
@@ -84,7 +84,7 @@ async fn refuses_a_server_without_tls() {
     let s = SmtpSender::new(&mp.smtp_config("x")).unwrap();
     let r = s.send_otp("carol@example.com", "222222").await;
     assert!(r.is_err(), "must not fall back to plaintext");
-    assert!(mp.messages_to("carol@example.com").await.is_empty());
+    assert!(mp.no_mail_to("carol@example.com").await);
 }
 
 #[tokio::test]
@@ -93,7 +93,7 @@ async fn untrusted_certificate_is_rejected() {
     // Same server, but the client only trusts the public web roots.
     let s = SmtpSender::new(&mp.smtp_config(mailpit::PASSWORD)).unwrap();
     assert!(s.send_otp("dave@example.com", "333333").await.is_err());
-    assert!(mp.messages_to("dave@example.com").await.is_empty());
+    assert!(mp.no_mail_to("dave@example.com").await);
 }
 
 #[tokio::test]
