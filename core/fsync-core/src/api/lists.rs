@@ -49,17 +49,21 @@ impl ApiClient {
         Ok(v.account_id)
     }
 
-    pub async fn logout(&self) -> Result<()> {
-        let refresh = self.tokens().ok_or(CoreError::AuthExpired)?.refresh;
+    /// Revoke `refresh`'s whole session server-side. A 401 means it is already dead: success.
+    pub async fn revoke(&self, refresh: &str) -> Result<()> {
         let r = self
             .plain()
             .post(self.url("auth/logout"))
-            .json(&Refresh { refresh })
+            .json(&Refresh {
+                refresh: refresh.into(),
+            })
             .send()
             .await;
-        check(r).await?;
-        self.clear_tokens();
-        Ok(())
+        match check(r).await {
+            Ok(_) => Ok(()),
+            Err(CoreError::Api(e)) if e.status == 401 => Ok(()),
+            Err(e) => Err(e),
+        }
     }
 
     /// `None` if the account has no list yet (404).

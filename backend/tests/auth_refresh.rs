@@ -145,3 +145,22 @@ async fn account_keeps_at_most_20_live_families() {
     .unwrap();
     assert_eq!(n, 20);
 }
+
+#[tokio::test]
+async fn logout_kills_the_whole_family_including_rotated_tokens() {
+    let app = TestApp::start().await;
+    let s = app.login(EMAIL).await;
+    // An in-flight refresh that the client abandoned still rotated the token server-side.
+    let r: Value = app.refresh(&s.refresh).await.json().await.unwrap();
+    let newer = r["refresh"].as_str().unwrap().to_string();
+    // Logout with the (already rotated) token the client still held.
+    let out = app
+        .http
+        .post(app.url("/v1/auth/logout"))
+        .json(&serde_json::json!({ "refresh": s.refresh }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(out.status(), 204);
+    assert_eq!(app.refresh(&newer).await.status(), 401, "family revoked");
+}

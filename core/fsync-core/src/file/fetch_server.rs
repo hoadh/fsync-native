@@ -123,6 +123,10 @@ async fn serve(
 ) -> Result<()> {
     let req: FetchReq = recv_frame(&mut rx, REQ_TIMEOUT).await?;
     req.validate()?;
+    #[cfg(any(test, feature = "test-hooks"))]
+    if let Some(d) = sh.cfg.serve_delay {
+        tokio::time::sleep(d).await;
+    }
     let (resp, served) = sh.resolve(&req, &remote);
     send_frame(&mut tx, &resp).await?;
     if let Some(s) = &served {

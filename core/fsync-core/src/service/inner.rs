@@ -38,6 +38,8 @@ pub(super) struct Live {
     pub engine: Option<Arc<Engine>>,
     pub presence: Option<super::presence::PresenceRun>,
     pub tasks: Vec<AbortOnDrop>,
+    /// Exclusive lock on `<data_dir>/engine.lock` while the engine runs (released on drop).
+    pub data_lock: Option<std::fs::File>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -67,9 +69,15 @@ pub(super) struct Inner {
     pub store: Arc<dyn BlobStore>,
     pub account: Arc<Mutex<Option<Uuid>>>,
     pub live: Mutex<Live>,
+    /// Serializes `start` so concurrent calls cannot race on the data-dir lock.
+    pub start_gate: tokio::sync::Mutex<()>,
     pub peers: Mutex<HashMap<NodeId, PeerSeen>>,
     pub xfers: Mutex<Transfers>,
     pub pairing: Mutex<PairingSlot>,
+    /// Logout revocations still being retried (dropped with the service).
+    pub revokes: Mutex<Vec<AbortOnDrop>>,
+    /// First retry delay of a queued revocation.
+    pub revoke_base: Mutex<std::time::Duration>,
 }
 
 pub(super) fn lock<T>(m: &Mutex<T>) -> SvcResult<MutexGuard<'_, T>> {
@@ -124,9 +132,12 @@ impl Inner {
             store,
             account,
             live: Mutex::default(),
+            start_gate: tokio::sync::Mutex::new(()),
             peers: Mutex::default(),
             xfers: Mutex::default(),
             pairing: Mutex::default(),
+            revokes: Mutex::default(),
+            revoke_base: Mutex::new(super::revoke::DEFAULT_BASE),
         };
         Ok((inner, events))
     }

@@ -1,5 +1,6 @@
 //! Backend client: HTTP (device list, pairing, auth) and the presence WebSocket.
 
+mod check;
 mod client;
 mod hello_pacer;
 mod limits;

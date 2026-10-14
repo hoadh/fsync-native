@@ -1,7 +1,9 @@
 //! `read_file_range`: random + sequential reads of a remote file without storing all of it.
 //!
-//! Data arrives in 4 MiB windows, each verified group by group. Sequential access prefetches
-//! the next window. A file already complete in the blob store is read locally.
+//! Data arrives in 4 MiB windows, each verified group by group. A caller that reads one small
+//! chunk at a time (the Windows shell: 256 KiB, never two in flight) would pay one round trip
+//! per window, so once two reads in a row are sequential the next `AHEAD` windows are fetched
+//! concurrently (ADR 010). A file already complete in the blob store is read locally.
 
 use super::fetch_client::{Expect, Session, next_batch, open};
 use super::group_tree::Verifier;
@@ -15,11 +17,17 @@ use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
-use tokio::sync::OnceCell;
+use tokio::sync::{OnceCell, Semaphore};
 use uuid::Uuid;
 
 const WINDOW: u64 = 4 << 20;
 const MAX_WINDOWS: usize = 8;
+/// Windows kept in flight ahead of a sequential reader (16 MiB: 50 MiB/s at ~300 ms RTT).
+const AHEAD: u64 = 4;
+/// Sequential reads seen before the full read-ahead depth is used; until then one window.
+const RAMP_READS: u32 = 2;
+
+use super::seq_run::SeqRun;
 
 type Cell = Arc<OnceCell<Arc<Vec<u8>>>>;
 
@@ -27,7 +35,7 @@ type Cell = Arc<OnceCell<Arc<Vec<u8>>>>;
 struct State {
     verifier: Option<Arc<Verifier>>,
     windows: HashMap<u64, Cell>,
-    last_end: u64,
+    seq: SeqRun,
 }
 
 pub struct RangeReader {
@@ -37,13 +45,23 @@ pub struct RangeReader {
     file_id: u32,
     exp: Expect,
     state: Mutex<State>,
-    /// The single in-flight prefetch, aborted on `shutdown`.
-    prefetch: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// Speculative fetches allowed at once towards this peer (shared by all its readers).
+    budget: Arc<Semaphore>,
+    /// In-flight prefetches; dropping the set (on `shutdown`) aborts them.
+    prefetch: Mutex<tokio::task::JoinSet<()>>,
 }
 
 impl RangeReader {
-    pub fn new(sh: Arc<Shared>, from: NodeId, item: Uuid, file_id: u32, exp: Expect) -> Arc<Self> {
+    pub fn new(
+        sh: Arc<Shared>,
+        from: NodeId,
+        item: Uuid,
+        file_id: u32,
+        exp: Expect,
+        budget: Arc<Semaphore>,
+    ) -> Arc<Self> {
         Arc::new(Self {
+            budget,
             sh,
             from,
             item,
@@ -95,32 +113,44 @@ impl RangeReader {
     }
 
     fn prefetch_after(self: &Arc<Self>, offset: u64, end: u64) {
-        let next = (end - 1) / WINDOW + 1;
-        let sequential = self.state.lock().is_ok_and(|mut s| {
-            let seq = offset == s.last_end || offset == 0;
-            s.last_end = end;
-            seq
-        });
-        if sequential && next * WINDOW < self.exp.size {
-            let Ok(mut slot) = self.prefetch.lock() else {
+        let first = (end - 1) / WINDOW + 1;
+        let missing: Vec<u64> = {
+            let Ok(mut s) = self.state.lock() else {
                 return;
             };
-            if slot.as_ref().is_some_and(|t| !t.is_finished()) {
+            s.seq.note_read(offset, end);
+            if s.seq.run == 0 {
                 return;
             }
+            // Behind a sequential reader nothing is read again: free it for the windows ahead.
+            let keep_from = offset / WINDOW;
+            s.windows.retain(|k, _| *k >= keep_from);
+            let depth = if s.seq.run >= RAMP_READS { AHEAD } else { 1 };
+            (first..first + depth)
+                .filter(|i| i * WINDOW < self.exp.size && !s.windows.contains_key(i))
+                .collect()
+        };
+        let Ok(mut set) = self.prefetch.lock() else {
+            return;
+        };
+        while set.try_join_next().is_some() {}
+        for idx in missing {
+            // Foreground reads must never queue behind speculation: no permit, no prefetch.
+            let Ok(permit) = self.budget.clone().try_acquire_owned() else {
+                break;
+            };
             let me = self.clone();
-            *slot = Some(tokio::spawn(async move {
-                let _ = me.window(next).await;
-            }));
+            set.spawn(async move {
+                let _ = me.window(idx).await;
+                drop(permit);
+            });
         }
     }
 
     /// Stop background work; the reader is being evicted.
     pub fn shutdown(&self) {
-        if let Ok(mut slot) = self.prefetch.lock()
-            && let Some(t) = slot.take()
-        {
-            t.abort();
+        if let Ok(mut set) = self.prefetch.lock() {
+            set.abort_all();
         }
     }
 
