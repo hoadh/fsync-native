@@ -23,10 +23,17 @@ extension EngineBridge {
         }.store(in: &modelSubscriptions)
     }
 
+    /// Runs on every successful settings load or edit. The first successful load while `.ready` starts
+    /// clipboard sync, even when an earlier load failed, so a transient read error never leaves it off.
     private func clipSettings(changed new: Settings) {
         let retentionChanged = new.retentionDays != clipSync?.retentionDays || new.retentionBytes != clipSync?.retentionBytes
         clipSync?.apply(settings: new)
-        if retentionChanged, phase == .ready { startInboxCleanup() }
+        guard phase == .ready else { return }
+        if clipSync?.isRunning == false {
+            startClipboard()
+        } else if retentionChanged {
+            startInboxCleanup()
+        }
     }
 
     private func phaseChanged(for phase: AppPhase) {
@@ -38,23 +45,25 @@ extension EngineBridge {
             return
         }
         filesSync?.start()
-        Task { [weak self] in await self?.startClipboardWhenSettingsAreKnown() }
+        Task { [weak self] in await self?.loadClipSettings() }
     }
 
     /// The stored settings decide the mode, so sync does not start on guesses: when they can't be read the
-    /// clipboard stays off and the error shows in Settings.
-    private func startClipboardWhenSettingsAreKnown() async {
+    /// clipboard stays off and the error shows in Settings. A later successful load starts it
+    /// (see `clipSettings(changed:)`).
+    func loadClipSettings() async {
         guard let settings = clipSettings else { return }
-        guard await settings.load() else {
+        if await !settings.load() {
             clipSync?.report("Clipboard sync is off: your settings couldn't be read.")
-            return
         }
-        guard phase == .ready else { return }
-        clipSync?.apply(settings: settings.settings)
+    }
+
+    private func startClipboard() {
+        clipSync?.dismissMessage()
         clipSync?.start()
         if hotkey?.register() == false { clipSync?.report("The shortcut \(HotkeyManager.sendClipboardLabel) is used by another app.") }
-        await historyModel?.reload()
         startInboxCleanup()
+        Task { [weak self] in await self?.historyModel?.reload() }
     }
 
     /// Downloaded clip files follow the history retention (days and size); runs now and then daily.
