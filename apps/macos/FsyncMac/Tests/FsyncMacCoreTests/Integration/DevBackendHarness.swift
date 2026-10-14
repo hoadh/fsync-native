@@ -62,7 +62,7 @@ struct DevBackend: Sendable {
     }
 
     /// Sends a code, reads it from the backend log and verifies it. Returns the `logged_in` event.
-    func cliLogin(_ name: String, email: String) async throws -> [String: Any] {
+    func cliLogin(_ name: String, email: String) async throws -> CliEvent {
         let send = try cli(name, ["login", "--email", email, "--send-only"])
         try await send.expectExit(0, timeout: 30)
         let code = try await otp(for: email)
@@ -86,11 +86,21 @@ enum HarnessError: Error, CustomStringConvertible {
     }
 }
 
+/// One JSON line printed by `fsync-cli`. The values come from `JSONSerialization` (NSString, NSNumber,
+/// NSArray, NSDictionary) and are never mutated after parsing, so sharing them across isolation domains is safe.
+struct CliEvent: @unchecked Sendable {
+    private let fields: [String: Any]
+
+    init(_ fields: [String: Any]) { self.fields = fields }
+
+    subscript(key: String) -> Any? { fields[key] }
+}
+
 /// A running `fsync-cli`; stdout is parsed as JSON lines.
 final class CliProcess: @unchecked Sendable {
     private let process = Process()
     private let lock = NSLock()
-    private var lines: [[String: Any]] = []
+    private var lines: [CliEvent] = []
     private var raw: [String] = []
     private var errText = ""
     private var buffer = Data()
@@ -121,18 +131,18 @@ final class CliProcess: @unchecked Sendable {
                 let line = s.buffer.subdata(in: s.buffer.startIndex..<nl)
                 s.buffer.removeSubrange(s.buffer.startIndex...nl)
                 s.raw.append(String(decoding: line, as: UTF8.self))
-                if let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any] { s.lines.append(obj) }
+                if let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any] { s.lines.append(CliEvent(obj)) }
             }
         }
     }
 
-    func lastEvent(_ name: String) -> [String: Any]? {
+    func lastEvent(_ name: String) -> CliEvent? {
         lock.lock(); defer { lock.unlock() }
         return lines.last { $0["event"] as? String == name }
     }
 
     /// Waits for the first `name` event.
-    func waitEvent(_ name: String, timeout: Double = 30) async throws -> [String: Any] {
+    func waitEvent(_ name: String, timeout: Double = 30) async throws -> CliEvent {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if let e = lastEvent(name) { return e }
