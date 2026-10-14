@@ -5,6 +5,7 @@
 #   deploy/scripts/deploy.sh [user@]host [options]
 #     --env-file F     upload F as the remote .env if the host has none (never overwrites)
 #     --rollback       redeploy the previous release (FSYNC_TAG_PREV in the remote .env)
+#     --force-rollback skip the migration check of --rollback (only after reading rollback-guard.sh)
 #     --dir D          stack dir on the host (default /opt/fsync)
 #     --platform P     image platform for local builds (default linux/amd64)
 #     --public-smoke   also smoke-check https://API_HOST and https://RELAY_HOST (needs DNS + proxy)
@@ -21,12 +22,13 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 HERE="$ROOT/deploy"
-host="" env_file="" cron=0 rollback=0 dir=/opt/fsync platform=linux/amd64 smoke=1 public=0 relay_only=0
+host="" env_file="" cron=0 rollback=0 force=0 dir=/opt/fsync platform=linux/amd64 smoke=1 public=0 relay_only=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --env-file) env_file="${2:?}"; shift 2;;
     --install-backup-cron) cron=1; shift;;
     --rollback) rollback=1; shift;;
+    --force-rollback) force=1; shift;;
     --dir) dir="${2:?}"; shift 2;;
     --platform) platform="${2:?}"; shift 2;;
     --relay-only) relay_only=1; shift;;
@@ -36,7 +38,7 @@ while [[ $# -gt 0 ]]; do
     *) host="$1"; shift;;
   esac
 done
-[[ -n "$host" ]] || { sed -n 2,16p "$0"; exit 2; }
+[[ -n "$host" ]] || { sed -n 2,17p "$0"; exit 2; }
 read -r -a ssh_opts <<<"${SSH_OPTS:--o StrictHostKeyChecking=accept-new}"
 log() { printf '[deploy] %s\n' "$*"; }
 die() { printf '[deploy] FAIL: %s\n' "$*" >&2; exit 1; }
@@ -74,6 +76,11 @@ fi
 if [[ $rollback -eq 1 ]]; then
   tag="$(rsh "sed -n 's/^FSYNC_TAG_PREV=//p' '$dir/.env'")"
   [[ -n "$tag" ]] || die "no previous release recorded on the host"
+  if [[ $force -eq 0 && ( "$host_mode" == "full" || -z "$host_mode" ) && $relay_only -eq 0 ]]; then
+    db_max="$(rsh "cd '$dir' && $D compose exec -T postgres sh -c 'psql -U \$POSTGRES_USER -d \$POSTGRES_DB -Atc \"SELECT coalesce(max(version),0) FROM _sqlx_migrations\"'")" \
+      || die "cannot read the database migration version (--force-rollback skips this check)"
+    "$HERE/scripts/rollback-guard.sh" "$tag" "$db_max" || die "rollback refused (--force-rollback overrides)"
+  fi
   log "rolling back to $tag"
 else
   tag="${DEPLOY_TAG:-$(git -C "$ROOT" rev-parse --short=12 HEAD)}"
