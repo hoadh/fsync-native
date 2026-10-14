@@ -1,7 +1,7 @@
 //! fsync backend entrypoint.
 
 use fsync_backend::{
-    build_router, config::Config, db, email::sender::LogSender, presence::hub::InMemoryHub,
+    build_router, config::Config, db, email::build_sender, presence::hub::InMemoryHub,
     state::AppState,
 };
 use std::{sync::Arc, time::Duration};
@@ -17,9 +17,7 @@ async fn main() -> anyhow::Result<()> {
     db::migrate(&pool).await?;
 
     let (bind, header_timeout) = (cfg.bind_addr, cfg.header_read_timeout);
-    let email = Arc::new(LogSender {
-        dev_mode: cfg.dev_mode,
-    });
+    let email = build_sender(&cfg.email, cfg.dev_mode)?;
     let state = AppState::new(pool.clone(), cfg, email, Arc::new(InMemoryHub::default()));
 
     tokio::spawn(async move {

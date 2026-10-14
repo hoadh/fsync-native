@@ -1,5 +1,4 @@
-//! Email sender abstraction. No real provider is wired yet (provider choice unresolved);
-//! `LogSender` is the dev sink.
+//! Email sender abstraction: `SmtpSender` (smtp.rs) delivers; `LogSender` is the dev sink.
 
 use async_trait::async_trait;
 

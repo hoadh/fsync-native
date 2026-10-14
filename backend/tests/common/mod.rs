@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 
 pub mod devices;
+pub mod mailpit;
 pub mod pg;
 pub mod ws;
 
@@ -67,6 +68,19 @@ impl TestApp {
     }
 
     pub async fn start_with(tweak: impl FnOnce(&mut Config)) -> Self {
+        Self::start_custom(tweak, None).await
+    }
+
+    /// Same app, but OTP emails go through `sender` (e.g. a real SMTP sender) instead of the
+    /// capture sink; `email` then stays empty.
+    pub async fn start_with_sender(sender: Arc<dyn EmailSender>) -> Self {
+        Self::start_custom(|_| {}, Some(sender)).await
+    }
+
+    async fn start_custom(
+        tweak: impl FnOnce(&mut Config),
+        sender: Option<Arc<dyn EmailSender>>,
+    ) -> Self {
         let admin = pg::admin_url().await;
         let name = format!("t_{}", Uuid::new_v4().simple());
         // The server may still be finishing init right after the readiness line: retry.
@@ -100,7 +114,7 @@ impl TestApp {
         let state = AppState::new(
             pool.clone(),
             cfg,
-            email.clone(),
+            sender.unwrap_or_else(|| -> Arc<dyn EmailSender> { email.clone() }),
             Arc::new(InMemoryHub::default()),
         );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

@@ -1,5 +1,6 @@
 //! Runtime configuration from environment variables.
 
+use crate::email::config::{EmailMode, resolve as resolve_email};
 use anyhow::{Context, bail};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ipnet::IpNet;
@@ -31,6 +32,8 @@ pub struct Config {
     pub pending_recheck: Duration,
     /// Max time a client may take to send request headers (slowloris guard).
     pub header_read_timeout: Duration,
+    /// OTP delivery: log sink or SMTP (see `email::config`).
+    pub email: EmailMode,
 }
 
 impl std::fmt::Debug for Config {
@@ -40,6 +43,7 @@ impl std::fmt::Debug for Config {
             .field("dev_mode", &self.dev_mode)
             .field("trust_proxy_hops", &self.trust_proxy_hops)
             .field("trusted_proxies", &self.trusted_proxies)
+            .field("email", &self.email)
             .finish_non_exhaustive()
     }
 }
@@ -91,6 +95,7 @@ impl Config {
             max_in_flight: 512,
             pending_recheck: Duration::from_secs(30),
             header_read_timeout: Duration::from_secs(10),
+            email: EmailMode::Log,
         }
     }
 
@@ -120,6 +125,8 @@ impl Config {
         };
         let mut cfg = Self::with_defaults(database_url, seed);
         cfg.dev_mode = dev_mode;
+        let production = std::env::var("FSYNC_ENV").as_deref() == Ok("production");
+        cfg.email = resolve_email(&|k| std::env::var(k).ok(), production)?;
         if let Ok(addr) = std::env::var("BIND_ADDR") {
             cfg.bind_addr = addr.parse().context("BIND_ADDR must be host:port")?;
         }
