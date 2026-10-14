@@ -94,9 +94,9 @@ Auth = own email OTP · Min OS = macOS 13+, Win 10 22H2+/11 · Recovery = trust 
 ## Unresolved questions
 1. Pricing per tier (limits configurable, not tied to tiers in MVP).
 2. Second relay region: SG vs US/EU (depends on target market). Data: Track D from Vietnam to US-East-2 VPS, raw path 0.11 MiB/s = relay 0.105; nearer region is the lever. Supports SG.
-3. Email provider for OTP (SES / Resend / Postmark). Blocks real OTP delivery and prod (staging logs OTP; backend has `LogSender` only).
+3. ~~Email provider for OTP~~ Resolved 2026-10-15: Gmail SMTP (Workspace sender), global cap 450/24 h; real OTP delivery confirmed by owner (inbox). Transactional provider still advised before real traffic.
 4. Developer ID signing: decided and built (team VE5P5RS83W); notarization verified. Open: signed launch-at-login check (phase 16).
 5. Offline `logout()`: partly resolved (inline + bg revoke, review 9.6). Open: quit-before-revoke leaves refresh token valid to 30 d expiry. Decide: add additive FFI `revoke_session` now, or accept for MVP.
 6. macOS integration script not in CI (phase 10 to wire). CI workflows never run on GitHub yet.
 7. Optional Low items from phase 11 review round 3 (LoginModel waits for pending clear; boot awaits `sessionClear`).
-8. Mac↔Win LAN unreachable (Track X used Tailscale). Fix network path or accept Tailscale-only for MVP QA?
+8. Mac↔Win LAN unreachable (separate ISP routers). Decided: put both on one router and re-test over LAN (deferred by owner, later); Tailscale accepted when LAN is not available.
