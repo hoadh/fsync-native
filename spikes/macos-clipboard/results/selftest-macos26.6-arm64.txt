@@ -1,0 +1,41 @@
+ClipSpike self-test, macOS Version 26.6.2 (Build 25G83), 2026-10-14 14:43:43 +0000
+[PASS] watcher: no change -> no event
+[PASS] watcher: 5 writes -> 5 events (poll between writes) - seen=5
+[PASS] watcher: reading content does not bump changeCount
+[PASS] filter: plain text
+[PASS] filter: concealed (1Password/Keychain style)
+[PASS] filter: transient
+[PASS] filter: auto-generated
+[PASS] filter: own write marker
+[PASS] filter: 1Password legacy marker
+[PASS] filter: denied frontmost app
+[PASS] filter: allowed frontmost app
+[PASS] stream: 2 normal synced, 4 marked items skipped, 0 concealed captured - synced=2 skipped=["concealed", "transient", "auto-generated", "own-write"]
+[PASS] watcher: other-process write seen by adaptive timer - latency incl. child start=1.00s
+[PASS] watcher: 50 rapid writes coalesce into >=1 event, last value readable - events=1
+[INFO] privacy: NSPasteboard.general.accessBehavior (this process) - 2 (0=default 1=ask 2=alwaysAllow 3=alwaysDeny)
+[PASS] privacy: changeCount + types read need no content access
+[PASS] cpu: fixed 300 ms over 20 s < 0.5% - 0.05% (62 polls)
+[PASS] cpu: adaptive idle 1 s over 20 s < 0.5% - 0.02% (18 polls)
+[PASS] lazy: listing types (watcher + other process) does not call the provider - types=com.fsync.origin,public.file-url,CorePasteboardFlavorType 0x6675726C,dyn.ah62d4rv4gu8y6y4grf0gn5xbrzw1gydcr7u1e3cytf2gn,NSFilenamesPboardType,dyn.ah62d4rv4gu8yc6durvwwaznwmuuha2pxsvw0e55bsmwca7d3sbwu,Apple URL pasteboard type
+[PASS] lazy: own lazy write is recognised by the watcher (echo guard)
+[PASS] lazy: 3 files (1 KiB, 3 MiB, 0 B), cross-process read, hashes match - files=3/3 1.05s provider calls=3
+[PASS] lazy: provider ran once per file, only on read
+[PASS] lazy: reader waited for the fetch
+[PASS] lazy: 200 MiB, fetch 2 s, reader blocks until bytes exist, hash matches - files=1/1 2.85s 
+[PASS] lazy: 200 MiB, fetch 35 s, reader blocks until bytes exist, hash matches - files=1/1 36.00s 
+[PASS] lazy: failing fetch -> reader gets no file and does not hang - count=0 0.28s
+[INFO] promise: types on pasteboard - com.apple.NSFilePromiseItemMetaData, com.apple.pasteboard.promised-file-name, com.apple.pasteboard.promised-suggested-file-name, com.apple.pasteboard.promised-file-content-type, dyn.ah62d4rv4gu8yc6durvwwa3xmrvw1gkdusm1044pxqyuha2pxsvw0e55bsmwca7d3sbwu, Apple files promise pasteboard type, com.apple.pasteboard.NSFilePromiseID, com.fsync.origin
+[INFO] promise: reader that only understands file URLs (what a plain Cmd+V target sees) - file urls=0
+[INFO] promise: NSFilePromiseReceiver in another process (pasteboard, no drag) - receivers=2 files delivered=0 served=0 timedOut=false ok=false
+[INFO] lazy: provider thread is main=true; main-thread timer ticks during a 2 s fetch (keepRunLoopAlive=false) - ticks=1 read ok=true
+[INFO] lazy: provider thread is main=true; main-thread timer ticks during a 2 s fetch (keepRunLoopAlive=true) - ticks=20 read ok=true
+[PASS] lazy: with run-loop spinning the main thread stays responsive (>= 10 ticks in 2 s)
+[PASS] eager: real file URLs, cross-process read, hashes match - files=2/2 0.02s 
+[PASS] owner exit: types listed while alive, no readable file after the owner quits (clear on exit) - types after exit are stale=true urls=0
+[OPEN] Finder Cmd+V of a lazy clip into a folder - needs a person (Accessibility-driven keystrokes are blocked in this session); use the menu app ClipSpikeSelfTest --offer
+[OPEN] Mail / Messages / Slack / VS Code / Chrome upload paste matrix - needs a person with those apps
+[OPEN] 1Password / Keychain / Safari autofill real-app copy captured as concealed - needs a person with those apps
+[OPEN] Privacy alert ('Always allow') persistence across restarts on macOS 15.4+/26 and previous - needs a person: alert shows only in a GUI session on programmatic read of another app's clip
+
+summary: failures=0 open(manual)=4
