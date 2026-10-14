@@ -171,6 +171,22 @@ impl Mailpit {
         Vec::new()
     }
 
+    /// For "nothing was sent" assertions: the send call has already returned, so a short settle
+    /// is enough (waiting out `messages_to`'s full deadline would only slow the suite down).
+    pub async fn no_mail_to(&self, to: &str) -> bool {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        let v: Value = reqwest::Client::new()
+            .get(format!("{}/api/v1/search", self.http))
+            .query(&[("query", format!("to:{to}"))])
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        v["messages"].as_array().is_none_or(Vec::is_empty)
+    }
+
     /// Full message (headers and bodies) by the id from `messages_to`.
     pub async fn message(&self, id: &str) -> Value {
         reqwest::get(format!("{}/api/v1/message/{id}", self.http))

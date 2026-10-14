@@ -10,16 +10,20 @@ RELAY_HOSTS="${RELAY_HOSTS:-relay-fsync.10z.one relay-sg-fsync.10z.one}"
 CERT_WARN_DAYS="${CERT_WARN_DAYS:-14}"
 RETRIES="${RETRIES:-3}"
 fails=()
+TIMEOUT_CMD=(); command -v timeout >/dev/null && TIMEOUT_CMD=(timeout 15)
 
 # fetch URL -> sets code, body; retries so one dropped packet does not page anyone.
 fetch() {
   local i
+  code=000 body=""
   for ((i = 1; i <= RETRIES; i++)); do
-    body="$(curl -sS --max-time 10 -o - -w '\n%{http_code}' "$1" 2>/dev/null)" && break
-    sleep 3
+    body="$(curl -sS --max-time 10 -o - -w '\n%{http_code}' "$1" 2>/dev/null)" || body=$'\n000'
+    code="${body##*$'\n'}"; body="${body%$'\n'*}"
+    [[ "$code" =~ ^[0-9]{3}$ ]] || code=000
+    # Retry transport errors and 5xx (a deploy blip), not 4xx/2xx.
+    [[ "$code" == 000 || "$code" == 5* ]] || break
+    ((i == RETRIES)) || sleep 3
   done
-  code="${body##*$'\n'}"; body="${body%$'\n'*}"
-  [[ "$code" =~ ^[0-9]{3}$ ]] || code=000
 }
 check() { # name url expected_code expected_body_regex
   fetch "$2"
@@ -28,7 +32,7 @@ check() { # name url expected_code expected_body_regex
 }
 cert_days() { # host -> days until the served certificate expires (empty on failure)
   local end
-  end="$(echo | openssl s_client -servername "$1" -connect "$1:443" 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)" || return 0
+  end="$(${TIMEOUT_CMD[@]+"${TIMEOUT_CMD[@]}"} openssl s_client -servername "$1" -connect "$1:443" </dev/null 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)" || return 0
   [[ -n "$end" ]] || return 0
   local t
   t="$(date -d "$end" +%s 2>/dev/null || date -j -f '%b %e %T %Y %Z' "$end" +%s 2>/dev/null)" || return 0
@@ -44,7 +48,7 @@ case "$code" in
   404) echo "warn api /health/otp missing (release predates it)";;
   *) printf 'FAIL api otp budget: HTTP %s %s\n' "$code" "$body" >&2; fails+=("otp-budget");;
 esac
-for h in $RELAY_HOSTS; do check "relay $h" "https://$h/healthz" 200 'ok'; done
+for h in $RELAY_HOSTS; do check "relay $h" "https://$h/healthz" 200 '"status":"ok"'; done
 for h in "$API_HOST" $RELAY_HOSTS; do
   d="$(cert_days "$h")"
   if [[ -z "$d" ]]; then echo "warn cert expiry of $h unreadable"

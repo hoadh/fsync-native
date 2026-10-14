@@ -38,12 +38,15 @@ run_cell() { # scenario relay -> appends a summary row
     url="$(url_of "$r")"; [[ -n "$url" ]] || { rows+=("$s|$r|FAIL|0|unknown relay"); failed=1; return; }
   fi
   t0=$SECONDS
+  # Own process group (set -m) so the watchdog can signal the scenario and everything it spawned.
+  set -m
   E2E_RELAY_URL="$url" "$HERE/$script" >"$log" 2>&1 &
   local pid=$!
-  # Watchdog: kill the cell (the scenario's own trap cleans up) when it exceeds the limit.
-  ( sleep "$limit"; kill -TERM "$pid" 2>/dev/null ) & local wd=$!
+  ( sleep "$limit" & wait $!; kill -TERM -- "-$pid" 2>/dev/null ) >/dev/null 2>&1 &
+  local wd=$!
+  set +m
   wait "$pid"; rc=$?
-  kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
+  pkill -P "$wd" 2>/dev/null; kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
   local note; note="$(grep -E 'FAIL|latency_s=' "$log" | tail -1 | cut -c1-90)"
   if [[ $rc -eq 0 ]]; then rows+=("$s|$r|PASS|$((SECONDS - t0))s|$note")
   else failed=1; rows+=("$s|$r|FAIL|$((SECONDS - t0))s|rc=$rc ${note}"); fi
