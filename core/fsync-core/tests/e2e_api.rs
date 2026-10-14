@@ -68,7 +68,8 @@ async fn device_list_api_conflicts_chain_and_token_refresh() {
 async fn unauthenticated_client_gets_auth_expired_after_logout() {
     let be = Backend::start().await;
     let l = login(&be).await;
-    l.api.logout().await.unwrap();
+    let refresh = l.api.take_refresh().unwrap();
+    l.api.revoke(&refresh).await.unwrap();
     assert!(l.api.tokens().is_none());
     assert!(matches!(
         l.api.get_device_list().await,

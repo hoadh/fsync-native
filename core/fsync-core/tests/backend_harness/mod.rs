@@ -19,6 +19,8 @@ use std::{
 };
 use uuid::Uuid;
 
+pub mod proxy;
+
 // One Postgres helper for both crates (container start, port-publish retry, atexit cleanup).
 #[path = "../../../../backend/tests/common/pg.rs"]
 mod pg;
