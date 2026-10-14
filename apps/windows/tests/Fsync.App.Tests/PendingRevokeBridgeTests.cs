@@ -90,15 +90,29 @@ public sealed class PendingRevokeBridgeTests
     public async Task WithoutAnEngineSignOutRevokesDirectly()
     {
         using var h = new Harness(Session);
-        var revokes = new List<string>();
+        var revokes = new List<string>(); // guarded by its own lock: the launch retry runs on the thread pool
         var settings = new AppSettings(h.Dir, "http://127.0.0.1:9", null, "pc");
         using var bridge = new EngineBridge(settings, h.Secrets, new InlineDispatcher(),
-            (_, _) => throw new FsyncException.HistoryKeyMismatch(), (_, r, _) => revokes.Add(r));
+            (_, _) => throw new FsyncException.HistoryKeyMismatch(), (_, r, _) => { lock (revokes) revokes.Add(r); });
         await bridge.InitializeAsync();
         await bridge.LogoutAsync();
-        Assert.Equal(["ref-1"], revokes);
+        // The launch retry may also pick the entry up before sign-out settles it: a repeat of the same token is harmless.
+        lock (revokes) { Assert.NotEmpty(revokes); Assert.All(revokes, r => Assert.Equal("ref-1", r)); }
         Assert.Null(h.Secrets.PendingRevoke);
         Assert.Null(h.Secrets.Session);
+    }
+
+    [Fact]
+    public void FailedSaveLeavesNoPendingRevokeInMemory()
+    {
+        using var h = new Harness(Session);
+        Directory.CreateDirectory(Path.Combine(h.Dir, "secrets.dat.tmp")); // the atomic write now fails
+        Assert.ThrowsAny<Exception>(() => h.Secrets.SavePendingRevokeFromSession("https://api.example.com", DateTimeOffset.UtcNow));
+        Assert.ThrowsAny<Exception>(() => h.Secrets.SavePendingRevoke(Pending("x")));
+        Assert.Null(h.Secrets.PendingRevoke);
+        Directory.Delete(Path.Combine(h.Dir, "secrets.dat.tmp"));
+        h.Secrets.SaveSession(Session); // a later successful save must not persist the failed entry
+        Assert.Null(new SecretStore(Path.Combine(h.Dir, "secrets.dat")).PendingRevoke);
     }
 
     [Fact]

@@ -79,8 +79,8 @@ public sealed partial class ClipboardService
         var deadline = DateTime.UtcNow + QuitBudget;
         _bridge.RemoteClip -= OnRemoteClip;
         _bridge.Transfer -= OnTransfer;
+        _inTicket.Cancel(); // before the gate closes: a start refused by the closed gate must read as cancelled, not as a timeout
         _gate.Close();
-        _inTicket.Cancel();
         try
         {
             // Listener first: its wndproc must not touch the settle timer after it is disposed.

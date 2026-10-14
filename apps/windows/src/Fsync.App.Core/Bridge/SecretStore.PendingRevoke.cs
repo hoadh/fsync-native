@@ -7,6 +7,8 @@ namespace Fsync.App.Bridge;
 /// </summary>
 public sealed partial class SecretStore
 {
+    private void SetPending(PendingRevoke? value) => MutateAndSave(d => d.PendingRevoke = value);
+
     public PendingRevoke? PendingRevoke { get { lock (_lock) return _data.PendingRevoke; } }
 
     /// <summary>Persists (replaces) the pending revoke. Call BEFORE <c>LogoutConfirmed</c>.</summary>
@@ -14,8 +16,7 @@ public sealed partial class SecretStore
     {
         lock (_lock)
         {
-            _data.PendingRevoke = pending;
-            Save();
+            SetPending(pending);
         }
     }
 
@@ -29,8 +30,7 @@ public sealed partial class SecretStore
         {
             if (_data.Refresh is not { } refresh) return null;
             var pending = new PendingRevoke(refresh, apiBase, now);
-            _data.PendingRevoke = pending;
-            Save();
+            SetPending(pending);
             return pending;
         }
     }
@@ -44,8 +44,7 @@ public sealed partial class SecretStore
         lock (_lock)
         {
             if (_data.PendingRevoke is not { } current || current.Refresh != retried.Refresh) return;
-            _data.PendingRevoke = replacement;
-            Save();
+            SetPending(replacement);
         }
     }
 }

@@ -25,6 +25,16 @@ public sealed partial class SecretStore
         public string? AccountId { get; set; }
         public string? Email { get; set; }
         public PendingRevoke? PendingRevoke { get; set; }
+        public Data Copy() => (Data)MemberwiseClone(); // byte arrays are replaced, never edited in place
+    }
+
+    /// <summary>Caller holds the lock. For the pending revoke: the in-memory entry changes only once it is on disk, so a failed save cannot leak into a later one.</summary>
+    private void MutateAndSave(Action<Data> change)
+    {
+        var before = _data.Copy();
+        change(_data);
+        try { Save(); }
+        catch { _data = before; throw; }
     }
 
     public SecretStore(string path)
@@ -54,6 +64,7 @@ public sealed partial class SecretStore
     {
         lock (_lock)
         {
+            // No rollback: a rotated token the engine already uses must stay the newest in memory.
             (_data.Access, _data.Refresh, _data.AccountId) = (tokens.access, tokens.refresh, tokens.accountId);
             if (email is not null) _data.Email = email;
             Save();
@@ -64,6 +75,7 @@ public sealed partial class SecretStore
     {
         lock (_lock)
         {
+            // No rollback: sign-out clears the in-memory session even if the disk write fails.
             (_data.Access, _data.Refresh, _data.AccountId) = (null, null, null);
             Save();
         }
