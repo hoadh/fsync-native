@@ -28,6 +28,10 @@ pub enum FsyncError {
     Invalid { msg: String },
     #[error("internal: {msg}")]
     Internal { msg: String },
+    /// Added after v2, last on purpose (uniffi error cases are positional): another engine holds
+    /// `engine.lock` in this data directory. The message is the text `Invalid` used to carry.
+    #[error("invalid: another fsync engine is already running on this data directory")]
+    EngineAlreadyRunning,
 }
 
 impl From<svc::FsyncError> for FsyncError {
@@ -46,6 +50,7 @@ impl From<svc::FsyncError> for FsyncError {
             E::HistoryKeyMismatch => Self::HistoryKeyMismatch,
             E::NotFound => Self::NotFound,
             E::Invalid(msg) => Self::Invalid { msg },
+            E::EngineAlreadyRunning => Self::EngineAlreadyRunning,
             E::Internal(msg) => Self::Internal { msg },
         }
     }
@@ -67,6 +72,7 @@ impl From<FsyncError> for svc::FsyncError {
             FsyncError::HistoryKeyMismatch => E::HistoryKeyMismatch,
             FsyncError::NotFound => E::NotFound,
             FsyncError::Invalid { msg } => E::Invalid(msg),
+            FsyncError::EngineAlreadyRunning => E::EngineAlreadyRunning,
             FsyncError::Internal { msg } => E::Internal(msg),
         }
     }

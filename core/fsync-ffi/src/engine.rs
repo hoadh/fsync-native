@@ -168,6 +168,22 @@ impl FsyncEngine {
     ) -> FfiResult<HistoryPage> {
         map(self.svc.history(query, cursor, limit))
     }
+    /// Full content of a history item (every rep with its bytes), for copying it back to the
+    /// clipboard. `NotFound` for an unknown id or when no rep is obtainable; files-only items
+    /// return `[]`. Blocking; a rep that was never fetched may need the network.
+    pub fn history_item_reps(&self, item_id: String) -> FfiResult<Vec<Rep>> {
+        let reps = self
+            .svc
+            .history_item_reps(&item_id)
+            .map_err(FsyncError::from)?;
+        Ok(reps
+            .into_iter()
+            .map(|r| Rep {
+                mime: r.mime,
+                data: r.data,
+            })
+            .collect())
+    }
     pub fn pin(&self, item_id: String, pinned: bool) -> FfiResult<()> {
         unit(self.svc.pin(&item_id, pinned))
     }

@@ -961,6 +961,13 @@ public protocol FsyncEngineProtocol: AnyObject, Sendable {
     
     func history(query: String?, cursor: String?, limit: UInt32) throws  -> HistoryPage
     
+    /**
+     * Full content of a history item (every rep with its bytes), for copying it back to the
+     * clipboard. `NotFound` for an unknown id or when no rep is obtainable; files-only items
+     * return `[]`. Blocking; a rep that was never fetched may need the network.
+     */
+    func historyItemReps(itemId: String) throws  -> [Rep]
+    
     func loginStart(email: String) throws 
     
     func loginVerify(email: String, code: String) throws  -> SessionTokens
@@ -1151,6 +1158,19 @@ open func history(query: String?, cursor: String?, limit: UInt32)throws  -> Hist
         FfiConverterOptionString.lower(query),
         FfiConverterOptionString.lower(cursor),
         FfiConverterUInt32.lower(limit),$0
+    )
+})
+}
+    
+    /**
+     * Full content of a history item (every rep with its bytes), for copying it back to the
+     * clipboard. `NotFound` for an unknown id or when no rep is obtainable; files-only items
+     * return `[]`. Blocking; a rep that was never fetched may need the network.
+     */
+open func historyItemReps(itemId: String)throws  -> [Rep]  {
+    return try  FfiConverterSequenceTypeRep.lift(try rustCallWithError(FfiConverterTypeFsyncError_lift) {
+    uniffi_fsync_ffi_fn_method_fsyncengine_history_item_reps(self.uniffiClonePointer(),
+        FfiConverterString.lower(itemId),$0
     )
 })
 }
@@ -3372,6 +3392,11 @@ public enum FsyncError: Swift.Error {
     )
     case Internal(msg: String
     )
+    /**
+     * Added after v2, last on purpose (uniffi error cases are positional): another engine holds
+     * `engine.lock` in this data directory. The message is the text `Invalid` used to carry.
+     */
+    case EngineAlreadyRunning
 }
 
 
@@ -3409,6 +3434,7 @@ public struct FfiConverterTypeFsyncError: FfiConverterRustBuffer {
         case 13: return .Internal(
             msg: try FfiConverterString.read(from: &buf)
             )
+        case 14: return .EngineAlreadyRunning
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3476,6 +3502,10 @@ public struct FfiConverterTypeFsyncError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(13))
             FfiConverterString.write(msg, into: &buf)
             
+        
+        case .EngineAlreadyRunning:
+            writeInt(&buf, Int32(14))
+        
         }
     }
 }
@@ -4241,6 +4271,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fsync_ffi_checksum_method_fsyncengine_history() != 40422) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fsync_ffi_checksum_method_fsyncengine_history_item_reps() != 43317) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fsync_ffi_checksum_method_fsyncengine_login_start() != 62081) {
