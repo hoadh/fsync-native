@@ -29,3 +29,12 @@ Branch `fix/review-followups` (from ee9e2c8).
 - No Rust test drives a real Engine through the 60 s path (generic helper tested instead).
 - Hotkey registration not asserted in Swift test (depends on whether another app owns the shortcut).
 - Shell used `export PATH=$HOME/.cargo/bin` instead of `source ~/.cargo/env` (tool blocked `source`).
+
+## Round 1 review fixes (7.5)
+- Core Medium: `Node::close(&self)` / `Engine::close(&self)` (idempotent; `shutdown(self)` now delegates; also aborts retention task). On the 60 s timeout the holder calls `close` on the leaked Arc, then releases the lock, then warns. Added `Node::is_closed`. Log line at hand-off reworded. No FFI change.
+- Core Low: 1 s margin documented as the graceful-shutdown budget (worst case teardown cancels it, accepted at exit); constant check is now `const _: () = assert!(..)`; tautological test removed.
+- New real-path test `service/stop_leak_tests.rs`: real service, leaked `Arc<Engine>`, `Inner::stop_with(50 ms, 600 ms)`; asserts lock held during hold, node not closed early, then node closed + lock free, restart works. Helper tests also assert close is called on timeout and never on a clean release.
+- macOS Medium: `isQuitting` flag (reset in `installClipboardModels`); `prepareToQuit` sets it, cancels inbox cleanup, stops `clipSync` (earlier low). `clipSettings(changed:)`, `phaseChanged(.ready)` and `startClipboard` are no-ops while quitting.
+- macOS Low: only `EngineBridge.settingsOffMessage` is cleared on start.
+- Swift tests (7 total in `ClipboardStartAfterFailedLoadTests`): hotkey registered asserted after recovery (XCTSkip if ⌃⌥C taken), unrelated message kept, no start after prepareToQuit, prepareToQuit stops running sync, no start after sign-out, not-ready load.
+- Gates: fmt, clippy -D warnings pass; cargo test --workspace 269 passed/0 failed/2 ignored; xcframework rebuilt; FsyncCoreKit 8/0 failures; FsyncMac 194 (12 skipped integration)/0 failures, hotkey test not skipped.
