@@ -15,6 +15,8 @@ use std::{
 
 /// Application close code for rejected / removed peers.
 pub const CLOSE_UNTRUSTED: u32 = 403;
+/// Application close code for connections dropped locally because the peer looks gone.
+pub const CLOSE_STALE: u32 = 410;
 
 pub struct Gate {
     pub(crate) trust: Arc<TrustManager>,
@@ -62,6 +64,18 @@ impl Gate {
                 g.remove(&key);
             }
         });
+    }
+
+    /// Close every live connection to `peer`. Used when a fresh dial stalls: the old
+    /// connections are then presumed dead (peer crashed/moved) and their stale path state
+    /// would keep blocking new handshakes until it idles out.
+    pub fn close_peer(&self, peer: &NodeId) {
+        let Ok(g) = self.live.lock() else { return };
+        for ((p, _), conn) in g.iter() {
+            if p == peer {
+                conn.close(CLOSE_STALE.into(), b"stale");
+            }
+        }
     }
 
     /// Close live connections of devices no longer in the pinned list.
