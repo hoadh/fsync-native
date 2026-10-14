@@ -50,6 +50,10 @@ pub enum Cmd {
     },
     #[command(subcommand)]
     Pair(PairCmd),
+    #[command(subcommand)]
+    Account(AccountCmd),
+    #[command(subcommand)]
+    Trust(TrustCmd),
     Devices {
         #[arg(long)]
         json: bool,
@@ -103,6 +107,31 @@ pub enum PairCmd {
         #[arg(long)]
         yes: bool,
     },
+}
+
+#[derive(Subcommand)]
+pub enum AccountCmd {
+    /// Recovery without another device: make this device the only one in the account's list.
+    /// Run `login` first (a code from the last 5 minutes is required).
+    ResetTrust {
+        /// Required: every other device must confirm the reset or re-pair.
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
+/// Answers to a trust reset made by another device of the account.
+#[derive(Subcommand)]
+pub enum TrustCmd {
+    /// List the resets waiting for an answer.
+    Resets {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Accept the new root. If this device is not in it, it has to pair again.
+    Confirm { id: String },
+    /// Keep the current device list; the reset is not offered again.
+    Decline { id: String },
 }
 
 #[derive(Subcommand)]

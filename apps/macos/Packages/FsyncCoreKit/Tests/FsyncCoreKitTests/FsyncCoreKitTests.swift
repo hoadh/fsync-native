@@ -50,7 +50,7 @@ final class FsyncCoreKitTests: XCTestCase {
     }
 
     func testContractVersion() {
-        XCTAssertEqual(contractVersion(), 1)
+        XCTAssertEqual(contractVersion(), 2)
     }
 
     func testSettingsHistoryDevicesOnFreshEngine() throws {
@@ -78,6 +78,35 @@ final class FsyncCoreKitTests: XCTestCase {
         var bad = config(try tempDir(), historyKey: 9)
         bad.historyKey = Data(repeating: 1, count: 5)
         XCTAssertThrowsError(try FsyncEngine(cfg: bad, delegate: Recorder()))
+    }
+
+    /// Trust-reset surface on an engine that has seen no reset: nothing pending, unknown ids are
+    /// NotFound (also when malformed), and a reset without a session needs sign-in first.
+    func testTrustResetApiOnAFreshEngine() throws {
+        let engine = try FsyncEngine(cfg: config(try tempDir(), historyKey: 9), delegate: Recorder())
+        XCTAssertTrue(engine.pendingTrustResets().isEmpty)
+        for id in ["bogus", String(repeating: "ab", count: 32)] {
+            XCTAssertThrowsError(try engine.confirmTrustReset(resetId: id)) { err in
+                guard case FsyncError.NotFound = err else { return XCTFail("expected NotFound, got \(err)") }
+            }
+            XCTAssertThrowsError(try engine.declineTrustReset(resetId: id)) { err in
+                guard case FsyncError.NotFound = err else { return XCTFail("expected NotFound, got \(err)") }
+            }
+        }
+        XCTAssertThrowsError(try engine.resetAccountTrust()) { err in
+            guard case FsyncError.Auth = err else { return XCTFail("expected Auth, got \(err)") }
+        }
+    }
+
+    /// The trust-reset prompt carries the device names, in the record and in the event.
+    func testTrustResetPromptCarriesDeviceNames() {
+        let info = TrustResetInfo(resetId: String(repeating: "ab", count: 32), devices: 2, deviceNames: ["Mac", "iPhone"])
+        XCTAssertEqual(info.deviceNames.count, Int(info.devices))
+        let event = AccountEvent.trustReset(resetId: info.resetId, devices: info.devices, deviceNames: info.deviceNames)
+        guard case let .trustReset(id, devices, names) = event else { return XCTFail("expected trustReset") }
+        XCTAssertEqual(id, info.resetId)
+        XCTAssertEqual(devices, 2)
+        XCTAssertEqual(names, ["Mac", "iPhone"])
     }
 
     func testDelegateCallbackArrivesOffTheMainThread() throws {

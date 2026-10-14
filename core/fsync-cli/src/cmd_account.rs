@@ -18,7 +18,7 @@ pub fn prompt_line(msg: &str) -> Result<String> {
     Ok(line.trim().to_owned())
 }
 
-fn state_name(s: AccountState) -> &'static str {
+pub fn state_name(s: AccountState) -> &'static str {
     match s {
         AccountState::Created => "created",
         AccountState::Ready => "ready",

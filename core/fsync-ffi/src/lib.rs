@@ -23,10 +23,11 @@ pub use types_history::*;
 
 uniffi::setup_scaffolding!();
 
-/// Bumped on every contract change (v1 = this surface).
+/// Bumped on every breaking contract change (v2: trust-reset API, `ReauthRequired`,
+/// `AccountEvent::TrustReset`).
 #[uniffi::export]
 pub fn contract_version() -> u32 {
-    1
+    2
 }
 
 /// Abandons the history in `data_dir` (moved aside as `history.corrupt-*`, not deleted) and

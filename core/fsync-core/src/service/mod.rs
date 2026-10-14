@@ -25,7 +25,9 @@ mod pairing_events;
 mod presence;
 mod transfers;
 mod transfers_inner;
+mod trust_reset;
 mod types;
+mod types_history;
 mod walk;
 
 pub use crate::settings::{ClipMode, Settings};
@@ -33,6 +35,7 @@ pub use config::{ServiceConfig, key32};
 pub use delegate::ServiceDelegate;
 pub use error::{FsyncError, SvcResult};
 pub use types::*;
+pub use types_history::*;
 
 use inner::Inner;
 use std::{future::Future, sync::Arc};

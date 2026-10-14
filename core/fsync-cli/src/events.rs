@@ -51,3 +51,29 @@ impl ServiceDelegate for CliDelegate {
         self.put(Ev::Error(error));
     }
 }
+
+/// `{"event":"account","kind":...}` for an account event; `detail` keeps the Debug text.
+pub fn account_json(a: &AccountEvent) -> serde_json::Value {
+    let mut v = serde_json::json!({"event": "account", "detail": format!("{a:?}")});
+    let (kind, extra) = match a {
+        AccountEvent::ListAdvanced { seq } => ("list_advanced", serde_json::json!({"seq": seq})),
+        AccountEvent::SelfRemoved => ("self_removed", serde_json::json!({})),
+        AccountEvent::TrustReset {
+            reset_id,
+            devices,
+            device_names,
+        } => (
+            "trust_reset",
+            serde_json::json!({"reset_id": reset_id, "devices": devices, "device_names": device_names}),
+        ),
+        AccountEvent::HistoryReset { backup } => {
+            ("history_reset", serde_json::json!({"backup": backup}))
+        }
+        AccountEvent::SessionExpired => ("session_expired", serde_json::json!({})),
+    };
+    v["kind"] = kind.into();
+    if let (Some(o), Some(e)) = (v.as_object_mut(), extra.as_object()) {
+        o.extend(e.clone());
+    }
+    v
+}

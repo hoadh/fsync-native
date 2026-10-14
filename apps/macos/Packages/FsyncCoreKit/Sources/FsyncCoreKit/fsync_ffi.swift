@@ -945,6 +945,10 @@ public protocol FsyncEngineProtocol: AnyObject, Sendable {
     
     func clear(keepPinned: Bool) throws 
     
+    func confirmTrustReset(resetId: String) throws  -> AccountState
+    
+    func declineTrustReset(resetId: String) throws 
+    
     func delete(itemId: String) throws 
     
     func devices()  -> [Device]
@@ -973,6 +977,8 @@ public protocol FsyncEngineProtocol: AnyObject, Sendable {
     
     func pairingOffer(mode: PairingMode) throws  -> PairingOffer
     
+    func pendingTrustResets()  -> [TrustResetInfo]
+    
     func pin(itemId: String, pinned: Bool) throws 
     
     func publishClip(clip: LocalClip) throws  -> Published
@@ -980,6 +986,11 @@ public protocol FsyncEngineProtocol: AnyObject, Sendable {
     func readFileRange(itemId: String, fileId: UInt32, offset: UInt64, len: UInt32) throws  -> Data
     
     func removeDevice(nodeId: String) throws 
+    
+    /**
+     * Re-creates the account's root with this device only. `ReauthRequired`: re-run the OTP.
+     */
+    func resetAccountTrust() throws  -> AccountState
     
     func sendFiles(nodeId: String, paths: [String]) throws  -> UInt64
     
@@ -1068,6 +1079,21 @@ open func cancel(transferId: UInt64)throws   {try rustCallWithError(FfiConverter
 open func clear(keepPinned: Bool)throws   {try rustCallWithError(FfiConverterTypeFsyncError_lift) {
     uniffi_fsync_ffi_fn_method_fsyncengine_clear(self.uniffiClonePointer(),
         FfiConverterBool.lower(keepPinned),$0
+    )
+}
+}
+    
+open func confirmTrustReset(resetId: String)throws  -> AccountState  {
+    return try  FfiConverterTypeAccountState_lift(try rustCallWithError(FfiConverterTypeFsyncError_lift) {
+    uniffi_fsync_ffi_fn_method_fsyncengine_confirm_trust_reset(self.uniffiClonePointer(),
+        FfiConverterString.lower(resetId),$0
+    )
+})
+}
+    
+open func declineTrustReset(resetId: String)throws   {try rustCallWithError(FfiConverterTypeFsyncError_lift) {
+    uniffi_fsync_ffi_fn_method_fsyncengine_decline_trust_reset(self.uniffiClonePointer(),
+        FfiConverterString.lower(resetId),$0
     )
 }
 }
@@ -1181,6 +1207,13 @@ open func pairingOffer(mode: PairingMode)throws  -> PairingOffer  {
 })
 }
     
+open func pendingTrustResets() -> [TrustResetInfo]  {
+    return try!  FfiConverterSequenceTypeTrustResetInfo.lift(try! rustCall() {
+    uniffi_fsync_ffi_fn_method_fsyncengine_pending_trust_resets(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
 open func pin(itemId: String, pinned: Bool)throws   {try rustCallWithError(FfiConverterTypeFsyncError_lift) {
     uniffi_fsync_ffi_fn_method_fsyncengine_pin(self.uniffiClonePointer(),
         FfiConverterString.lower(itemId),
@@ -1213,6 +1246,16 @@ open func removeDevice(nodeId: String)throws   {try rustCallWithError(FfiConvert
         FfiConverterString.lower(nodeId),$0
     )
 }
+}
+    
+    /**
+     * Re-creates the account's root with this device only. `ReauthRequired`: re-run the OTP.
+     */
+open func resetAccountTrust()throws  -> AccountState  {
+    return try  FfiConverterTypeAccountState_lift(try rustCallWithError(FfiConverterTypeFsyncError_lift) {
+    uniffi_fsync_ffi_fn_method_fsyncengine_reset_account_trust(self.uniffiClonePointer(),$0
+    )
+})
 }
     
 open func sendFiles(nodeId: String, paths: [String])throws  -> UInt64  {
@@ -2782,6 +2825,84 @@ public func FfiConverterTypeTransferEvent_lower(_ value: TransferEvent) -> RustB
     return FfiConverterTypeTransferEvent.lower(value)
 }
 
+
+public struct TrustResetInfo {
+    public var resetId: String
+    public var devices: UInt32
+    public var deviceNames: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(resetId: String, devices: UInt32, deviceNames: [String]) {
+        self.resetId = resetId
+        self.devices = devices
+        self.deviceNames = deviceNames
+    }
+}
+
+#if compiler(>=6)
+extension TrustResetInfo: Sendable {}
+#endif
+
+
+extension TrustResetInfo: Equatable, Hashable {
+    public static func ==(lhs: TrustResetInfo, rhs: TrustResetInfo) -> Bool {
+        if lhs.resetId != rhs.resetId {
+            return false
+        }
+        if lhs.devices != rhs.devices {
+            return false
+        }
+        if lhs.deviceNames != rhs.deviceNames {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(resetId)
+        hasher.combine(devices)
+        hasher.combine(deviceNames)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTrustResetInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TrustResetInfo {
+        return
+            try TrustResetInfo(
+                resetId: FfiConverterString.read(from: &buf), 
+                devices: FfiConverterUInt32.read(from: &buf), 
+                deviceNames: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TrustResetInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.resetId, into: &buf)
+        FfiConverterUInt32.write(value.devices, into: &buf)
+        FfiConverterSequenceString.write(value.deviceNames, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTrustResetInfo_lift(_ buf: RustBuffer) throws -> TrustResetInfo {
+    return try FfiConverterTypeTrustResetInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTrustResetInfo_lower(_ value: TrustResetInfo) -> RustBuffer {
+    return FfiConverterTypeTrustResetInfo.lower(value)
+}
+
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 
@@ -2790,7 +2911,7 @@ public enum AccountEvent {
     case listAdvanced(seq: UInt64
     )
     case selfRemoved
-    case trustReset(devices: UInt32
+    case trustReset(resetId: String, devices: UInt32, deviceNames: [String]
     )
     case historyReset(backup: String
     )
@@ -2817,7 +2938,7 @@ public struct FfiConverterTypeAccountEvent: FfiConverterRustBuffer {
         
         case 2: return .selfRemoved
         
-        case 3: return .trustReset(devices: try FfiConverterUInt32.read(from: &buf)
+        case 3: return .trustReset(resetId: try FfiConverterString.read(from: &buf), devices: try FfiConverterUInt32.read(from: &buf), deviceNames: try FfiConverterSequenceString.read(from: &buf)
         )
         
         case 4: return .historyReset(backup: try FfiConverterString.read(from: &buf)
@@ -2842,9 +2963,11 @@ public struct FfiConverterTypeAccountEvent: FfiConverterRustBuffer {
             writeInt(&buf, Int32(2))
         
         
-        case let .trustReset(devices):
+        case let .trustReset(resetId,devices,deviceNames):
             writeInt(&buf, Int32(3))
+            FfiConverterString.write(resetId, into: &buf)
             FfiConverterUInt32.write(devices, into: &buf)
+            FfiConverterSequenceString.write(deviceNames, into: &buf)
             
         
         case let .historyReset(backup):
@@ -3202,6 +3325,7 @@ public enum FsyncError: Swift.Error {
     case Integrity
     case TooLarge
     case Auth
+    case ReauthRequired
     case Io(msg: String
     )
     case Cancelled
@@ -3235,16 +3359,17 @@ public struct FfiConverterTypeFsyncError: FfiConverterRustBuffer {
         case 4: return .Integrity
         case 5: return .TooLarge
         case 6: return .Auth
-        case 7: return .Io(
+        case 7: return .ReauthRequired
+        case 8: return .Io(
             msg: try FfiConverterString.read(from: &buf)
             )
-        case 8: return .Cancelled
-        case 9: return .HistoryKeyMismatch
-        case 10: return .NotFound
-        case 11: return .Invalid(
+        case 9: return .Cancelled
+        case 10: return .HistoryKeyMismatch
+        case 11: return .NotFound
+        case 12: return .Invalid(
             msg: try FfiConverterString.read(from: &buf)
             )
-        case 12: return .Internal(
+        case 13: return .Internal(
             msg: try FfiConverterString.read(from: &buf)
             )
 
@@ -3284,30 +3409,34 @@ public struct FfiConverterTypeFsyncError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(6))
         
         
-        case let .Io(msg):
+        case .ReauthRequired:
             writeInt(&buf, Int32(7))
+        
+        
+        case let .Io(msg):
+            writeInt(&buf, Int32(8))
             FfiConverterString.write(msg, into: &buf)
             
         
         case .Cancelled:
-            writeInt(&buf, Int32(8))
-        
-        
-        case .HistoryKeyMismatch:
             writeInt(&buf, Int32(9))
         
         
-        case .NotFound:
+        case .HistoryKeyMismatch:
             writeInt(&buf, Int32(10))
         
         
-        case let .Invalid(msg):
+        case .NotFound:
             writeInt(&buf, Int32(11))
+        
+        
+        case let .Invalid(msg):
+            writeInt(&buf, Int32(12))
             FfiConverterString.write(msg, into: &buf)
             
         
         case let .Internal(msg):
-            writeInt(&buf, Int32(12))
+            writeInt(&buf, Int32(13))
             FfiConverterString.write(msg, into: &buf)
             
         }
@@ -3936,8 +4065,34 @@ fileprivate struct FfiConverterSequenceTypeRepInfo: FfiConverterRustBuffer {
         return seq
     }
 }
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeTrustResetInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [TrustResetInfo]
+
+    public static func write(_ value: [TrustResetInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeTrustResetInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [TrustResetInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [TrustResetInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeTrustResetInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
 /**
- * Bumped on every contract change (v1 = this surface).
+ * Bumped on every breaking contract change (v2: trust-reset API, `ReauthRequired`,
+ * `AccountEvent::TrustReset`).
  */
 public func contractVersion() -> UInt32  {
     return try!  FfiConverterUInt32.lift(try! rustCall() {
@@ -3973,7 +4128,7 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_fsync_ffi_checksum_func_contract_version() != 5420) {
+    if (uniffi_fsync_ffi_checksum_func_contract_version() != 18762) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fsync_ffi_checksum_func_reset_history() != 51414) {
@@ -4007,6 +4162,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fsync_ffi_checksum_method_fsyncengine_clear() != 64344) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fsync_ffi_checksum_method_fsyncengine_confirm_trust_reset() != 15064) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fsync_ffi_checksum_method_fsyncengine_decline_trust_reset() != 41884) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fsync_ffi_checksum_method_fsyncengine_delete() != 34825) {
@@ -4051,6 +4212,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_fsync_ffi_checksum_method_fsyncengine_pairing_offer() != 54303) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_fsync_ffi_checksum_method_fsyncengine_pending_trust_resets() != 6322) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_fsync_ffi_checksum_method_fsyncengine_pin() != 43164) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4061,6 +4225,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fsync_ffi_checksum_method_fsyncengine_remove_device() != 51281) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fsync_ffi_checksum_method_fsyncengine_reset_account_trust() != 37542) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fsync_ffi_checksum_method_fsyncengine_send_files() != 1124) {

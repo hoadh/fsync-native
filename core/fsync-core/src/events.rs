@@ -114,10 +114,11 @@ pub enum EngineEvent {
     /// A newly pinned list no longer contains this device: it stops trusting and accepting
     /// anyone. The app should sign out / wipe local data.
     SelfRemoved,
-    /// Same account, new genesis root. Needs explicit `TrustManager::confirm_reset(root_hash)`.
+    /// Same account, new genesis root. Needs explicit `TrustManager::confirm_reset(head_hash)`;
+    /// announced again (new `head_hash`) when the offered chain grows.
     TrustReset {
-        root_hash: [u8; 32],
-        devices: usize,
+        head_hash: [u8; 32],
+        device_names: Vec<String>,
     },
     Error {
         message: String,

@@ -14,6 +14,8 @@ pub enum FsyncError {
     TooLarge,
     #[error("authentication required")]
     Auth,
+    #[error("a recent sign-in is required: sign in again and retry")]
+    ReauthRequired,
     #[error("io: {msg}")]
     Io { msg: String },
     #[error("cancelled")]
@@ -38,6 +40,7 @@ impl From<svc::FsyncError> for FsyncError {
             E::Integrity => Self::Integrity,
             E::TooLarge => Self::TooLarge,
             E::Auth => Self::Auth,
+            E::ReauthRequired => Self::ReauthRequired,
             E::Io(msg) => Self::Io { msg },
             E::Cancelled => Self::Cancelled,
             E::HistoryKeyMismatch => Self::HistoryKeyMismatch,
@@ -58,6 +61,7 @@ impl From<FsyncError> for svc::FsyncError {
             FsyncError::Integrity => E::Integrity,
             FsyncError::TooLarge => E::TooLarge,
             FsyncError::Auth => E::Auth,
+            FsyncError::ReauthRequired => E::ReauthRequired,
             FsyncError::Io { msg } => E::Io(msg),
             FsyncError::Cancelled => E::Cancelled,
             FsyncError::HistoryKeyMismatch => E::HistoryKeyMismatch,

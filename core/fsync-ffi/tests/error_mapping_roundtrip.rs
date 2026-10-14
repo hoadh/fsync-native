@@ -14,6 +14,7 @@ fn all_variants() -> Vec<Svc> {
         Svc::Integrity,
         Svc::TooLarge,
         Svc::Auth,
+        Svc::ReauthRequired,
         Svc::Io("disk full".into()),
         Svc::Cancelled,
         Svc::HistoryKeyMismatch,
@@ -27,7 +28,7 @@ fn all_variants() -> Vec<Svc> {
     v
 }
 
-const VARIANT_COUNT: usize = 12;
+const VARIANT_COUNT: usize = 13;
 
 /// Exhaustive on purpose: adding a variant breaks the build here.
 fn variant_index(e: &Svc) -> usize {
@@ -44,6 +45,7 @@ fn variant_index(e: &Svc) -> usize {
         Svc::NotFound => 9,
         Svc::Invalid(_) => 10,
         Svc::Internal(_) => 11,
+        Svc::ReauthRequired => 12,
     }
 }
 

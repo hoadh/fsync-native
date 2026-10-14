@@ -20,14 +20,30 @@ pub async fn sync_device_list(api: &ApiClient, trust: &TrustManager) -> Result<I
         .ok_or(CoreError::Invalid("no pinned list; pair first"))?
         .decode()?
         .seq;
-    match trust.ingest_chain(&api.chain_all(from).await?) {
+    let incremental = api.chain_all(from).await?;
+    // The page starts at our own seq, so an empty one means that seq is gone from the current
+    // epoch: the account was reset to a shorter chain. Only the full chain shows the new root.
+    let attempt = if incremental.is_empty() {
+        Err(ProtoError::TrustReset.into())
+    } else {
+        trust.ingest_chain(&incremental)
+    };
+    match attempt {
         Err(CoreError::Proto(
             ProtoError::Gap { .. }
             | ProtoError::Rollback { .. }
             | ProtoError::SignerNotTrusted
             | ProtoError::PrevHashMismatch
             | ProtoError::TrustReset,
-        )) => trust.ingest_chain(&api.chain_all(0).await?),
+        )) => {
+            // Cheap check first: nothing to learn from a chain the user already declined.
+            if let Some(head) = api.get_device_list().await?
+                && trust.is_declined_head(&head.hash()?)
+            {
+                return Ok(Ingest::Unchanged);
+            }
+            trust.ingest_chain(&api.chain_all(0).await?)
+        }
         other => other,
     }
 }

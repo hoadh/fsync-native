@@ -163,27 +163,32 @@ pub enum AccountState {
 
 #[derive(Clone, Debug)]
 pub enum AccountEvent {
-    ListAdvanced { seq: u64 },
+    ListAdvanced {
+        seq: u64,
+    },
     SelfRemoved,
-    TrustReset { devices: u32 },
-    HistoryReset { backup: String },
+    /// A device list with a new root (same account) is waiting for `confirm_trust_reset` /
+    /// `decline_trust_reset`. Announced once per offered list; again with a new `reset_id`
+    /// if that list grows before it is answered.
+    TrustReset {
+        reset_id: String,
+        devices: u32,
+        /// Names of the devices in the offered list, as chosen by whoever made the reset.
+        device_names: Vec<String>,
+    },
+    HistoryReset {
+        backup: String,
+    },
     SessionExpired,
 }
 
-#[derive(Clone, Debug)]
-pub struct HistoryItem {
-    pub id: String,
-    pub outgoing: bool,
-    pub peer: Option<String>,
-    pub kind: ClipKind,
-    pub created_ms: u64,
-    pub total_size: u64,
-    pub preview: Option<String>,
-    pub pinned: bool,
-}
-
-#[derive(Clone, Debug)]
-pub struct HistoryPage {
-    pub items: Vec<HistoryItem>,
-    pub next_cursor: Option<String>,
+/// A pending trust reset offered by another device of the account.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TrustResetInfo {
+    /// Lowercase hex of the offered list's head hash; pass to confirm / decline.
+    pub reset_id: String,
+    /// Devices the new list contains.
+    pub devices: u32,
+    /// Their names, as chosen by whoever made the reset: show them as untrusted text.
+    pub device_names: Vec<String>,
 }

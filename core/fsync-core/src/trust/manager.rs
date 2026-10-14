@@ -18,14 +18,15 @@ pub enum Ingest {
     Advanced {
         seq: u64,
     },
-    /// Valid new root for the same account; nothing pinned until `confirm_reset(root_hash)`.
+    /// Valid new root for the same account; nothing pinned until `confirm_reset(head_hash)`.
+    /// `head_hash` identifies the offered head, i.e. exactly what was announced.
     ResetPending {
-        root_hash: [u8; 32],
+        head_hash: [u8; 32],
     },
 }
 
-/// Unconfirmed reset candidates (and prompts) remembered at once.
-pub(super) const MAX_PENDING: usize = 2;
+/// Declined roots remembered. Only user answers add to it, so junk roots cannot evict it.
+pub(super) const MAX_DECLINED: usize = 32;
 
 pub(super) struct Pinned {
     pub(super) state: PinnedState,
@@ -35,10 +36,14 @@ pub(super) struct Pinned {
 #[derive(Default)]
 pub(super) struct Inner {
     pub(super) pinned: Option<Pinned>,
-    /// root hash -> head of the offered new chain.
-    /// Newest last, at most `MAX_PENDING`.
+    /// (root hash, latest head) of the one offered new chain, which is what was last announced.
+    /// A different root replaces it, so there is at most one entry.
     pub(super) pending: Vec<([u8; 32], SignedDeviceList)>,
-    pub(super) prompted: Vec<[u8; 32]>,
+    /// Roots the user declined with the last head seen for each: later syncs neither list nor
+    /// announce them again. Oldest first, at most `MAX_DECLINED`.
+    pub(super) declined: Vec<([u8; 32], [u8; 32])>,
+    /// This device is re-creating the account's root: its own reset is not a candidate.
+    pub(super) resetting: u32,
     /// This device; set by the node. Used to detect removal from the list.
     pub(super) me: Option<NodeId>,
     /// Pinned list no longer contains `me`: trust nobody until signed in / re-paired.
@@ -120,7 +125,8 @@ impl TrustManager {
             .unwrap_or(false)
     }
 
-    pub fn pending_resets(&self) -> Vec<[u8; 32]> {
+    /// Root hashes of pending resets (ids shown to users are head hashes, see `pending_reset_infos`).
+    pub fn pending_reset_roots(&self) -> Vec<[u8; 32]> {
         self.lock()
             .map(|g| g.pending.iter().map(|(h, _)| *h).collect())
             .unwrap_or_default()
@@ -161,7 +167,7 @@ impl TrustManager {
 
     /// True once a pinned list dropped this device.
     pub fn is_self_removed(&self) -> bool {
-        self.lock().map(|g| g.removed).unwrap_or(true)
+        self.lock().map(|g| g.removed).unwrap_or(false) // `is_trusted` fails closed anyway
     }
 
     /// Sign-out: forget the pin.

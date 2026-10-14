@@ -80,6 +80,23 @@ impl FsyncEngine {
     pub fn ensure_account(&self) -> FfiResult<AccountState> {
         map(self.svc.ensure_account())
     }
+    /// Re-creates the account's root with this device only. `ReauthRequired`: re-run the OTP.
+    pub fn reset_account_trust(&self) -> FfiResult<AccountState> {
+        map(self.svc.reset_account_trust())
+    }
+    pub fn pending_trust_resets(&self) -> Vec<TrustResetInfo> {
+        self.svc
+            .pending_trust_resets()
+            .into_iter()
+            .map(TrustResetInfo::from)
+            .collect()
+    }
+    pub fn confirm_trust_reset(&self, reset_id: String) -> FfiResult<AccountState> {
+        map(self.svc.confirm_trust_reset(&reset_id))
+    }
+    pub fn decline_trust_reset(&self, reset_id: String) -> FfiResult<()> {
+        unit(self.svc.decline_trust_reset(&reset_id))
+    }
 
     pub fn pairing_offer(&self, mode: PairingMode) -> FfiResult<PairingOffer> {
         map(self.svc.pairing_offer(mode.into()))

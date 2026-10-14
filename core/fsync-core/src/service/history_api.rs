@@ -4,7 +4,7 @@ use super::{
     FsyncService,
     convert::parse_uuid,
     error::{FsyncError, SvcResult},
-    types::{HistoryItem, HistoryPage},
+    types_history::{HistoryItem, HistoryPage},
 };
 use crate::{
     history::{Cursor, Direction},

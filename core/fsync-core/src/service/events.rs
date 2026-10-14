@@ -1,7 +1,11 @@
 //! Engine events -> app callbacks.
 
 use super::{
-    convert::clip_item, delegate::Out, error::FsyncError, inner::Inner, types::AccountEvent,
+    convert::{clip_item, reset_id},
+    delegate::Out,
+    error::FsyncError,
+    inner::Inner,
+    types::AccountEvent,
 };
 use crate::events::EngineEvent;
 use std::sync::Arc;
@@ -42,9 +46,14 @@ impl Inner {
                 }
                 self.emit(Out::Account(AccountEvent::SelfRemoved));
             }
-            EngineEvent::TrustReset { devices, .. } => {
+            EngineEvent::TrustReset {
+                head_hash,
+                device_names,
+            } => {
                 self.emit(Out::Account(AccountEvent::TrustReset {
-                    devices: u32::try_from(devices).unwrap_or(u32::MAX),
+                    reset_id: reset_id(&head_hash),
+                    devices: u32::try_from(device_names.len()).unwrap_or(u32::MAX),
+                    device_names,
                 }));
             }
             EngineEvent::Error { message } => {

@@ -17,6 +17,8 @@ pub enum FsyncError {
     TooLarge,
     #[error("authentication required")]
     Auth,
+    #[error("a recent sign-in is required: sign in again and retry")]
+    ReauthRequired,
     #[error("io: {0}")]
     Io(String),
     #[error("cancelled")]
@@ -50,6 +52,7 @@ impl From<CoreError> for FsyncError {
             CoreError::TooLarge { .. } => Self::TooLarge,
             CoreError::Pair(PairError::Rejected) => Self::Cancelled,
             CoreError::Pair(p) => Self::Invalid(p.to_string()),
+            CoreError::Api(a) if a.status == 401 && a.is("reauth_required") => Self::ReauthRequired,
             CoreError::Api(a) if a.status == 401 => Self::Auth,
             CoreError::Api(a) if a.status == 429 || a.status >= 500 => Self::Network(a.to_string()),
             CoreError::Api(a) => Self::Invalid(a.to_string()),

@@ -69,3 +69,34 @@ pub(super) fn clip_item(trust: &TrustManager, from: &NodeId, o: &ClipOffer) -> C
         push: o.push,
     }
 }
+
+/// Lowercase hex of the offered head's hash: the id apps pass back to confirm / decline.
+pub(super) fn reset_id(head: &[u8; 32]) -> String {
+    use std::fmt::Write;
+    head.iter().fold(String::with_capacity(64), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    })
+}
+
+/// Inverse of `reset_id`: exactly 64 hex digits. Anything else can never match a pending
+/// reset, so it is `NotFound` like any other unknown id.
+pub(super) fn parse_reset_id(s: &str) -> SvcResult<[u8; 32]> {
+    let mut out = [0u8; 32];
+    if s.len() != out.len() * 2 {
+        return Err(FsyncError::NotFound);
+    }
+    let digit = |b: u8| {
+        char::from(b)
+            .to_digit(16)
+            .and_then(|d| u8::try_from(d).ok())
+    };
+    let (pairs, _) = s.as_bytes().as_chunks::<2>();
+    for (byte, [hi, lo]) in out.iter_mut().zip(pairs) {
+        let (Some(hi), Some(lo)) = (digit(*hi), digit(*lo)) else {
+            return Err(FsyncError::NotFound);
+        };
+        *byte = (hi << 4) | lo;
+    }
+    Ok(out)
+}

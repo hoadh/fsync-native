@@ -156,7 +156,7 @@ pub fn emit(v: serde_json::Value) {
 /// Account changes and background errors are never swallowed: stdout event / stderr line.
 fn report_side_events(ev: &Ev) {
     match ev {
-        Ev::Account(a) => emit(serde_json::json!({"event": "account", "detail": format!("{a:?}")})),
+        Ev::Account(a) => emit(crate::events::account_json(a)),
         Ev::Error(e) => eprintln!("warning: {e}"),
         _ => {}
     }

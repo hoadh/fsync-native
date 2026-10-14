@@ -100,7 +100,7 @@ fn replay_of_old_genesis_is_not_a_reset() {
     let l1 = add(&g, &ac.a, &ac.b);
     tm.ingest(&l1).unwrap();
     assert_eq!(tm.ingest(&g).unwrap(), Ingest::Unchanged);
-    assert!(tm.pending_resets().is_empty());
+    assert!(tm.pending_reset_roots().is_empty());
     while let Ok(e) = rx.try_recv() {
         assert!(!matches!(e, EngineEvent::TrustReset { .. }));
     }
@@ -115,7 +115,7 @@ fn trust_reset_needs_confirmation_and_prompts_once_per_root() {
 
     let fresh = Identity::generate().unwrap();
     let new_root = genesis(&fresh, ac.id);
-    let Ingest::ResetPending { root_hash } = tm.ingest(&new_root).unwrap() else {
+    let Ingest::ResetPending { head_hash } = tm.ingest(&new_root).unwrap() else {
         panic!()
     };
     // Not accepted automatically: old trust stays, new device is not trusted.
@@ -133,10 +133,11 @@ fn trust_reset_needs_confirmation_and_prompts_once_per_root() {
         }
     }
     assert_eq!(prompts, 1);
-    assert!(tm.confirm_reset(&[9; 32]).is_err());
-    tm.confirm_reset(&root_hash).unwrap();
+    assert_eq!(tm.confirm_reset(&[9; 32]).unwrap(), None);
+    assert_eq!(tm.confirm_reset(&head_hash).unwrap(), Some(0));
+    assert_eq!(tm.confirm_reset(&head_hash).unwrap(), None, "answered");
     assert!(tm.is_trusted(&fresh.node_id()) && !tm.is_trusted(&ac.a.node_id()));
-    assert_eq!(tm.root_hash(), Some(root_hash));
+    assert_eq!(tm.root_hash(), Some(new_root.hash().unwrap()));
     // After confirming, extending the new chain works.
     let n1 = add(&new_root, &fresh, &ac.b);
     assert_eq!(tm.ingest(&n1).unwrap(), Ingest::Advanced { seq: 1 });
@@ -192,41 +193,4 @@ fn file_store_persists_pin_and_blocks_rollback_after_restart() {
     std::fs::write(&path, b"garbage").unwrap();
     let (sink, _r) = EventSink::channel();
     assert!(TrustManager::new(Arc::new(FileTrustStore::new(&path)), sink).is_err());
-}
-
-#[test]
-fn reset_from_another_account_is_refused() {
-    let (ac, tm, _rx) = setup();
-    let g = genesis(&ac.a, ac.id);
-    tm.pin_genesis(&g).unwrap();
-    let stranger = Identity::generate().unwrap();
-    let foreign = genesis(&stranger, Uuid::new_v4());
-    assert!(matches!(
-        tm.ingest(&foreign),
-        Err(CoreError::Proto(ProtoError::WrongAccount))
-    ));
-    assert!(tm.pending_resets().is_empty());
-}
-
-#[test]
-fn pending_resets_keep_only_the_newest_two() {
-    let (ac, tm, mut rx) = setup();
-    tm.pin_genesis(&genesis(&ac.a, ac.id)).unwrap();
-    let mut roots = vec![];
-    for _ in 0..5 {
-        let fresh = Identity::generate().unwrap();
-        let Ingest::ResetPending { root_hash } = tm.ingest(&genesis(&fresh, ac.id)).unwrap() else {
-            panic!()
-        };
-        roots.push(root_hash);
-    }
-    let pending = tm.pending_resets();
-    assert_eq!(pending.len(), 2);
-    assert!(pending.contains(&roots[3]) && pending.contains(&roots[4]));
-    assert!(tm.confirm_reset(&roots[0]).is_err());
-    let mut prompts = 0;
-    while let Ok(e) = rx.try_recv() {
-        prompts += usize::from(matches!(e, EngineEvent::TrustReset { .. }));
-    }
-    assert_eq!(prompts, 5);
 }

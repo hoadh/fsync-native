@@ -67,12 +67,27 @@ pub enum AccountState {
     NeedsPairing,
 }
 
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct TrustResetInfo {
+    pub reset_id: String,
+    pub devices: u32,
+    pub device_names: Vec<String>,
+}
+
 #[derive(Clone, Debug, uniffi::Enum)]
 pub enum AccountEvent {
-    ListAdvanced { seq: u64 },
+    ListAdvanced {
+        seq: u64,
+    },
     SelfRemoved,
-    TrustReset { devices: u32 },
-    HistoryReset { backup: String },
+    TrustReset {
+        reset_id: String,
+        devices: u32,
+        device_names: Vec<String>,
+    },
+    HistoryReset {
+        backup: String,
+    },
     SessionExpired,
 }
 
@@ -157,9 +172,27 @@ impl From<svc::AccountEvent> for AccountEvent {
         match e {
             svc::AccountEvent::ListAdvanced { seq } => Self::ListAdvanced { seq },
             svc::AccountEvent::SelfRemoved => Self::SelfRemoved,
-            svc::AccountEvent::TrustReset { devices } => Self::TrustReset { devices },
+            svc::AccountEvent::TrustReset {
+                reset_id,
+                devices,
+                device_names,
+            } => Self::TrustReset {
+                reset_id,
+                devices,
+                device_names,
+            },
             svc::AccountEvent::HistoryReset { backup } => Self::HistoryReset { backup },
             svc::AccountEvent::SessionExpired => Self::SessionExpired,
+        }
+    }
+}
+
+impl From<svc::TrustResetInfo> for TrustResetInfo {
+    fn from(i: svc::TrustResetInfo) -> Self {
+        Self {
+            reset_id: i.reset_id,
+            devices: i.devices,
+            device_names: i.device_names,
         }
     }
 }
