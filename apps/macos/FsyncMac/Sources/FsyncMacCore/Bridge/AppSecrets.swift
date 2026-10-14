@@ -15,7 +15,7 @@ public struct AppSecrets: Sendable {
     public static let sessionAccount = "session"
     public static let keyLength = 32
 
-    private let store: KeychainStore
+    let store: KeychainStore
 
     public init(store: KeychainStore = KeychainStore()) {
         self.store = store

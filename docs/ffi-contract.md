@@ -185,8 +185,8 @@ FsyncError { NotPaired, PeerOffline, Network{msg}, Integrity, TooLarge, Auth, Re
 
 ## Hard logout after quit (host pattern)
 Core never persists the refresh token, so a revoke that could not finish before the app quit
-would leave the token valid for up to 30 days. Hosts do this (macOS: `PendingRevokeStore` in
-FsyncCoreKit, on the Keychain):
+would leave the token valid for up to 30 days. Hosts do this (macOS: `PendingRevoke` and
+`PendingRevokeResume` with `AppSecrets` in FsyncMacCore, on the Keychain):
 1. On logout, BEFORE calling `logout_confirmed()`, store the current refresh token in the secure
    store as a "pending revoke" with the API URL and the time (use the newest token the host
    got from `on_session_changed`).

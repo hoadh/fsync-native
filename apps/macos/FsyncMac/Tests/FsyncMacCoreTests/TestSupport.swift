@@ -21,7 +21,7 @@ class EngineTestCase: XCTestCase {
     func makeStore() -> KeychainStore {
         let store = KeychainStore(service: "\(AppConfig.bundleId).tests.\(UUID().uuidString)")
         addTeardownBlock {
-            for account in [AppSecrets.deviceSecretAccount, AppSecrets.historyKeyAccount, AppSecrets.sessionAccount] {
+            for account in [AppSecrets.deviceSecretAccount, AppSecrets.historyKeyAccount, AppSecrets.sessionAccount, AppSecrets.pendingRevokeAccount] {
                 try? store.delete(account)
             }
         }

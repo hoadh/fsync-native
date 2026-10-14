@@ -967,6 +967,13 @@ public protocol FsyncEngineProtocol: AnyObject, Sendable {
     
     func logout() throws 
     
+    /**
+     * `logout` that says whether the backend settled the revocation: `true` = revoked, already
+     * dead or refused for good (drop your pending revoke); `false` = only queued in memory, or
+     * no session was held (keep the refresh token, retry with `revoke_session` at next launch).
+     */
+    func logoutConfirmed() throws  -> Bool
+    
     func nodeId()  -> String
     
     func pairingCancel() throws 
@@ -1168,6 +1175,18 @@ open func logout()throws   {try rustCallWithError(FfiConverterTypeFsyncError_lif
     uniffi_fsync_ffi_fn_method_fsyncengine_logout(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+    /**
+     * `logout` that says whether the backend settled the revocation: `true` = revoked, already
+     * dead or refused for good (drop your pending revoke); `false` = only queued in memory, or
+     * no session was held (keep the refresh token, retry with `revoke_session` at next launch).
+     */
+open func logoutConfirmed()throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeFsyncError_lift) {
+    uniffi_fsync_ffi_fn_method_fsyncengine_logout_confirmed(self.uniffiClonePointer(),$0
+    )
+})
 }
     
 open func nodeId() -> String  {
@@ -1607,9 +1626,15 @@ public struct EngineConfig {
     public var dataDir: String
     public var apiBase: String
     /**
-     * Our relay (none: LAN only).
+     * Our relay (none: LAN only). Merged with `relay_urls`.
      */
     public var relayUrl: String?
+    /**
+     * More relays, e.g. one per region: iroh picks the home relay by latency. Merged with
+     * `relay_url` and deduplicated; https only unless `allow_insecure_http`. Added after v2,
+     * defaults to `[]`.
+     */
+    public var relayUrls: [String]
     public var deviceName: String
     public var platform: Platform
     /**
@@ -1636,8 +1661,13 @@ public struct EngineConfig {
          * Holds `history.db` and `blobs/`.
          */dataDir: String, apiBase: String, 
         /**
-         * Our relay (none: LAN only).
-         */relayUrl: String?, deviceName: String, platform: Platform, 
+         * Our relay (none: LAN only). Merged with `relay_urls`.
+         */relayUrl: String?, 
+        /**
+         * More relays, e.g. one per region: iroh picks the home relay by latency. Merged with
+         * `relay_url` and deduplicated; https only unless `allow_insecure_http`. Added after v2,
+         * defaults to `[]`.
+         */relayUrls: [String] = [], deviceName: String, platform: Platform, 
         /**
          * 32 bytes, from Keychain / DPAPI.
          */deviceSecret: Data, 
@@ -1653,6 +1683,7 @@ public struct EngineConfig {
         self.dataDir = dataDir
         self.apiBase = apiBase
         self.relayUrl = relayUrl
+        self.relayUrls = relayUrls
         self.deviceName = deviceName
         self.platform = platform
         self.deviceSecret = deviceSecret
@@ -1676,6 +1707,9 @@ extension EngineConfig: Equatable, Hashable {
             return false
         }
         if lhs.relayUrl != rhs.relayUrl {
+            return false
+        }
+        if lhs.relayUrls != rhs.relayUrls {
             return false
         }
         if lhs.deviceName != rhs.deviceName {
@@ -1703,6 +1737,7 @@ extension EngineConfig: Equatable, Hashable {
         hasher.combine(dataDir)
         hasher.combine(apiBase)
         hasher.combine(relayUrl)
+        hasher.combine(relayUrls)
         hasher.combine(deviceName)
         hasher.combine(platform)
         hasher.combine(deviceSecret)
@@ -1724,6 +1759,7 @@ public struct FfiConverterTypeEngineConfig: FfiConverterRustBuffer {
                 dataDir: FfiConverterString.read(from: &buf), 
                 apiBase: FfiConverterString.read(from: &buf), 
                 relayUrl: FfiConverterOptionString.read(from: &buf), 
+                relayUrls: FfiConverterSequenceString.read(from: &buf), 
                 deviceName: FfiConverterString.read(from: &buf), 
                 platform: FfiConverterTypePlatform.read(from: &buf), 
                 deviceSecret: FfiConverterData.read(from: &buf), 
@@ -1737,6 +1773,7 @@ public struct FfiConverterTypeEngineConfig: FfiConverterRustBuffer {
         FfiConverterString.write(value.dataDir, into: &buf)
         FfiConverterString.write(value.apiBase, into: &buf)
         FfiConverterOptionString.write(value.relayUrl, into: &buf)
+        FfiConverterSequenceString.write(value.relayUrls, into: &buf)
         FfiConverterString.write(value.deviceName, into: &buf)
         FfiConverterTypePlatform.write(value.platform, into: &buf)
         FfiConverterData.write(value.deviceSecret, into: &buf)
@@ -4112,6 +4149,21 @@ public func resetHistory(dataDir: String)throws   {try rustCallWithError(FfiConv
     )
 }
 }
+/**
+ * Revokes a refresh token without an engine: the retry of a `logout` that was not confirmed
+ * (see `FsyncEngine::logout_confirmed`), e.g. at the next launch. Blocking, bounded by about
+ * 10 s: call it off the UI thread. `Ok` = revoked or already dead (401): delete the token.
+ * `Network` = no answer in time or backend trouble: keep it and retry later. Other errors are
+ * final. `allow_insecure_http` is for dev backends only.
+ */
+public func revokeSession(apiUrl: String, refreshToken: String, allowInsecureHttp: Bool)throws   {try rustCallWithError(FfiConverterTypeFsyncError_lift) {
+    uniffi_fsync_ffi_fn_func_revoke_session(
+        FfiConverterString.lower(apiUrl),
+        FfiConverterString.lower(refreshToken),
+        FfiConverterBool.lower(allowInsecureHttp),$0
+    )
+}
+}
 
 private enum InitializationResult {
     case ok
@@ -4132,6 +4184,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fsync_ffi_checksum_func_reset_history() != 51414) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fsync_ffi_checksum_func_revoke_session() != 7460) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fsync_ffi_checksum_method_enginedelegate_on_remote_clip() != 3522) {
@@ -4195,6 +4250,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fsync_ffi_checksum_method_fsyncengine_logout() != 36418) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fsync_ffi_checksum_method_fsyncengine_logout_confirmed() != 43100) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fsync_ffi_checksum_method_fsyncengine_node_id() != 55914) {
