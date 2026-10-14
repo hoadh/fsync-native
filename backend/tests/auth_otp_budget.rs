@@ -92,3 +92,22 @@ async fn cap_refusal_does_not_burn_the_ip_quota() {
         assert_eq!(app.start_otp(EMAIL).await.status(), 429);
     }
 }
+
+#[tokio::test]
+async fn health_otp_turns_503_once_the_cap_is_reached() {
+    let app = TestApp::start_with(|c| c.otp_daily_send_cap = 1).await;
+    let probe = || async { app.http.get(app.url("/health/otp")).send().await.unwrap() };
+    let r = probe().await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(r.text().await.unwrap(), "ok");
+    assert_eq!(app.start_otp("a@example.com").await.status(), 204);
+    let r = probe().await;
+    assert_eq!(r.status(), 503);
+    assert_eq!(r.text().await.unwrap(), "otp cap reached");
+    // Sends older than 24 h no longer count.
+    sqlx::query("UPDATE otp_send_log SET sent_at = 1")
+        .execute(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(probe().await.status(), 200);
+}
