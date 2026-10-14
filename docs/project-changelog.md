@@ -2,6 +2,14 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-10-14 - macOS Developer ID signing
+
+### Added
+- `build-fsync-mac-app.sh --sign IDENTITY --profile FILE [--notary-profile NAME]`: Developer ID signature with secure timestamp, embedded provisioning profile, and generated entitlements (`application-identifier`, `keychain-access-groups` = `TEAM.app.fsync.mac`). Checks that the profile matches the team and bundle id. `--notary-profile` notarizes, staples, and runs `spctl`.
+
+### Verified
+- Signed build (team VE5P5RS83W) launches with the profile accepted, uses the data-protection Keychain, and moves `history_key` + `device_secret` from the file keychain; the history DB opens with the moved key and a relaunch is stable. Notarized with `--notary-profile fsync-notary`: Accepted, stapled, `spctl` reports "Notarized Developer ID"; the notarized app launches.
+
 ## 2026-10-14 - macOS app shell and pairing (phase 11)
 
 ### Added

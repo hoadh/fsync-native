@@ -74,7 +74,7 @@ Auth = own email OTP · Min OS = macOS 13+, Win 10 22H2+/11 · Recovery = trust 
 1. Pricing per tier (limits configurable, not tied to tiers in MVP).
 2. Second relay region: US or EU (depends on target market).
 3. Email provider for OTP (SES / Resend / Postmark). Blocks real OTP delivery (backend has `LogSender` only).
-4. Developer ID / signing decision (data-protection Keychain, signed launch-at-login check; phase 16).
+4. Developer ID signing: decided and built (team VE5P5RS83W, `build-fsync-mac-app.sh --sign/--profile`); data-protection Keychain migration verified. Notarization verified (`--notary-profile fsync-notary`). Open: signed launch-at-login check (phase 16).
 5. Core offline `logout()` leaves the refresh token valid server-side (core change needed).
 6. macOS integration script is not in CI (phase 10 to wire it).
 7. Optional Low items from phase 11 review round 3 (LoginModel waits for pending clear; boot awaits `sessionClear`).

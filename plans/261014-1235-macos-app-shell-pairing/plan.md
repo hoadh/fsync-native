@@ -68,7 +68,7 @@ Manual, unticked (phase 4, 5, 6 files):
 - Keychain prompts (verify on a signed build).
 
 Carried over:
-- Developer ID / signing decision.
+- ~~Developer ID / signing decision.~~ Done: Developer ID signing in the build script; Keychain migration verified on a signed build. Notarization verified (Accepted, stapled, spctl accepted).
 - Core offline `logout()`: the refresh token stays valid server-side.
 - Integration tests are not in CI (phase 10).
 - Optional Low items from review round 3.
