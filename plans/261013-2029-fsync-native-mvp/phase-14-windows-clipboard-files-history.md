@@ -109,6 +109,22 @@ not regenerated). Changes (ADR 013 §4-§14):
   interleaved, hashes ok. No gain at ~0 RTT, as expected; relay / WAN not measurable on this machine. The spike's
   fake-remote run (no core) is unchanged: 200 MiB in 13.1 s at 2 ms per read.
 
+## Review round 2 (score 9.2, fixed 2026-10-15)
+- M1 inbox cleanup keeps every folder a download is writing into (in-flight set, registered before the folder
+  exists) and anything younger than 5 min; cleans are serialized. M2 quit tears down the clipboard and the engine
+  off the UI thread, then exits. M3 the Done event can no longer be lost between registration and arrival (both
+  sides re-check). L1-L9: timers are not touched after dispose (listener released first), copy-back / paste-pending
+  report the real write result (pending kept on failure), write cancellation sources are disposed (WriteTicket), an
+  eager clip with no usable names fails instead of an empty CF_HDROP, clipboard start is observed and a missing
+  engine is caught, Accept ignores a second click while running.
+- L10 (not changed, core is owner A): the app detects engine.lock by the text of core's `Invalid` message
+  ("already running"); a dedicated error case in core would make this robust.
+- Tests: CoreBindings 9, Interop 47, App 67 (123/123, three runs). New, on the real engine: cleanup vs in-flight,
+  the Done-event race (both orders and 2000 concurrent), eager timeout cancels its transfer, a newer clip cancels
+  the older clip's downloads, publish supersede, pending kept when the write fails. E2E: `clipboard-with-cli.ps1`
+  13/13 and `pair-with-cli.ps1` 9/9, twice each. The text-out step re-copies if `rdpclip` (RDP session) re-posts
+  the clipboard with `CanIncludeInClipboardHistory=0`, which fsync correctly skips.
+
 ## Deviations
 - Clipboard owner is a dedicated STA thread, not the UI thread (ADR 013 §1): delayed renders block on `fetch_rep`.
 - One Settings page with General / Privacy / Storage sections instead of three pages; Transfers live on a "Files" page
