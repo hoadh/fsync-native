@@ -65,9 +65,10 @@ public sealed class HistoryCopyBackTests : IDisposable
         for (var i = 0; i < 200 && !_h.Engine.Calls.Exists(c => c.StartsWith("HistoryItemReps")); i++) await Task.Delay(25);
         var newer = new ClipItem(Guid.NewGuid().ToString(), new string('b', 64), "Mac", ClipKind.Text, 1, "hi", [new RepInfo("text/plain", 2)], [], 2, false);
         _h.Engine.OnHistoryItemReps = _ => [];
-        _ = _svc.WriteAsync(newer); // supersedes: cancels the slow copy's ticket
-        Assert.False(await slow.WaitAsync(TimeSpan.FromSeconds(10))); // not held until core answers
-        release.Set();
+        var newerWrite = _svc.WriteAsync(newer); // supersedes: cancels the slow copy's ticket
+        try { Assert.False(await slow.WaitAsync(TimeSpan.FromSeconds(10))); } // not held until core answers
+        finally { release.Set(); }
+        await newerWrite.WaitAsync(TimeSpan.FromSeconds(10));
     }
 
     [Fact]

@@ -12,7 +12,11 @@ public sealed partial class ClipboardService
         {
             // Blocking, and a rep never fetched here may need the network: off the caller thread and counted by the quit gate.
             // A newer write stops waiting for it (the call itself finishes on its own; core may skip reps it cannot obtain).
-            var entries = await Task.Run(() => EntriesFor(_gate.Run(() => _bridge.Call(e => e.HistoryItemReps(item.id))))).WaitAsync(ct);
+            var work = Task.Run(() => EntriesFor(_gate.Run(() => _bridge.Call(e => e.HistoryItemReps(item.id)))));
+            // A fault after we stopped waiting is only logged (the quit gate still counts the call until it returns).
+            _ = work.ContinueWith(t => AppLog.Warn($"clipboard: history copy ended late: {t.Exception?.GetBaseException().GetType().Name}"),
+                CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            var entries = await work.WaitAsync(ct);
             return (entries, []);
         }, "This item has no content this PC can paste");
 
@@ -36,7 +40,7 @@ public sealed partial class ClipboardService
                         : ClipEntry.Lazy(format, data.Length, () => convert(data)));
                     seen.Add(format);
                 }
-                catch (Exception e) when (e is InvalidDataException or ArgumentException or System.Runtime.InteropServices.COMException)
+                catch (Exception e) when (e is not OutOfMemoryException) // one bad rep must not lose the good ones
                 {
                     AppLog.Warn($"clipboard: history rep {rep.mime} skipped: {e.GetType().Name}");
                 }
