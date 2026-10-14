@@ -10,7 +10,10 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <TextBlock Text="Your devices" Style="{StaticResource TitleTextBlockStyle}" />
+        <StackPanel>
+            <TextBlock Text="Your devices" Style="{StaticResource TitleTextBlockStyle}" />
+            <TextBlock Text="Drop files on a device to send them." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
         <StackPanel Grid.Row="1" Spacing="8">
             <InfoBar Severity="Warning" IsOpen="True" IsClosable="False" Message="{x:Bind Bridge.StatusMessage, Mode=OneWay}"
                      Visibility="{x:Bind local:Ui.ShowIf(Bridge.StatusMessage), Mode=OneWay}">
@@ -24,7 +27,8 @@
         <ListView x:Name="List" Grid.Row="2" ItemsSource="{x:Bind ViewModel.Devices}" SelectionMode="None">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="vm:DeviceItem">
-                    <Grid ColumnSpacing="12" Padding="0,8">
+                    <Grid ColumnSpacing="12" Padding="0,8" Background="Transparent" AllowDrop="{x:Bind CanRemove}"
+                          DragOver="OnDragOver" Drop="OnDrop" Tag="{x:Bind}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />

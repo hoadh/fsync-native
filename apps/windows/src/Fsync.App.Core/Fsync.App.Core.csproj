@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- App logic without WinUI: engine bridge, DPAPI secrets, view models. Unit-tested. -->
+  <!-- App logic without WinUI: engine bridge, DPAPI secrets, clipboard sync, view models. -->
   <PropertyGroup>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
@@ -12,6 +12,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Fsync.CoreBindings/Fsync.CoreBindings.csproj" />
+    <ProjectReference Include="../Fsync.Interop/Fsync.Interop.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Fsync.App.Tests" />

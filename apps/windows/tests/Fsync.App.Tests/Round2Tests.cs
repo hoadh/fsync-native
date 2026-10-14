@@ -1,0 +1,134 @@
+using Fsync.App.Clipboard;
+using Fsync.Core;
+using Fsync.Interop.Clipboard;
+using CoreFile = Fsync.Core.FileInfo;
+
+namespace Fsync.App.Tests;
+
+/// <summary>Review round 2: in-flight downloads vs cleanup, the Done-event race, eager timeout and cancel, supersede.</summary>
+[Collection("clipboard")]
+public sealed class Round2Tests
+{
+    private static TransferEvent Done(ulong id, string path) =>
+        new(id, "item", 0, TransferDirection.Receive, TransferState.Done, 1, 1, path, null);
+
+    [Fact]
+    public async Task CleanupLeavesFoldersADownloadIsWritingInto()
+    {
+        using var r = await RealEngine.StartAsync();
+        await r.Clipboard.RefreshSettingsAsync();
+        var days = (int)r.Clipboard.CurrentSettings!.retentionDays;
+        var id = Guid.NewGuid().ToString();
+        var dir = r.Clipboard.Inbox.Folder(id);
+        File.WriteAllText(Path.Combine(dir, "part.bin"), "partial");
+        void Age() => Directory.SetLastWriteTimeUtc(dir, DateTime.UtcNow.AddDays(-days - 10));
+
+        using (r.Clipboard.BeginInFlight(id))
+        {
+            Age();
+            Assert.Equal(0, r.Clipboard.CleanInbox());
+            Assert.True(Directory.Exists(dir));
+        }
+        Age();
+        Assert.Equal(1, r.Clipboard.CleanInbox()); // released: old enough to go
+        Assert.False(Directory.Exists(dir));
+
+        var fresh = r.Clipboard.Inbox.Folder(Guid.NewGuid().ToString()); // just created: younger than MinAge
+        Assert.Equal(0, r.Clipboard.Inbox.Clean(0, 0, []));
+        Assert.True(Directory.Exists(fresh));
+    }
+
+    [Fact]
+    public async Task DoneEventIsNeverLostWhicheverSideComesFirst()
+    {
+        using var r = await RealEngine.StartAsync();
+        var svc = r.Clipboard;
+        svc.OnTransfer(Done(1, "early"));                 // outcome before registration
+        Assert.Equal("early", await svc.Register(1).WaitAsync(TimeSpan.FromSeconds(5)));
+        var late = svc.Register(2);                        // registration before the outcome
+        svc.OnTransfer(Done(2, "late"));
+        Assert.Equal("late", await late.WaitAsync(TimeSpan.FromSeconds(5)));
+
+        // Both orders racing on different threads: every registration completes.
+        var ids = Enumerable.Range(100, 2000).Select(i => (ulong)i).ToArray();
+        var registered = new Task<string>[ids.Length];
+        var events = Task.Run(() => { foreach (var i in ids) svc.OnTransfer(Done(i, $"p{i}")); });
+        var regs = Task.Run(() => { for (var k = 0; k < ids.Length; k++) registered[k] = svc.Register(ids[k]); });
+        await Task.WhenAll(events, regs);
+        await Task.WhenAll(registered).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.All(registered.Select((t, k) => (t.Result, k)), x => Assert.Equal($"p{ids[x.k]}", x.Result));
+    }
+
+    private static ClipItem FilesClip(params CoreFile[] files) =>
+        new(Guid.NewGuid().ToString(), new string('b', 64), "Mac", ClipKind.Files, 1, null, [], files, 10, false);
+
+    /// <summary>Old enough for the retention: the cleanup removes it only if no download holds it.</summary>
+    private static void Age(string dir) => Directory.SetLastWriteTimeUtc(dir, DateTime.UtcNow.AddDays(-400));
+
+    [Fact]
+    public async Task EagerBudgetCoversStartingTheTransfers()
+    {
+        using var r = await RealEngine.StartAsync();
+        await r.Clipboard.RefreshSettingsAsync();
+        r.Clipboard.EagerTimeout = TimeSpan.Zero; // spent before the first fetch_file_to
+        var clip = FilesClip(new CoreFile(0, "a.bin", "a.bin", 10));
+        await Assert.ThrowsAsync<TimeoutException>(() => r.Clipboard.DownloadAsync(clip, CancellationToken.None));
+        var dir = Path.Combine(r.Clipboard.Inbox.Root, clip.itemId);
+        Age(dir);
+        Assert.Equal(1, r.Clipboard.CleanInbox()); // the in-flight mark was released on the way out
+    }
+
+    [Fact]
+    public async Task ANewerClipStopsAnOlderDownloadWhileItStarts()
+    {
+        using var r = await RealEngine.StartAsync();
+        var olderToken = r.Clipboard.LatestWriteToken; // the token an older eager write downloads with
+        var text = new ClipItem(Guid.NewGuid().ToString(), new string('b', 64), "Mac", ClipKind.Text, 1, "hi",
+            [new RepInfo("text/plain", 2)], [], 2, false);
+        await r.Clipboard.WriteAsync(text); // newer: replaces (and cancels) the older write
+        var clip = FilesClip(new CoreFile(0, "a.bin", "a.bin", 10));
+        // Cancelled, not "unknown item": no transfer is started for a superseded clip.
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => r.Clipboard.DownloadAsync(clip, olderToken));
+        Assert.Empty(r.Clipboard.CancelledTransfers);
+    }
+
+    [Fact]
+    public async Task AFailingStartReleasesTheFolderAndKeepsReusedFiles()
+    {
+        using var r = await RealEngine.StartAsync();
+        await r.Clipboard.RefreshSettingsAsync();
+        var clip = FilesClip(new CoreFile(0, "have.txt", "have.txt", 2), new CoreFile(1, "missing.bin", "missing.bin", 8));
+        var dir = r.Clipboard.Inbox.Folder(clip.itemId);
+        File.WriteAllText(Path.Combine(dir, "have.txt"), "ok"); // reused: no fetch for it
+        Age(dir);
+        await Assert.ThrowsAnyAsync<FsyncException>(() => r.Clipboard.DownloadAsync(clip, CancellationToken.None)); // core cannot start it
+        Assert.True(DateTime.UtcNow - Directory.GetLastWriteTimeUtc(dir) < TimeSpan.FromMinutes(1)); // touched on reuse
+        Assert.Equal(0, r.Clipboard.CleanInbox()); // fresh again: younger than the minimum age
+        Age(dir);
+        Assert.Equal(1, r.Clipboard.CleanInbox()); // and no longer marked in flight
+    }
+
+    [Fact]
+    public async Task AnOlderLocalChangeIsNotPublishedAfterANewerOne()
+    {
+        using var r = await RealEngine.StartAsync();
+        var snap = new ClipboardSnapshot { Formats = [], Text = "older" };
+        var older = r.Clipboard.NextOutGeneration();
+        var newer = r.Clipboard.NextOutGeneration();
+        Assert.Equal(ClipboardService.PublishOutcome.Superseded, await r.Clipboard.PublishAsync(snap, older));
+        Assert.NotEqual(ClipboardService.PublishOutcome.Superseded, await r.Clipboard.PublishAsync(snap, newer));
+    }
+
+    [Fact]
+    public async Task APendingClipStaysPendingWhenItCannotBeWritten()
+    {
+        using var r = await RealEngine.StartAsync();
+        var clip = new ClipItem(Guid.NewGuid().ToString(), new string('b', 64), "Mac", ClipKind.Files, 1, null, [],
+            [new CoreFile(0, "x.bin", "x.bin", 10)], 10, false);
+        r.Prefs.FileStrategy = FileClipStrategy.Eager;
+        r.Clipboard.Pending = clip;
+        Assert.False(await r.Clipboard.PastePendingAsync());
+        Assert.Same(clip, r.Clipboard.Pending);
+        Assert.Empty(EagerFiles.TopLevel(r.Dir, [new CoreFile(0, "con", "CON", 1)])); // nothing usable: no empty CF_HDROP
+    }
+}

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Fsync.App.Clipboard;
 using Fsync.App.ViewModels;
 using H.NotifyIcon;
 using H.NotifyIcon.Core;
@@ -10,17 +11,29 @@ namespace Fsync.App;
 
 /// <summary>
 /// Tray icon (H.NotifyIcon): badge color follows <see cref="TrayStatusViewModel.Kind"/>,
-/// left click opens the window, right click shows the menu.
+/// left click opens the window, right click shows the menu (clipboard actions on top).
 /// </summary>
 internal sealed class TrayHost : IDisposable
 {
     private readonly TaskbarIcon _icon;
     private readonly TrayStatusViewModel _status;
+    private readonly ClipboardService _clipboard;
+    private readonly MenuFlyoutItem _activity, _pastePending;
+    private StatusKind? _badge;
 
-    public TrayHost(App app, TrayStatusViewModel status)
+    public TrayHost(App app, TrayStatusViewModel status, ClipboardService clipboard)
     {
         _status = status;
+        _clipboard = clipboard;
+        _activity = new MenuFlyoutItem { IsEnabled = false, Visibility = Microsoft.UI.Xaml.Visibility.Collapsed };
+        _pastePending = Item("Paste from another device", () => _ = clipboard.PastePendingAsync());
         var menu = new MenuFlyout();
+        menu.Items.Add(_activity);
+        menu.Items.Add(Item($"Send clipboard now ({ClipboardService.SendHotKeyText})", () => _ = clipboard.SendNowAsync()));
+        menu.Items.Add(_pastePending);
+        menu.Items.Add(Item("Clipboard history", () => app.ShowWindow(MainWindow.HistoryTag)));
+        menu.Items.Add(Item("Files and transfers", () => app.ShowWindow(MainWindow.FilesTag)));
+        menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(Item("Open fsync", () => app.ShowWindow()));
         menu.Items.Add(Item("Pair a device...", () => app.ShowWindow(MainWindow.PairingTag)));
         menu.Items.Add(Item("Settings", () => app.ShowWindow(MainWindow.SettingsTag)));
@@ -37,6 +50,7 @@ internal sealed class TrayHost : IDisposable
         Apply();
         _icon.ForceCreate(enablesEfficiencyMode: false);
         _status.PropertyChanged += OnStatusChanged;
+        _clipboard.PropertyChanged += OnStatusChanged;
     }
 
     private static MenuFlyoutItem Item(string text, Action onClick)
@@ -50,7 +64,16 @@ internal sealed class TrayHost : IDisposable
 
     private void Apply()
     {
-        _icon.ToolTipText = _status.Tooltip;
+        var activity = _clipboard.LastError ?? _clipboard.LastActivity;
+        _icon.ToolTipText = activity is null ? _status.Tooltip : $"{_status.Tooltip}\n{activity}";
+        _activity.Text = activity ?? "";
+        _activity.Visibility = activity is null ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
+        _pastePending.IsEnabled = _clipboard.Pending is not null;
+        _pastePending.Text = _clipboard.Pending is { } p ? $"Paste from {p.fromName} ({ClipboardService.PasteHotKeyText})" : $"Paste from another device ({ClipboardService.PasteHotKeyText})";
+        // Regenerate the icon only when the badge changes: clipboard activity calls this often
+        // and each GeneratedIconSource renders a new bitmap.
+        if (_badge == _status.Kind) return;
+        _badge = _status.Kind;
         _icon.IconSource = new GeneratedIconSource
         {
             Text = "f",
@@ -71,6 +94,7 @@ internal sealed class TrayHost : IDisposable
     public void Dispose()
     {
         _status.PropertyChanged -= OnStatusChanged;
+        _clipboard.PropertyChanged -= OnStatusChanged;
         _status.Dispose();
         _icon.Dispose();
     }
