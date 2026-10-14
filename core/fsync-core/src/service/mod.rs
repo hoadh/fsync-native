@@ -17,6 +17,7 @@ mod engine_release;
 mod error;
 mod events;
 mod history_api;
+mod history_reps;
 mod inner;
 mod lifecycle;
 mod login;

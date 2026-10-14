@@ -54,9 +54,7 @@ impl Inner {
             .map_err(|e| FsyncError::Io(format!("open {}: {e}", path.display())))?;
         match file.try_lock() {
             Ok(()) => Ok(file),
-            Err(std::fs::TryLockError::WouldBlock) => Err(FsyncError::invalid(
-                "another fsync engine is already running on this data directory",
-            )),
+            Err(std::fs::TryLockError::WouldBlock) => Err(FsyncError::EngineAlreadyRunning),
             Err(std::fs::TryLockError::Error(e)) => {
                 Err(FsyncError::Io(format!("lock {}: {e}", path.display())))
             }
