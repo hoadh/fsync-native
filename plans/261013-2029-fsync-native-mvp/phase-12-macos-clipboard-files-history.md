@@ -4,7 +4,7 @@
 - Design §4 flows 3-6; ADR 009 ([phase-04](phase-04-spike-macos-clipboard-lazy-paste.md)); [phase-07](phase-07-core-protocols-clip-file.md), [phase-08](phase-08-core-history-ffi-cli.md)
 
 ## Overview
-- Priority: P1 | Status: pending | Effort: 5-6 wk (C) — parallel with phase 14
+- Priority: P1 | Status: implemented and tested on the automated level (2026-10-14); manual QA (Finder/app paste matrix, real password managers, GUI privacy alert) open | Effort: 5-6 wk (C) — parallel with phase 14
 - Productionize spike: watcher + filters, auto/manual modes, reps mapping (text/rtf/html/png/tiff→png/file URLs), write incoming clips, lazy/eager file paste per ADR 009, drag-drop + Share/"Send to…", history UI, retention settings.
 
 ## Key Insights
@@ -50,15 +50,28 @@ Data flow out: changeCount → read types → SensitiveFilter → Representation
 8. Tests: XCTest mapper/filter/echo; manual QA checklist from phase 15.
 
 ## Todo List
-- [ ] Watcher/filter/mapper
-- [ ] Writer + echo marker
-- [ ] File strategy (lazy/eager)
-- [ ] Manual mode + hotkey
-- [ ] Drag-drop / send to
-- [ ] History window
-- [ ] Settings
-- [ ] Privacy onboarding
-- [ ] Tests
+- [x] Watcher/filter/mapper (adaptive poll, SensitiveFilter, RepresentationMapper; unit tests)
+- [x] Writer + echo marker (`com.fsync.origin`, changeCount guard; real-engine tests incl. no-echo integration test)
+- [x] File strategy (lazy/hybrid/eager per ADR 009; `FileClipStrategy`, inbox 0700 + cleanup by retention; unit tests with closure seam for `fetch_file_to`; Finder paste of lazy/eager entries is a manual check)
+- [x] Manual mode + hotkey (Carbon, Ctrl-Opt-C, menu "Send clipboard", "Paste from")
+- [x] Drag-drop / send to ("Send files…" panel + drop on device row in popover; integration tests CLI<->Mac both ways; accept/decline, auto-accept setting, transfer progress + cancel)
+- [x] History window (search, pin, delete, clear, load more; integration test)
+- [x] Settings (Sync mode + auto-accept files, Privacy denylist, Storage retention/size/max clip/file strategy)
+- [x] Privacy onboarding (explanation + state from `NSPasteboard.accessBehavior`; the real macOS alert is unverified, see ADR 009 open items)
+- [x] Tests (FsyncMac 169 tests/12 integration skipped without backend, 0 failures; integration script 12/12; FsyncCoreKit 8)
+- [ ] Manual QA checklist (phase 15): Finder/Mail/Messages/Slack/VS Code/Chrome paste, 1Password/Keychain, privacy alert, mac<->win round trip
+- [ ] History copy-back of full content/images/files (blocked on FFI, see Deviations)
+
+## Deviations
+- Files live under `FsyncMac/Sources/FsyncMacCore/{Clipboard,Files,Features/History,Settings}` and `FsyncMacUI/{Menu,History,Settings,Devices}`, not the phase's Architecture tree; lazy/eager writers are one `FileClipWriter` (+ `FileClipStrategy`, `InboxDirectory`, `FileFetchService`, `TransfersModel`, `FilesSync`).
+- Hotkey is Carbon Ctrl-Opt-C, fixed (no customization UI).
+- History copy-back restores only the 200-char text preview: core history stores previews, no content accessor (FFI gap, see report).
+- Sensitive-filtered clips are skipped entirely (never sent, never in history).
+- Folders are out of the MVP (files arrive flat); drop accepts plain files only.
+- `FileClipStrategy` is stored in UserDefaults (key `fileClipStrategy`), editable in Settings > Storage.
+- Share extension not done (YAGNI per step 5).
+- Inbox cleanup runs when the engine becomes ready (retention days, current clip kept), not on a timer.
+- `run-fsync-mac-integration.sh` runs test classes in two groups with a backend restart in between (dev backend allows 20 OTP codes/hour/IP) and filters on the new classes.
 
 ## Success Criteria
 - Text/rich/image round-trip mac↔mac & mac↔win; Finder paste of remote file (lazy or eager per ADR); 0 concealed items synced in filter test suite; idle CPU < 0.5%.
