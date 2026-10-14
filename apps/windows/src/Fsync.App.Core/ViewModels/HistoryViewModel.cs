@@ -33,8 +33,7 @@ public sealed partial class HistoryRow(HistoryItem item, string peerName, bool c
 
 /// <summary>
 /// Clipboard history window: search (core FTS over previews), paging, pin, delete, clear, and
-/// copy-back. Copy works for clips received while the app runs (core keeps their offers);
-/// older items and this PC's own copies have no content API in the FFI yet.
+/// copy-back with the item's full content (core history_item_reps; files only for clips offered this session).
 /// </summary>
 public sealed partial class HistoryViewModel(EngineBridge bridge, ClipboardService clipboard) : ObservableObject
 {
@@ -83,7 +82,7 @@ public sealed partial class HistoryViewModel(EngineBridge bridge, ClipboardServi
             var page = await bridge.RunAsync(e => e.History(q, cursor, PageSize));
             if (v != _version) return; // the query changed while this page loaded
             foreach (var i in page.items)
-                Items.Add(new HistoryRow(i, i.peer is { } p && _names.TryGetValue(p, out var n) ? n : "another device", clipboard.CanCopyBack(i.id)));
+                Items.Add(new HistoryRow(i, i.peer is { } p && _names.TryGetValue(p, out var n) ? n : "another device", clipboard.CanCopyBack(i)));
             _cursor = page.nextCursor;
             HasMore = _cursor is not null;
             Error = null;
@@ -147,7 +146,7 @@ public sealed partial class HistoryViewModel(EngineBridge bridge, ClipboardServi
     [RelayCommand]
     public async Task CopyAsync(HistoryRow row)
     {
-        if (!await clipboard.CopyBackAsync(row.Item.id)) Error = "This item's content is no longer available on this PC.";
+        if (!await clipboard.CopyBackAsync(row.Item)) Error = "Could not copy this item back (its content is gone, or it was files this PC can no longer fetch).";
         else Status = "Copied to the clipboard.";
     }
 }

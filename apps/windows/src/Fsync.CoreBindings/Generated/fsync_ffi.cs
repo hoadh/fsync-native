@@ -879,6 +879,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -981,6 +983,10 @@ static class _UniFFILib {
 
     [DllImport("fsync_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern RustBuffer uniffi_fsync_ffi_fn_method_fsyncengine_history(IntPtr @ptr,RustBuffer @query,RustBuffer @cursor,uint @limit,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("fsync_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern RustBuffer uniffi_fsync_ffi_fn_method_fsyncengine_history_item_reps(IntPtr @ptr,RustBuffer @itemId,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     [DllImport("fsync_ffi", CallingConvention = CallingConvention.Cdecl)]
@@ -1388,6 +1394,10 @@ static class _UniFFILib {
     );
 
     [DllImport("fsync_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_fsync_ffi_checksum_method_fsyncengine_history_item_reps(
+    );
+
+    [DllImport("fsync_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern ushort uniffi_fsync_ffi_checksum_method_fsyncengine_login_start(
     );
 
@@ -1613,6 +1623,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_fsync_ffi_checksum_method_fsyncengine_history();
             if (checksum != 40422) {
                 throw new UniffiContractChecksumException($"Fsync.Core: uniffi bindings expected function `uniffi_fsync_ffi_checksum_method_fsyncengine_history` checksum `40422`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_fsync_ffi_checksum_method_fsyncengine_history_item_reps();
+            if (checksum != 43317) {
+                throw new UniffiContractChecksumException($"Fsync.Core: uniffi bindings expected function `uniffi_fsync_ffi_checksum_method_fsyncengine_history_item_reps` checksum `43317`, library returned `{checksum}`");
             }
         }
         {
@@ -2298,6 +2314,13 @@ public interface IFsyncEngine {
     byte[] FetchRep(string @itemId, uint @idx);
     /// <exception cref="FsyncException"></exception>
     HistoryPage History(string? @query, string? @cursor, uint @limit);
+    /// <summary>
+    /// Full content of a history item (every rep with its bytes), for copying it back to the
+    /// clipboard. `NotFound` for an unknown id or when no rep is obtainable; files-only items
+    /// return `[]`. Blocking; a rep that was never fetched may need the network.
+    /// </summary>
+    /// <exception cref="FsyncException"></exception>
+    Rep[] HistoryItemReps(string @itemId);
     /// <exception cref="FsyncException"></exception>
     void LoginStart(string @email);
     /// <exception cref="FsyncException"></exception>
@@ -2533,6 +2556,20 @@ public class FsyncEngine : IFsyncEngine, IDisposable {
         return CallWithPointer(thisPtr => FfiConverterTypeHistoryPage.INSTANCE.Lift(
     _UniffiHelpers.RustCallWithError(FfiConverterTypeFsyncError.INSTANCE, (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_fsync_ffi_fn_method_fsyncengine_history(thisPtr, FfiConverterOptionalString.INSTANCE.Lower(@query), FfiConverterOptionalString.INSTANCE.Lower(@cursor), FfiConverterUInt32.INSTANCE.Lower(@limit), ref _status)
+)));
+    }
+    
+    
+    /// <summary>
+    /// Full content of a history item (every rep with its bytes), for copying it back to the
+    /// clipboard. `NotFound` for an unknown id or when no rep is obtainable; files-only items
+    /// return `[]`. Blocking; a rep that was never fetched may need the network.
+    /// </summary>
+    /// <exception cref="FsyncException"></exception>
+    public Rep[] HistoryItemReps(string @itemId) {
+        return CallWithPointer(thisPtr => FfiConverterSequenceTypeRep.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeFsyncError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_fsync_ffi_fn_method_fsyncengine_history_item_reps(thisPtr, FfiConverterString.INSTANCE.Lower(@itemId), ref _status)
 )));
     }
     
@@ -3865,6 +3902,16 @@ public class FsyncException: UniffiException {
         }
     }
     
+    /// <summary>
+    /// Added after v2, last on purpose (uniffi error cases are positional): another engine holds
+    /// `engine.lock` in this data directory. The message is the text `Invalid` used to carry.
+    /// </summary>
+    
+    public class EngineAlreadyRunning : FsyncException {
+        public EngineAlreadyRunning() : base() {}
+    }
+    
+    
 
     
 }
@@ -3905,6 +3952,8 @@ class FfiConverterTypeFsyncError : FfiConverterRustBuffer<FsyncException>, CallS
             case 13:
                 return new FsyncException.Internal(
                     FfiConverterString.INSTANCE.Read(stream));
+            case 14:
+                return new FsyncException.EngineAlreadyRunning();
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeFsyncError.Read()", value));
         }
@@ -3955,6 +4004,9 @@ class FfiConverterTypeFsyncError : FfiConverterRustBuffer<FsyncException>, CallS
             case FsyncException.Internal variant_value:
                 return 4
                     + FfiConverterString.INSTANCE.AllocationSize(variant_value.@msg);
+
+            case FsyncException.EngineAlreadyRunning variant_value:
+                return 4;
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeFsyncError.AllocationSize()", value));
         }
@@ -4004,6 +4056,9 @@ class FfiConverterTypeFsyncError : FfiConverterRustBuffer<FsyncException>, CallS
             case FsyncException.Internal variant_value:
                 stream.WriteInt(13);
                 FfiConverterString.INSTANCE.Write(variant_value.@msg, stream);
+                break;
+            case FsyncException.EngineAlreadyRunning variant_value:
+                stream.WriteInt(14);
                 break;
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeFsyncError.Write()", value));

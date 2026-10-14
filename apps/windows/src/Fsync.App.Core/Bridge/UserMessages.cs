@@ -19,6 +19,7 @@ public static class UserMessages
         FsyncException.Invalid i => i.msg,
         FsyncException.Io io => $"File error: {io.msg}",
         FsyncException.Internal x => $"Something went wrong ({x.msg}).",
+        FsyncException.EngineAlreadyRunning => EngineBridge.AlreadyRunningMessage,
         FsyncException.HistoryKeyMismatch => "The clipboard history was encrypted with a different key.",
         // bindgen-cs sets Message to "@msg=..." or the .NET default: never show it as is.
         FsyncException f => $"Something went wrong ({f.GetType().Name}).",

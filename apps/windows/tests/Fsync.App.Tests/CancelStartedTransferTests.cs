@@ -103,4 +103,24 @@ public sealed class CancelStartedTransferTests : IDisposable
         Assert.Single(tops);
         Assert.Empty(Cancelled());
     }
+
+    [Fact]
+    public async Task AnInfiniteBudgetNeverCancelsASlowTransferThatFinishes()
+    {
+        await _h.Bridge.InitializeAsync();
+        var item = Clip(1);
+        _svc.EagerTimeout = Timeout.InfiniteTimeSpan; // -1 ms: no timeout, not a spent budget
+        _h.Engine.OnFetchFileTo = (_, _, dir) =>
+        {
+            var path = Path.Combine(dir, "f0.bin");
+            File.WriteAllText(path, "0123456789");
+            _ = Task.Delay(600).ContinueWith(_ => _svc.OnTransfer(
+                new TransferEvent(46, item.itemId, 0, TransferDirection.Receive, TransferState.Done, 10, 10, path, null)));
+            return 46;
+        };
+        var tops = await _svc.DownloadAsync(item, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.Single(tops);
+        Assert.Empty(Cancelled());
+        Assert.Empty(_svc.CancelledTransfers);
+    }
 }

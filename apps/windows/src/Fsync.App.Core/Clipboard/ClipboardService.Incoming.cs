@@ -44,12 +44,18 @@ public sealed partial class ClipboardService
             _recent.TryRemove(old.itemId, out _);
     }
 
-    public bool CanCopyBack(string itemId) => _recent.ContainsKey(itemId);
+    /// <summary>History "Copy": any item with content in core's history, or a files clip offered this session.</summary>
+    public bool CanCopyBack(HistoryItem item) => item.kind != ClipKind.Files || _recent.ContainsKey(item.id);
 
-    /// <summary>Puts a clip received earlier in this session back on the clipboard.</summary>
-    public async Task<bool> CopyBackAsync(string itemId)
+    /// <summary>
+    /// Puts a history item back on the clipboard. A clip received this session goes the normal way
+    /// (files stay lazy, the peer still has the offer); anything else is read from core's history
+    /// with its full content. Files-only items of an earlier session cannot be offered again.
+    /// </summary>
+    public async Task<bool> CopyBackAsync(HistoryItem item)
     {
-        return _recent.TryGetValue(itemId, out var item) && await WriteAsync(item);
+        if (_recent.TryGetValue(item.id, out var recent)) return await WriteAsync(recent);
+        return item.kind != ClipKind.Files && await WriteHistoryItemAsync(item);
     }
 
     /// <summary>Manual mode: puts the pending clip on the clipboard; it stays pending if that fails.</summary>
@@ -64,8 +70,26 @@ public sealed partial class ClipboardService
     /// <summary>Token of the newest write (tests: an older write's downloads see it cancelled).</summary>
     internal CancellationToken LatestWriteToken => Volatile.Read(ref _inTicket).Token;
 
-    /// <summary>Writes a received clip (also history "Copy"); returns false when superseded or failed.</summary>
-    public async Task<bool> WriteAsync(ClipItem item)
+    /// <summary>Writes a received clip; returns false when superseded or failed.</summary>
+    public Task<bool> WriteAsync(ClipItem item) =>
+        WriteCoreAsync(item.itemId, $"{Kind(item)} from {item.fromName}", ct => BuildAsync(item, ct));
+
+    private async Task<(List<ClipEntry> Entries, List<VirtualFile> Files)> BuildAsync(ClipItem item, CancellationToken ct)
+    {
+        if (EagerFiles.Applies(_prefs.FileStrategy, item))
+        {
+            // Off the caller thread: the in-flight mark waits for a running inbox clean, and a UI-initiated write must not.
+            return ([IncomingClip.DropList(await Task.Run(() => DownloadAsync(item, ct)))], []);
+        }
+        return await Task.Run(() => IncomingClip.Build(item,
+            idx => _gate.Run(() => _bridge.Call(e => e.FetchRep(item.itemId, idx))),
+            (fileId, offset, len) => _gate.Run(() => _bridge.Call(e => e.ReadFileRange(item.itemId, fileId, (ulong)offset, (uint)len)))));
+    }
+
+    /// <summary>One write at a time; a newer write cancels an older one. <paramref name="build"/> makes the entries.</summary>
+    private async Task<bool> WriteCoreAsync(string itemId, string activity,
+        Func<CancellationToken, Task<(List<ClipEntry> Entries, List<VirtualFile> Files)>> build,
+        string emptyMessage = "Received a format this PC cannot paste")
     {
         if (IsDisposed) return false; // quitting: nothing to write
         var gen = Interlocked.Increment(ref _inGen);
@@ -84,31 +108,17 @@ public sealed partial class ClipboardService
 
         try
         {
-            List<ClipEntry> entries;
-            List<VirtualFile> files;
-            if (EagerFiles.Applies(_prefs.FileStrategy, item))
-            {
-                // Off the caller thread: the in-flight mark waits for a running inbox clean, and a UI-initiated write must not.
-                var token = ticket.Token;
-                entries = [IncomingClip.DropList(await Task.Run(() => DownloadAsync(item, token)))];
-                files = [];
-            }
-            else
-            {
-                (entries, files) = await Task.Run(() => IncomingClip.Build(item,
-                    idx => _gate.Run(() => _bridge.Call(e => e.FetchRep(item.itemId, idx))),
-                    (fileId, offset, len) => _gate.Run(() => _bridge.Call(e => e.ReadFileRange(item.itemId, fileId, (ulong)offset, (uint)len)))));
-            }
+            var (entries, files) = await build(ticket.Token);
             if (entries.Count == 0 && files.Count == 0)
             {
-                Post(() => LastError = "Received a format this PC cannot paste");
+                Post(() => LastError = emptyMessage);
                 return false;
             }
             entries.AddRange(ClipEntry.PrivacyFlags());
             if (gen != Volatile.Read(ref _inGen)) return false; // a newer clip arrived meanwhile
-            await _sta.InvokeAsync(() => SetCurrent(new ClipDataObject(entries, files), item.itemId));
+            await _sta.InvokeAsync(() => SetCurrent(new ClipDataObject(entries, files), itemId));
             AppLog.Info($"clipboard: wrote formats={entries.Count} virtual files={files.Count}");
-            Post(() => { LastActivity = $"{Kind(item)} from {item.fromName}"; LastError = null; });
+            Post(() => { LastActivity = activity; LastError = null; });
             return true;
         }
         catch (OperationCanceledException) { return false; }

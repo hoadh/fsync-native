@@ -10,8 +10,4 @@ public sealed partial class EngineBridge
 
     /// <summary>Start failed because another engine holds engine.lock (no retry).</summary>
     public bool AlreadyRunning { get; private set; }
-
-    /// <summary>core: <c>Invalid("another fsync engine is already running on this data directory")</c>.</summary>
-    internal static bool IsDataDirLocked(FsyncException.Invalid e) =>
-        e.msg.Contains("already running", StringComparison.OrdinalIgnoreCase);
 }
