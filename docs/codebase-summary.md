@@ -14,10 +14,12 @@ Last updated: 2026-10-14. Repo map for the P0 Rust track. Architecture is in [sy
 | `backend/migrations` | `0001_init`, `0002_refresh_session` |
 | `backend/tests` | Integration tests against Postgres via testcontainers |
 | `apps/macos/Packages/FsyncCoreKit` | SwiftPM package: `FsyncCoreKit` Swift wrapper and XCTests over the xcframework; `TrustResetPrompt` SwiftUI library (trust-reset prompt) with its tests |
-| `apps/windows` | Empty. Windows app not started (phase 13-14) |
-| `scripts` | `gen-bindings.sh` (Swift bindings + headers), `build-xcframework.sh` (universal static lib, xcframework) |
+| `apps/windows` | .NET 8 solution: `Fsync.CoreBindings` (generated C# + native DLL per RID), `Fsync.App.Core` (bridge, DPAPI secrets, view models), `Fsync.App` (WinUI 3 tray app), xUnit tests, UIA e2e script. See its README |
+| `scripts` | `gen-bindings.sh` (Swift bindings + headers), `build-xcframework.sh` (universal static lib, xcframework), `gen-bindings-cs.ps1` (C# bindings), `build-windows-dll.ps1` (`fsync_ffi.dll` per RID) |
 | `tests/e2e` | `p0-exit-demo.sh`: end-to-end demo (backend, CLI, relay in Docker Postgres) |
 | `spikes/iroh-discovery` | Standalone spike: discovery, relay (`relay [port]`), blob measurements. Not in the workspace |
+| `spikes/ffi-bindings` | Standalone UniFFI crate + C# harness: 10k-callback stress, buffer copy timing (phase 03) |
+| `spikes/windows-clipboard` | Phase 05 spike: listener, sensitive-format filter, virtual-file `IDataObject`, self-test, WinUI 3 tray; evidence in `results/` |
 | `deploy/backend` | Backend `Dockerfile`, `compose.yml`, `.env.example` |
 | `deploy/relay` | Empty. Relay deployment is phase 10 |
 | `docs` | Project documentation (this folder). ADRs in `docs/adr/` |

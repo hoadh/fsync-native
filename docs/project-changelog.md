@@ -2,6 +2,26 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-10-14 - Windows: C# bindings (03), clipboard spike (05), app shell (13)
+
+### Added
+- Phase 03 (C#): `core/fsync-ffi/uniffi.toml` (`[bindings.csharp]`: namespace `Fsync.Core`, public, `FsyncFfi`), `scripts/gen-bindings-cs.ps1` (checks uniffi-bindgen-cs v0.10.0+v0.29.4), `scripts/build-windows-dll.ps1` (DLL per RID into `Fsync.CoreBindings/runtimes/<rid>/native`). `apps/windows/src/Fsync.CoreBindings` (generated C#, `NativeLoader` picks the DLL for the process architecture) and `tests/Fsync.CoreBindings.Tests` (Swift tests ported + unstarted-engine errors). `spikes/ffi-bindings`: callback stress and buffer timing.
+- Phase 05: `spikes/windows-clipboard` (listener, sensitive-format filter, `VirtualFileDataObject` with `IDataObjectAsyncCapability`, `RemoteFileStream`, multi-process self-test, WinUI 3 + H.NotifyIcon tray with a `--smoke` check and "Offer test files" menu). ADR 010.
+- Phase 13: `apps/windows` solution. `Fsync.App.Core`: `EngineBridge` (account phase, background calls, UI-thread events), DPAPI `SecretStore`, view models (onboarding, pairing code/QR/SAS, devices, settings, tray status), `RunAtLogin`. `Fsync.App`: unpackaged self-contained WinUI 3 tray app, single instance per data dir, startup contract self-check. `tests/Fsync.App.Tests` (fake `IFsyncEngine`), `tests/e2e/pair-with-cli.ps1` (UI Automation against `fsync-cli` and a local backend).
+
+### Fixed
+- Core on Windows: `FsBlobStore::finish` opened `<hash>.part` read-only and called `sync_all`, which Windows refuses (FlushFileBuffers needs write access): every received or published blob failed with "Access is denied" (os error 5). Now opened for writing; handles are closed before renames (`finish`, `put`). Found by the app e2e; `blob_contract` reproduced it (3/6 failed on Windows).
+- Accessibility: device list rows were announced as the record dump (`DeviceItem { NodeId = ... }`); `DeviceItem.ToString()` is now "name, platform, status".
+
+### Decisions
+- ADR 008: uniffi-bindgen-cs for Windows (no C ABI fallback). ADR 010: virtual-file lazy paste; clear our entry on exit (never `OleFlushClipboard`); core needs sequential read-ahead in `read_file_range` because the shell reads 256 KiB at a time, one read in flight.
+
+### Verification (Windows 11 x64)
+- C# contract tests 9/9 (real DLL); 10k callbacks from a Rust thread OK; 10 MiB round trip 27 ms (gate 20 ms missed, as on macOS). Phase 05 self-test 0 failures; tray smoke PASS. App tests 35/35; second instance redirects.
+- App e2e (`apps/windows/tests/e2e/pair-with-cli.ps1`) PASS: OTP sign-in through the UI, code pairing with fsync-cli with matching SAS, devA shown online / offline from presence events without refresh, a devA clip delivered to the app's engine over QUIC, remove device, startup toggle. Rust workspace on Windows (first run there): 251 pass / 0 fail / 1 ignored; `cargo fmt --check`, clippy `-D warnings` (fsync-core) clean.
+- Known gap: core reports Lan/Relay only while a connection exists and does not dial idle peers, so a paired, online device shows "Online, not connected yet" until traffic flows (the app publishes clips in phase 14).
+- Not run: anything on ARM64 hardware (the ARM64 DLL and app build; clang 23 needed for `ring`) or Windows 10, pairing with a Mac.
+
 ## 2026-10-14 - macOS trust-reset prompt (SwiftUI library)
 
 ### Changed (review round 1)

@@ -27,14 +27,19 @@ A = Rust core | B = backend+DevOps | C = macOS | D = Windows
 - Scope changes: own file/1 instead of iroh-blobs (ADR 007 addendum). History wrong-key no longer auto-resets (explicit `reset_history`). Re-pair after reset via `listed_head` (round 7). M5 TrustReset confirm API done (core, FFI, CLI; ADR 012). macOS reset prompt UI built as library `TrustResetPrompt` (plan 261014-1206), wiring in phase 11. Not built: email notice on reset. mdns-sd fallback deferred.
 - Out of scope this sync (04, 05, 10-16): status unchanged, not synced.
 
+## Progress (sync 2026-10-14, Windows track on Win11 x64, branch windows/phase-03-13)
+- 03 C#: uniffi-bindgen-cs v0.10.0+v0.29.4 works on contract v2; x64 DLL; 9/9 C# contract tests; 10k-callback stress OK; 10 MiB round trip 27 ms (misses 20 ms like Swift; bulk by path/chunks). ADR 008 decides bindgen-cs (no C ABI). ARM64 DLL builds (clang); not executed on ARM64 hardware.
+- 05: automated self-test all pass (filter, listener, cross-process read, shell paste 3 files + 200 MiB, failure mid-file, exit policy) + WinUI 3 tray smoke. ADR 010: lazy paste via virtual files; clear on exit; core needs read-ahead in `read_file_range` (shell reads 256 KiB serially). Open: manual app matrix, real password managers, Win10, ARM64 hardware.
+- 13: solution + WinUI 3 tray app (single instance, DPAPI secrets, onboarding, pairing code/QR/SAS, devices + remove, start with Windows); 35/35 view-model tests; e2e `apps/windows/tests/e2e/pair-with-cli.ps1` PASS (OTP sign-in, code + SAS pairing with fsync-cli, live presence status, clip delivered to the app engine, remove, startup toggle). Found + fixed a core Windows bug (blob `finish` fsync on a read-only handle: Access denied); Rust workspace on Windows 251 pass / 0 fail. Open: pairing with Mac, ARM64 hardware.
+
 ## Phases
 | # | Phase | Owner | Wk | Blocked by | Status |
 |---|---|---|---|---|---|
 | 01 | [Repo scaffold + decisions (backend lang, auth, min OS, certs)](phase-01-repo-scaffold-and-decisions.md) | B (+all) | P0 w1 | - | Partial |
 | 02 | [Spike: iroh 1.x discovery/relay/blobs](phase-02-spike-iroh-discovery-relay.md) | A | P0 w1 | 01 | Partial |
-| 03 | [Spike: FFI bindings Swift + C#; FFI contract](phase-03-spike-ffi-bindings.md) | A+D | P0 w2 | 01 | Partial (Swift done, C# open) |
+| 03 | [Spike: FFI bindings Swift + C#; FFI contract](phase-03-spike-ffi-bindings.md) | A+D | P0 w2 | 01 | Partial (Swift + C# done; ARM64 not executed) |
 | 04 | [Spike: macOS clipboard privacy + lazy file paste](phase-04-spike-macos-clipboard-lazy-paste.md) | C | P0 w1-3 | 01 | pending |
-| 05 | [Spike: Windows clipboard + virtual-file lazy paste](phase-05-spike-windows-clipboard-lazy-paste.md) | D | P0 w1-3 | 01 | pending |
+| 05 | [Spike: Windows clipboard + virtual-file lazy paste](phase-05-spike-windows-clipboard-lazy-paste.md) | D | P0 w1-3 | 01 | Partial (automated done, ADR 010) |
 | 06 | [Core: identity, trust, transport, pairing](phase-06-core-identity-trust-transport.md) | A | P0 w2-3 | 02 | Partial |
 | 07 | [Core: clip/1 + file/1 protocols](phase-07-core-protocols-clip-file.md) | A | P0 w3-4 | 06 | Partial |
 | 08 | [Core: encrypted history store, FFI surface, CLI harness](phase-08-core-history-ffi-cli.md) | A | P0 w4-6 | 03, 07 | Partial |
@@ -42,7 +47,7 @@ A = Rust core | B = backend+DevOps | C = macOS | D = Windows
 | 10 | [Infra: relay + backend deploy, CI](phase-10-infra-relay-backend-deploy.md) | B | P0 w3-5 | 09 | pending |
 | 11 | [macOS app: shell, auth, pairing, devices](phase-11-macos-app-shell-pairing.md) | C | P1 w1-5 | 03,04,08,09 | pending |
 | 12 | [macOS app: clipboard, files, history, settings](phase-12-macos-clipboard-files-history.md) | C | P1 w5-11 | 11 | pending |
-| 13 | [Windows app: shell, auth, pairing, devices](phase-13-windows-app-shell-pairing.md) | D | P1 w1-5 | 03,05,08,09 | pending |
+| 13 | [Windows app: shell, auth, pairing, devices](phase-13-windows-app-shell-pairing.md) | D | P1 w1-5 | 03,05,08,09 | Partial (code + tests + e2e vs CLI pass; Mac pairing open) |
 | 14 | [Windows app: clipboard, files, history, settings](phase-14-windows-clipboard-files-history.md) | D | P1 w5-11 | 13 | pending |
 | 15 | [Cross-OS integration + network test matrix](phase-15-integration-testing-cross-os.md) | B lead, all | P1 w2-13 | 10 (harness), 12,14 (full) | pending |
 | 16 | [Release: signing, notarization, auto-update](phase-16-release-distribution.md) | B+C+D | P1 w8-14 | 10, 12, 14 | pending |

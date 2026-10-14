@@ -6,11 +6,11 @@ Last updated: 2026-10-14. Plan of record: [plans/261013-2029-fsync-native-mvp](.
 
 | Phase | Scope | Status | Notes |
 |-------|-------|--------|-------|
-| 01 | Scaffold, workspace, ADRs | Done | ADR 001-008, 011, 012. ADR 009/010 unused. |
+| 01 | Scaffold, workspace, ADRs | Done | ADR 001-008, 010-012. ADR 009 unused. |
 | 02 | iroh spike | Done with concerns | ADR 007. Single host only. Two-machine LAN and hole-punch numbers open. |
-| 03 | FFI bindings | Partial | macOS/Swift done (ADR 008). Windows C# half open: `uniffi-bindgen-cs`, DLL, 10k callback stress. x86_64 slice never executed. |
+| 03 | FFI bindings | Partial | Swift and C# (uniffi-bindgen-cs, x64) done, ADR 008. 9/9 C# contract tests, 10k-callback stress OK. ARM64 DLL builds; open: running on ARM64 hardware, x86_64 macOS slice never executed. |
 | 04 | macOS clipboard spike | Not started | No spike directory or ADR. |
-| 05 | Windows clipboard spike | Not started | |
+| 05 | Windows clipboard spike | Partial | `spikes/windows-clipboard`, ADR 010. Automated self-test and WinUI 3 tray smoke pass on Win11 x64. Open: manual app matrix, real password managers, Win10, ARM64 hardware. |
 | 06 | Core identity, trust, transport, pairing | Done | SAS pairing, device-list chain pinning, presence session. |
 | 07 | Core clip and file protocols | Done | `fsync/clip/1`, `fsync/file/1`. 1 GiB benchmark is `#[ignore]`. |
 | 08 | History, facade, FFI v1, CLI, Swift package, e2e demo | Done | Part A: SQLCipher history, FSB1 blobs, settings. Part B: `FsyncService`, FFI, `fsync-cli`, `FsyncCoreKit`, `tests/e2e/p0-exit-demo.sh`. |
@@ -18,7 +18,7 @@ Last updated: 2026-10-14. Plan of record: [plans/261013-2029-fsync-native-mvp](.
 | 10 | Infra: relay, backend deploy, CI | Partial | CI (`.github/workflows/ci.yml`) and backend Dockerfile/compose exist. `deploy/relay/` is empty. No 2-region relay. |
 | 11 | macOS app: shell, auth, pairing, devices | Not started | Plan P1 w1-5. Depends on 03, 04, 08, 09. |
 | 12 | macOS app: clipboard, files, history, settings | Not started | Plan P1 w5-11. |
-| 13 | Windows app: shell, auth, pairing, devices | Not started | Plan P1 w1-5. Depends on 03, 05, 08, 09. |
+| 13 | Windows app: shell, auth, pairing, devices | Partial | `apps/windows`: WinUI 3 tray app, DPAPI secrets, sign-in, pairing (code/QR/SAS), devices, start with Windows; 35/35 unit tests; `tests/e2e/pair-with-cli.ps1` PASS against fsync-cli. Open: pairing with the Mac app, ARM64 hardware. |
 | 14 | Windows app: clipboard, files, history, settings | Not started | Plan P1 w5-11. |
 | 15 | Cross-OS integration and network test matrix | Not started | Harness depends on 10. |
 | 16 | Release: signing, notarization, auto-update | Not started | Depends on 10, 12, 14. |
@@ -32,7 +32,7 @@ Phase names and dependencies follow the MVP plan. Its own status column still re
 3. ~~**Trust reset confirmation API (M5).**~~ Done 2026-10-14: `reset_account_trust`, `confirm_trust_reset`, `decline_trust_reset`, `pending_trust_resets` in core, FFI and CLI (ADR 012). The macOS `TrustResetPrompt` library shows the warning (2026-10-14); wiring it into the app is open (phase 11). Pending state is in memory only.
 4. **Denylist decision.** Setting is stored and validated but not enforced in core. Enforce in the clip path or drop the setting from the UI plan.
 5. **Two-machine measurements.** mDNS median (~2.7 s on one spike run), hole-punch ratio, real LAN results. Feeds ADR 007.
-6. **Windows phase 03 half.** `uniffi-bindgen-cs`, DLL packaging, callback stress test (10k).
+6. **Windows ARM64 + app e2e.** Run on ARM64 hardware, pair Windows with the Mac app (phase 11). Core: sequential read-ahead in `read_file_range` for lazy paste over relay (ADR 010).
 7. **x86_64 slice.** Execute at least once on an Intel host or in CI.
 8. **Relay deployment (phase 10).** Populate `deploy/relay/`, deploy a second region.
 9. **Backend production gaps.** Multi-instance state (presence, rate limits are in memory), Postgres TLS (sqlx `tls-rustls` not enabled), a real email provider (OTP is currently logged only).
