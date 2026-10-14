@@ -110,7 +110,10 @@ impl Mailpit {
 
     /// Mails delivered to `to` (Mailpit search API), polled until one shows up or ~5 s pass.
     pub async fn messages_to(&self, to: &str) -> Vec<Value> {
-        let http = reqwest::Client::new();
+        let http = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .unwrap();
         // Docker may publish the HTTP port a moment after the container logs "ready": a reset or
         // refused connection is retried like an empty result, not a failure.
         let mut answered = false;

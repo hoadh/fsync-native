@@ -12,7 +12,8 @@ impl FsyncService {
     /// Every representation of a history item, in the order it was published, with its full
     /// bytes (`history()` only carries previews). Works without `start()` for reps that are
     /// stored; a received rep that was never fetched is pulled from the sender when the engine
-    /// runs, and skipped when that fails (sender offline, offer forgotten): an item that yields
+    /// runs, and skipped when the sender is unreachable (offline, offer forgotten; later pulls are
+    /// then not attempted): an item that yields
     /// nothing because of that is `NotFound`. A files-only item has no reps and returns an empty
     /// list. Unknown ids are `NotFound`, malformed ones `Invalid`.
     pub fn history_item_reps(&self, item_id: &str) -> SvcResult<Vec<ClipRep>> {
@@ -22,13 +23,20 @@ impl FsyncService {
             .run(async { Ok(h.item(id).await?) })?
             .ok_or(FsyncError::NotFound)?;
         let mut out = Vec::with_capacity(detail.reps.len());
+        // After one pull fails because the sender is unreachable, the others would stall too.
+        let mut can_pull = true;
         for rep in &detail.reps {
             let (store, hash, size) = (self.inner.store.clone(), rep.hash, rep.size);
             let stored = self
                 .run(async move { Ok(blocking(move || read_all(&*store, &hash, size)).await?) });
             let data = match stored {
                 Ok(Some(d)) => Some(d),
-                Ok(None) => self.pull_rep(id, rep.idx),
+                Ok(None) if can_pull => {
+                    let pulled = self.pull_rep(id, rep.idx)?;
+                    can_pull = pulled.is_some();
+                    pulled
+                }
+                Ok(None) => None,
                 Err(e) => return Err(e),
             };
             if let Some(data) = data {
@@ -44,12 +52,26 @@ impl FsyncService {
         Ok(out)
     }
 
-    /// Best effort: bytes of a rep that is not in the store, from the sender.
-    fn pull_rep(&self, id: uuid::Uuid, idx: u32) -> Option<Vec<u8>> {
-        let engine = self.inner.engine().ok()?;
-        self.run(async move { Ok(engine.fetch_rep(id, idx).await?) })
-            .map_err(|e| tracing::debug!("history rep {idx} not available: {e}"))
-            .ok()
+    /// Bytes of a rep that is not in the store, from the sender. `None` when it cannot be had
+    /// right now (engine stopped, sender offline or gone); real failures (integrity, size, I/O)
+    /// are errors, not a silently shorter item.
+    fn pull_rep(&self, id: uuid::Uuid, idx: u32) -> SvcResult<Option<Vec<u8>>> {
+        let Ok(engine) = self.inner.engine() else {
+            return Ok(None);
+        };
+        match self.run(async move { Ok(engine.fetch_rep(id, idx).await?) }) {
+            Ok(d) => Ok(Some(d)),
+            Err(
+                e @ (FsyncError::NotPaired
+                | FsyncError::PeerOffline
+                | FsyncError::Network(_)
+                | FsyncError::NotFound),
+            ) => {
+                tracing::debug!("history rep {idx} not available: {e}");
+                Ok(None)
+            }
+            Err(e) => Err(e),
+        }
     }
 }
 

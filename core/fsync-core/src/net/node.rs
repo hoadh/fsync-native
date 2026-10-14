@@ -57,6 +57,11 @@ impl Node {
     }
 
     /// Connection cache for protocol clients (clip/file).
+    /// The accept gate (live-connection bookkeeping).
+    pub fn gate(&self) -> &Arc<Gate> {
+        &self.gate
+    }
+
     pub fn dialer(&self) -> Dialer {
         Dialer::new(
             self.ep.clone(),

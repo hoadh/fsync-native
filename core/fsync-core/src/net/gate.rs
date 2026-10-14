@@ -11,6 +11,7 @@ use iroh::{
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
+    time::Instant,
 };
 
 /// Application close code for rejected / removed peers.
@@ -22,7 +23,7 @@ pub struct Gate {
     pub(crate) trust: Arc<TrustManager>,
     pub(crate) windows: Arc<PairingWindows>,
     pub(crate) paths: Arc<PathTracker>,
-    live: Mutex<HashMap<(NodeId, usize), Connection>>,
+    live: Mutex<HashMap<(NodeId, usize), (Instant, Connection)>>,
 }
 
 impl std::fmt::Debug for Gate {
@@ -54,7 +55,7 @@ impl Gate {
     pub fn track(self: &Arc<Self>, conn: &Connection) {
         let key = (node_id_of(conn), conn.stable_id());
         if let Ok(mut g) = self.live.lock() {
-            g.insert(key, conn.clone());
+            g.insert(key, (Instant::now(), conn.clone()));
         }
         self.paths.watch(conn.clone());
         let (me, conn) = (Arc::clone(self), conn.clone());
@@ -66,13 +67,14 @@ impl Gate {
         });
     }
 
-    /// Close every live connection to `peer`. Used when a fresh dial stalls: the old
-    /// connections are then presumed dead (peer crashed/moved) and their stale path state
-    /// would keep blocking new handshakes until it idles out.
-    pub fn close_peer(&self, peer: &NodeId) {
+    /// Close the live `alpn` connections to `peer` opened before `before`. Used when a fresh
+    /// dial for that same ALPN stalls: connections that predate it are presumed dead (peer
+    /// crashed/moved) and their stale path state would keep blocking new handshakes. Other
+    /// ALPNs and newer connections (possibly mid-transfer) are left alone.
+    pub fn close_stale(&self, peer: &NodeId, alpn: &[u8], before: Instant) {
         let Ok(g) = self.live.lock() else { return };
-        for ((p, _), conn) in g.iter() {
-            if p == peer {
+        for ((p, _), (opened, conn)) in g.iter() {
+            if p == peer && *opened < before && conn.alpn() == alpn {
                 conn.close(CLOSE_STALE.into(), b"stale");
             }
         }
@@ -81,7 +83,7 @@ impl Gate {
     /// Close live connections of devices no longer in the pinned list.
     pub fn enforce(&self) {
         let Ok(g) = self.live.lock() else { return };
-        for ((peer, _), conn) in g.iter() {
+        for ((peer, _), (_, conn)) in g.iter() {
             if !self.trust.is_trusted(peer) {
                 conn.close(CLOSE_UNTRUSTED.into(), b"removed");
             }

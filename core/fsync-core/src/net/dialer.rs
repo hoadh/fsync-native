@@ -77,29 +77,25 @@ impl Dialer {
     }
 
     /// First attempt is short. If it stalls, the peer probably restarted (same id, new port)
-    /// while our old connections to it still look alive: drop them so iroh forgets the dead
+    /// while our older connections for this ALPN still look alive: drop them so iroh forgets the dead
     /// path and re-reads the current addresses, then retry for the rest of `DIAL_TIMEOUT`.
     async fn dial_with_recovery(&self, peer: &NodeId, alpn: &'static [u8]) -> Result<Connection> {
         let started = tokio::time::Instant::now();
-        let mut budget = FIRST_ATTEMPT;
-        loop {
-            let addr = self.discovery.addr_for(peer)?;
-            match tokio::time::timeout(budget, self.ep.connect(addr, alpn)).await {
-                Ok(res) => return res.map_err(CoreError::net),
-                Err(_) if budget == FIRST_ATTEMPT => {
-                    self.forget_peer(peer);
-                    self.gate.close_peer(peer);
-                    budget = DIAL_TIMEOUT.saturating_sub(started.elapsed());
-                }
-                Err(_) => return Err(CoreError::Net("dial timed out".into())),
+        let started_std = std::time::Instant::now();
+        let addr = self.discovery.addr_for(peer)?;
+        match tokio::time::timeout(FIRST_ATTEMPT, self.ep.connect(addr, alpn)).await {
+            Ok(res) => return res.map_err(CoreError::net),
+            Err(_) => {
+                self.forget(peer, alpn);
+                self.gate.close_stale(peer, alpn, started_std);
             }
         }
-    }
-
-    fn forget_peer(&self, peer: &NodeId) {
-        if let Ok(mut g) = self.conns.lock() {
-            g.retain(|(p, _), _| p != peer);
-        }
+        let left = DIAL_TIMEOUT.saturating_sub(started.elapsed());
+        let addr = self.discovery.addr_for(peer)?;
+        tokio::time::timeout(left, self.ep.connect(addr, alpn))
+            .await
+            .map_err(|_| CoreError::Net("dial timed out".into()))?
+            .map_err(CoreError::net)
     }
 
     /// Drop a cached connection that turned out to be dead.
