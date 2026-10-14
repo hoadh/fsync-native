@@ -11,7 +11,8 @@ extension EngineBridge {
             if ErrorText.requiresSignIn(error) { requireSignIn() } else if let text = ErrorText.message(for: error, context: .general) {
                 banner = text
             }
-        case .remoteClip, .transfer, .incomingFiles:
+        case .remoteClip(let item): clipSync?.enqueue(item)
+        case .transfer, .incomingFiles:
             break
         }
     }

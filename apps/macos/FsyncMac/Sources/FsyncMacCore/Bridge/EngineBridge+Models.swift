@@ -15,6 +15,7 @@ extension EngineBridge {
         trustModel = trust
 
         modelSubscriptions = []
+        installClipboardModels(engine: engine)
         devices.$devices.sink { [weak self] list in
             MainActor.assumeIsolated { self?.anyPeerOnline = StatusSummary(list).online > 0 }
         }.store(in: &modelSubscriptions)
@@ -35,6 +36,8 @@ extension EngineBridge {
 
     func resetAccountModels() {
         devicesModel?.clear()
+        clipSync?.stop()
+        historyModel?.reset()
         trustModel?.dismissOutcome()
         Task { [pairingModel] in await pairingModel?.cancel() }
     }

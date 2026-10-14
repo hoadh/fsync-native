@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import FsyncCoreKit
 import Foundation
@@ -23,6 +24,10 @@ public final class EngineBridge: ObservableObject {
     public internal(set) var pairingModel: PairingModel?
     public internal(set) var devicesModel: DevicesModel?
     public internal(set) var trustModel: TrustResetPromptModel?
+    public internal(set) var clipSync: ClipboardSync?
+    public internal(set) var clipSettings: ClipSettingsModel?
+    public internal(set) var historyModel: HistoryModel?
+    var hotkey: HotkeyManager?
     /// True while at least one other device is on LAN or relay (drives the menubar icon).
     @Combine.Published public internal(set) var anyPeerOnline = false
     /// The app shows the main window for each value (trust reset arrived, first launch while not ready).
@@ -32,6 +37,8 @@ public final class EngineBridge: ObservableObject {
     let config: AppConfig
     let secrets: AppSecrets
     let dataDir: URL
+    /// The pasteboard to sync; tests use a private one.
+    let pasteboard: NSPasteboard
     /// Seconds between `ensureAccount` retries while offline; the last value repeats.
     let retryDelays: [Double]
     var started = false
@@ -46,10 +53,12 @@ public final class EngineBridge: ObservableObject {
     var bootTask: Task<Void, Never>?
     nonisolated static let log = Logger(subsystem: AppConfig.bundleId, category: "bridge")
 
-    public init(config: AppConfig, secrets: AppSecrets, dataDir: URL, retryDelays: [Double] = [5, 15, 60]) {
+    public init(config: AppConfig, secrets: AppSecrets, dataDir: URL, pasteboard: NSPasteboard = .general,
+                retryDelays: [Double] = [5, 15, 60]) {
         self.config = config
         self.secrets = secrets
         self.dataDir = dataDir
+        self.pasteboard = pasteboard
         self.retryDelays = retryDelays.isEmpty ? [60] : retryDelays
     }
 
@@ -131,6 +140,7 @@ public final class EngineBridge: ObservableObject {
         bootTask?.cancel()
         await sessionClear?.value
         guard let engine else { return }
+        removeClipboardModels()
         self.engine = nil
         loginModel = nil
         recoveryModel = nil

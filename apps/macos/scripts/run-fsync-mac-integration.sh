@@ -111,7 +111,7 @@ log "swift test (integration)"
 : >"$WORK/swift-test.log"
 tail -f "$WORK/swift-test.log" &
 PIDS+=($!)
-swift test --package-path "$ROOT/apps/macos/FsyncMac" --filter FsyncMacIntegrationTests >>"$WORK/swift-test.log" 2>&1 &
+swift test --package-path "$ROOT/apps/macos/FsyncMac" --filter "FsyncMacIntegrationTests|ClipboardIntegrationTests" >>"$WORK/swift-test.log" 2>&1 &
 SWIFT_PID=$!
 PIDS+=($SWIFT_PID)
 wait "$SWIFT_PID" || { sleep 0.5; fail "swift test failed"; }
