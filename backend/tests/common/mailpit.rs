@@ -89,11 +89,52 @@ impl Mailpit {
         unsafe { libc::atexit(remove_containers) };
         let smtp_port = c.get_host_port_ipv4(1025).await.expect("smtp port");
         let http_port = c.get_host_port_ipv4(8025).await.expect("http port");
-        Self {
+        let mp = Self {
             _container: c,
             smtp_port,
             http: format!("http://127.0.0.1:{http_port}"),
             cert_der,
+        };
+        mp.wait_ready().await;
+        mp
+    }
+
+    /// The log line precedes readiness of the published ports under load (Docker Desktop port
+    /// forwarding), so wait for a real SMTP greeting and a real HTTP answer, with a deadline.
+    async fn wait_ready(&self) {
+        use tokio::io::AsyncReadExt;
+        let deadline = std::time::Instant::now() + STARTUP;
+        let http = reqwest::Client::new();
+        let (mut smtp_ok, mut http_ok) = (false, false);
+        while !(smtp_ok && http_ok) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "mailpit not ready: smtp={smtp_ok} http={http_ok}"
+            );
+            if !smtp_ok {
+                let probe = async {
+                    let mut s = tokio::net::TcpStream::connect(("127.0.0.1", self.smtp_port))
+                        .await
+                        .ok()?;
+                    let mut buf = [0u8; 4];
+                    s.read_exact(&mut buf).await.ok()?;
+                    (&buf == b"220 ").then_some(())
+                };
+                smtp_ok = tokio::time::timeout(std::time::Duration::from_secs(3), probe)
+                    .await
+                    .is_ok_and(|r| r.is_some());
+            }
+            if !http_ok {
+                http_ok = http
+                    .get(format!("{}/api/v1/info", self.http))
+                    .timeout(std::time::Duration::from_secs(3))
+                    .send()
+                    .await
+                    .is_ok_and(|r| r.status().is_success());
+            }
+            if !(smtp_ok && http_ok) {
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            }
         }
     }
 
@@ -108,10 +149,10 @@ impl Mailpit {
         }
     }
 
-    /// Mails delivered to `to` (Mailpit search API), polled until one shows up or ~5 s pass.
+    /// Mails delivered to `to` (Mailpit search API), polled until one shows up or 20 s pass.
     pub async fn messages_to(&self, to: &str) -> Vec<Value> {
         let http = reqwest::Client::new();
-        for _ in 0..25 {
+        for _ in 0..100 {
             let v: Value = http
                 .get(format!("{}/api/v1/search", self.http))
                 .query(&[("query", format!("to:{to}"))])
