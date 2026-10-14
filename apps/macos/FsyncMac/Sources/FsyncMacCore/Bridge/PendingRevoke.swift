@@ -48,8 +48,27 @@ extension AppSecrets {
         return pending
     }
 
+    /// Makes save and compare-and-settle atomic: a retry in flight must not touch an entry that a
+    /// newer sign-out has replaced meanwhile. Held only for Keychain reads and writes, never a network call.
+    private static let entryLock = NSLock()
+
     /// Persists (replaces) the pending revoke. Call BEFORE `logoutConfirmed()`.
     public func savePendingRevoke(_ pending: PendingRevoke) throws {
+        Self.entryLock.lock()
+        defer { Self.entryLock.unlock() }
+        try writePendingRevoke(pending)
+    }
+
+    /// After a retry of `retried`: deletes the entry (`replacement` nil) or replaces it, but only
+    /// while it still holds the same refresh token. A newer token saved meanwhile is kept untouched.
+    public func settlePendingRevoke(retried: PendingRevoke, replacement: PendingRevoke?) throws {
+        Self.entryLock.lock()
+        defer { Self.entryLock.unlock() }
+        guard let current = try pendingRevoke(), current.refresh == retried.refresh else { return }
+        if let replacement { try writePendingRevoke(replacement) } else { try store.delete(Self.pendingRevokeAccount) }
+    }
+
+    private func writePendingRevoke(_ pending: PendingRevoke) throws {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .secondsSince1970
         try store.set(try encoder.encode(pending), account: Self.pendingRevokeAccount)

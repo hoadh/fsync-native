@@ -17,11 +17,6 @@ pub struct EngineConfig {
     pub api_base: String,
     /// Our relay (none: LAN only). Merged with `relay_urls`.
     pub relay_url: Option<String>,
-    /// More relays, e.g. one per region: iroh picks the home relay by latency. Merged with
-    /// `relay_url` and deduplicated; https only unless `allow_insecure_http`. Added after v2,
-    /// defaults to `[]`.
-    #[uniffi(default = [])]
-    pub relay_urls: Vec<String>,
     pub device_name: String,
     pub platform: Platform,
     /// 32 bytes, from Keychain / DPAPI.
@@ -32,6 +27,11 @@ pub struct EngineConfig {
     pub force_relay: bool,
     /// Dev backends on plain http.
     pub allow_insecure_http: bool,
+    /// More relays, e.g. one per region: iroh picks the home relay by latency. Merged with
+    /// `relay_url` and deduplicated; https only unless `allow_insecure_http`. Added after v2, kept last (uniffi records are positional),
+    /// defaults to `[]`.
+    #[uniffi(default = [])]
+    pub relay_urls: Vec<String>,
 }
 
 #[derive(uniffi::Object)]

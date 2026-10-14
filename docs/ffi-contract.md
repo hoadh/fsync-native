@@ -73,8 +73,9 @@ revoke_session(api_url: String, refresh_token: String, allow_insecure_http: Bool
 
 ## Records and enums
 ```
-EngineConfig { data_dir, api_base, relay_url: String?, relay_urls: [String] = [], device_name, platform: Platform,
-               device_secret: bytes32, history_key: bytes32, force_relay: Bool, allow_insecure_http: Bool }
+EngineConfig { data_dir, api_base, relay_url: String?, device_name, platform: Platform,
+               device_secret: bytes32, history_key: bytes32, force_relay: Bool, allow_insecure_http: Bool,
+               relay_urls: [String] = [] }   // last on purpose: uniffi records are positional
 Platform { Mac, Win, Cli }      ClipKind { Text, Rich, Image, Files }
 SessionTokens { access, refresh, account_id }
 Device { node_id, name, platform, status: DeviceStatus{Offline,Lan,Relay}, online: Bool, last_seen_ms, is_self }
@@ -161,8 +162,11 @@ FsyncError { NotPaired, PeerOffline, Network{msg}, Integrity, TooLarge, Auth, Re
   over them must be updated: that is why `contract_version()` is now 2.
 
 ## Additive since v2 (no version bump)
-- Multiple relays. `EngineConfig.relay_urls` (uniffi default `[]`, so existing hosts compile
-  unchanged) is merged with `relay_url`: `relay_url` first, then `relay_urls`, duplicates dropped
+- Multiple relays. `EngineConfig.relay_urls` (uniffi default `[]`, declared last) is additive for
+  Swift only: the initializer is labeled and the field has a default, so existing call sites
+  compile unchanged. C# records are positional: a C# host must regenerate `fsync_ffi.cs`, update
+  its positional `EngineConfig` call, and ship the native DLL together with the new binding. An
+  old binding against a new DLL fails at record decode. It is merged with `relay_url`: `relay_url` first, then `relay_urls`, duplicates dropped
   (`https://a` and `https://a/` are one relay). All of them go into one iroh `RelayMap`; the
   endpoint probes them and picks its home relay by latency (and moves it when the network
   changes), so a US-East-2 and a Singapore relay need no host logic. A peer that cannot reach one

@@ -22,7 +22,7 @@ pub struct Global {
     pub data: PathBuf,
     #[arg(long, env = "FSYNC_API", default_value = "http://127.0.0.1:8080")]
     pub api: String,
-    /// Relay URL; repeat (or comma-separate in FSYNC_RELAY) for several, home relay by latency.
+    /// Relay URL. Repeat the flag or comma-separate (`--relay a,b`, also in FSYNC_RELAY) for several; the home relay is picked by latency.
     #[arg(long, env = "FSYNC_RELAY", value_delimiter = ',')]
     pub relay: Vec<String>,
     /// Test flag: no direct paths, everything goes through the relay.

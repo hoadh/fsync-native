@@ -1629,12 +1629,6 @@ public struct EngineConfig {
      * Our relay (none: LAN only). Merged with `relay_urls`.
      */
     public var relayUrl: String?
-    /**
-     * More relays, e.g. one per region: iroh picks the home relay by latency. Merged with
-     * `relay_url` and deduplicated; https only unless `allow_insecure_http`. Added after v2,
-     * defaults to `[]`.
-     */
-    public var relayUrls: [String]
     public var deviceName: String
     public var platform: Platform
     /**
@@ -1653,6 +1647,12 @@ public struct EngineConfig {
      * Dev backends on plain http.
      */
     public var allowInsecureHttp: Bool
+    /**
+     * More relays, e.g. one per region: iroh picks the home relay by latency. Merged with
+     * `relay_url` and deduplicated; https only unless `allow_insecure_http`. Added after v2, kept last (uniffi records are positional),
+     * defaults to `[]`.
+     */
+    public var relayUrls: [String]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1662,12 +1662,7 @@ public struct EngineConfig {
          */dataDir: String, apiBase: String, 
         /**
          * Our relay (none: LAN only). Merged with `relay_urls`.
-         */relayUrl: String?, 
-        /**
-         * More relays, e.g. one per region: iroh picks the home relay by latency. Merged with
-         * `relay_url` and deduplicated; https only unless `allow_insecure_http`. Added after v2,
-         * defaults to `[]`.
-         */relayUrls: [String] = [], deviceName: String, platform: Platform, 
+         */relayUrl: String?, deviceName: String, platform: Platform, 
         /**
          * 32 bytes, from Keychain / DPAPI.
          */deviceSecret: Data, 
@@ -1679,17 +1674,22 @@ public struct EngineConfig {
          */forceRelay: Bool, 
         /**
          * Dev backends on plain http.
-         */allowInsecureHttp: Bool) {
+         */allowInsecureHttp: Bool, 
+        /**
+         * More relays, e.g. one per region: iroh picks the home relay by latency. Merged with
+         * `relay_url` and deduplicated; https only unless `allow_insecure_http`. Added after v2, kept last (uniffi records are positional),
+         * defaults to `[]`.
+         */relayUrls: [String] = []) {
         self.dataDir = dataDir
         self.apiBase = apiBase
         self.relayUrl = relayUrl
-        self.relayUrls = relayUrls
         self.deviceName = deviceName
         self.platform = platform
         self.deviceSecret = deviceSecret
         self.historyKey = historyKey
         self.forceRelay = forceRelay
         self.allowInsecureHttp = allowInsecureHttp
+        self.relayUrls = relayUrls
     }
 }
 
@@ -1707,9 +1707,6 @@ extension EngineConfig: Equatable, Hashable {
             return false
         }
         if lhs.relayUrl != rhs.relayUrl {
-            return false
-        }
-        if lhs.relayUrls != rhs.relayUrls {
             return false
         }
         if lhs.deviceName != rhs.deviceName {
@@ -1730,6 +1727,9 @@ extension EngineConfig: Equatable, Hashable {
         if lhs.allowInsecureHttp != rhs.allowInsecureHttp {
             return false
         }
+        if lhs.relayUrls != rhs.relayUrls {
+            return false
+        }
         return true
     }
 
@@ -1737,13 +1737,13 @@ extension EngineConfig: Equatable, Hashable {
         hasher.combine(dataDir)
         hasher.combine(apiBase)
         hasher.combine(relayUrl)
-        hasher.combine(relayUrls)
         hasher.combine(deviceName)
         hasher.combine(platform)
         hasher.combine(deviceSecret)
         hasher.combine(historyKey)
         hasher.combine(forceRelay)
         hasher.combine(allowInsecureHttp)
+        hasher.combine(relayUrls)
     }
 }
 
@@ -1759,13 +1759,13 @@ public struct FfiConverterTypeEngineConfig: FfiConverterRustBuffer {
                 dataDir: FfiConverterString.read(from: &buf), 
                 apiBase: FfiConverterString.read(from: &buf), 
                 relayUrl: FfiConverterOptionString.read(from: &buf), 
-                relayUrls: FfiConverterSequenceString.read(from: &buf), 
                 deviceName: FfiConverterString.read(from: &buf), 
                 platform: FfiConverterTypePlatform.read(from: &buf), 
                 deviceSecret: FfiConverterData.read(from: &buf), 
                 historyKey: FfiConverterData.read(from: &buf), 
                 forceRelay: FfiConverterBool.read(from: &buf), 
-                allowInsecureHttp: FfiConverterBool.read(from: &buf)
+                allowInsecureHttp: FfiConverterBool.read(from: &buf), 
+                relayUrls: FfiConverterSequenceString.read(from: &buf)
         )
     }
 
@@ -1773,13 +1773,13 @@ public struct FfiConverterTypeEngineConfig: FfiConverterRustBuffer {
         FfiConverterString.write(value.dataDir, into: &buf)
         FfiConverterString.write(value.apiBase, into: &buf)
         FfiConverterOptionString.write(value.relayUrl, into: &buf)
-        FfiConverterSequenceString.write(value.relayUrls, into: &buf)
         FfiConverterString.write(value.deviceName, into: &buf)
         FfiConverterTypePlatform.write(value.platform, into: &buf)
         FfiConverterData.write(value.deviceSecret, into: &buf)
         FfiConverterData.write(value.historyKey, into: &buf)
         FfiConverterBool.write(value.forceRelay, into: &buf)
         FfiConverterBool.write(value.allowInsecureHttp, into: &buf)
+        FfiConverterSequenceString.write(value.relayUrls, into: &buf)
     }
 }
 

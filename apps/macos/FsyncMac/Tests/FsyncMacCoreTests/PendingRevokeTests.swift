@@ -76,6 +76,20 @@ final class PendingRevokeTests: EngineTestCase {
         XCTAssertNil(try secrets.pendingRevoke())
     }
 
+    /// A retry of token A is in flight when a new sign-out saves token B: B must survive either result.
+    func testNewerPendingSavedDuringRetryIsKept() throws {
+        let newer = PendingRevoke(refresh: "token-b", apiBase: "http://127.0.0.1:9", createdAt: now)
+        for result in [Result<Void, Error>.success(()), .failure(FsyncError.Network(msg: "down"))] {
+            let secrets = AppSecrets(store: makeStore())
+            try secrets.savePendingRevoke(pending())
+            _ = PendingRevokeResume.run(secrets: secrets, now: now) { _, _, _ in
+                try secrets.savePendingRevoke(newer)
+                try result.get()
+            }
+            XCTAssertEqual(try secrets.pendingRevoke(), newer, "result \(result)")
+        }
+    }
+
     func testSuccessDeletesAndPassesTheStoredValues() throws {
         let secrets = AppSecrets(store: makeStore())
         try secrets.savePendingRevoke(pending(api: "https://api.example.test"))

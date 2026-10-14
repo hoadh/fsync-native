@@ -31,36 +31,35 @@ public enum PendingRevokeResume {
             return .nothingPending
         }
         if pending.isExpired(now: now) {
-            clear(secrets)
+            settle(secrets, pending, nil)
             return .dropped
         }
         let insecure = AppConfig(apiBase: pending.apiBase, relayUrl: nil, deviceName: "").allowInsecureHttp
         do {
             try revoke(pending.apiBase, pending.refresh, insecure)
-            clear(secrets)
+            settle(secrets, pending, nil)
             return .revoked
         } catch FsyncError.Network {
             var next = pending
             next.failures += 1
             if next.isExpired(now: now) {
-                clear(secrets)
+                settle(secrets, pending, nil)
                 return .dropped
             }
-            do { try secrets.savePendingRevoke(next) } catch {
-                log.error("could not record the failed revoke: \(String(describing: error), privacy: .private)")
-            }
+            settle(secrets, pending, next)
             return .kept(failures: next.failures)
         } catch {
             // A refusal that a retry will not change (bad URL, malformed token).
             log.error("pending revoke dropped: \(String(describing: error), privacy: .private)")
-            clear(secrets)
+            settle(secrets, pending, nil)
             return .dropped
         }
     }
 
-    private static func clear(_ secrets: AppSecrets) {
-        do { try secrets.clearPendingRevoke() } catch {
-            log.error("could not clear pending revoke: \(String(describing: error), privacy: .private)")
+    /// Deletes or updates the entry only if it still holds the token that was just retried.
+    private static func settle(_ secrets: AppSecrets, _ retried: PendingRevoke, _ replacement: PendingRevoke?) {
+        do { try secrets.settlePendingRevoke(retried: retried, replacement: replacement) } catch {
+            log.error("could not update pending revoke: \(String(describing: error), privacy: .private)")
         }
     }
 }
