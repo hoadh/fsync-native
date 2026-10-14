@@ -116,3 +116,42 @@ final class RepresentationMapperTests: EngineTestCase {
         XCTAssertEqual(RepresentationMapper.payload(Data([0xFF]), for: .png), Data([0xFF]))
     }
 }
+
+@MainActor
+final class RepresentationSnapshotTests: EngineTestCase {
+    private func tiff() throws -> Data {
+        let rep = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 64, pixelsHigh: 64, bitsPerSample: 8,
+                                                 samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                                 colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+        return try XCTUnwrap(rep.representation(using: .tiff, properties: [:]))
+    }
+
+    func testTiffIsConvertedToPngInBuildNotInSnapshot() throws {
+        let pb = scratchPasteboard()
+        pb.clearContents(); pb.setData(try tiff(), forType: .tiff)
+        let snap = RepresentationMapper.snapshot(pb)
+        XCTAssertNotNil(snap.tiff)
+        XCTAssertNil(snap.png)
+        guard case .clip(let c) = snap.build(maxBytes: 1 << 24) else { return XCTFail("no clip") }
+        XCTAssertEqual(c.reps.map(\.mime), ["image/png"])
+        XCTAssertEqual(c.reps[0].data.prefix(4), Data([0x89, 0x50, 0x4E, 0x47]))
+    }
+
+    func testHugeTiffIsRefusedWithoutDecoding() throws {
+        let pb = scratchPasteboard()
+        pb.clearContents(); pb.setData(try tiff(), forType: .tiff)
+        let snap = RepresentationMapper.snapshot(pb)
+        guard case .tooLarge = snap.build(maxBytes: 1) else { return XCTFail("expected tooLarge") }
+    }
+
+    func testTextWinsOverImage() throws {
+        let pb = scratchPasteboard()
+        pb.clearContents()
+        let item = NSPasteboardItem()
+        item.setString("cells", forType: .string)
+        item.setData(try tiff(), forType: .tiff)
+        pb.writeObjects([item])
+        guard case .clip(let c) = RepresentationMapper.snapshot(pb).build(maxBytes: 1 << 24) else { return XCTFail("no clip") }
+        XCTAssertEqual(c.reps.map(\.mime), ["text/plain"])
+    }
+}

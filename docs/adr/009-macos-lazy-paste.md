@@ -70,6 +70,14 @@ Evidence: `spikes/macos-clipboard/results/selftest-macos26.6-arm64.txt`. Windows
   download at copy time, not paste time. The 20 MiB eager threshold and the 512 MiB cap bound this.
 - The file URL given to the reader points into the inbox; readers copy it (Finder does). Inbox cleanup runs
   on the retention schedule and never deletes a file of the current clip.
+- An explicit send (menu item / global hotkey) skips the frontmost-app denylist (the user asked for this
+  clip, and the frontmost app is then often ours) but still honors the concealed / transient /
+  auto-generated type markers.
+- Paste waits are bounded: a lazy provider / eager fetch spins the run loop in the current (common) mode for
+  at most 180 s, then fails with a clear message instead of hanging the reader.
+- Retention of downloaded clip files: by age (`retention_days`) and by size (`retention_bytes`, oldest
+  folders first), at startup, on a retention change and daily; the current clip is never deleted.
+- Auto-accept of pushed files applies only up to 1 GiB per offer; bigger offers wait for the user.
 - Frontmost-app denylist is a race (the user may switch apps between copy and poll); type markers are the
   primary signal.
 

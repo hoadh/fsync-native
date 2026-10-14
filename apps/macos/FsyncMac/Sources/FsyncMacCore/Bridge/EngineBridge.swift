@@ -31,6 +31,7 @@ public final class EngineBridge: ObservableObject {
     public internal(set) var transfers: TransfersModel?
     var fileWriter: FileClipWriter?
     var hotkey: HotkeyManager?
+    var inboxCleanup: Task<Void, Never>?
     /// True while at least one other device is on LAN or relay (drives the menubar icon).
     @Combine.Published public internal(set) var anyPeerOnline = false
     /// The app shows the main window for each value (trust reset arrived, first launch while not ready).

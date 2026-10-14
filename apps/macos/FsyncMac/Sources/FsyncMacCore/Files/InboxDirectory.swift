@@ -39,4 +39,37 @@ public struct InboxDirectory: Sendable {
         }
         return removed
     }
+
+    /// Keeps the inbox within `maxBytes` by deleting the oldest item folders first (never `keeping`).
+    @discardableResult
+    public func trim(toBytes maxBytes: UInt64, keeping: Set<String>) -> Int {
+        let fm = FileManager.default
+        let keys: [URLResourceKey] = [.contentModificationDateKey]
+        let entries = (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
+        var folders: [(url: URL, modified: Date, size: UInt64)] = entries.map {
+            ($0, (try? $0.resourceValues(forKeys: Set(keys)))?.contentModificationDate ?? .distantPast, Self.size(of: $0))
+        }
+        var total = folders.reduce(0) { $0 + $1.size }
+        folders.sort { $0.modified < $1.modified }
+        var removed = 0
+        for folder in folders where total > maxBytes && !keeping.contains(folder.url.lastPathComponent) {
+            if (try? fm.removeItem(at: folder.url)) != nil { total -= folder.size; removed += 1 }
+        }
+        return removed
+    }
+
+    /// Retention for downloaded clip files: older than `days` goes, then the oldest until under `maxBytes`.
+    public func clean(retentionDays days: UInt32, maxBytes: UInt64, keeping: Set<String>, now: Date = Date()) {
+        removeOld(before: now.addingTimeInterval(-Double(days) * 86_400), keeping: keeping)
+        trim(toBytes: maxBytes, keeping: keeping)
+    }
+
+    private static func size(of folder: URL) -> UInt64 {
+        let files = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.totalFileAllocatedSizeKey])
+        var total: UInt64 = 0
+        while let url = files?.nextObject() as? URL {
+            total += UInt64((try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey]))?.totalFileAllocatedSize ?? 0)
+        }
+        return total
+    }
 }

@@ -12,6 +12,7 @@ final class FakeFetchBackend: @unchecked Sendable {
     private(set) var started: [String] = []
     var failWith: String?
     var delay: TimeInterval = 0
+    var cancelled = false
 
     func start(itemId: String, fileId: UInt32, destDir: String) throws -> UInt64 {
         lock.lock(); next += 1; let id = next; started.append(itemId); lock.unlock()
@@ -19,7 +20,9 @@ final class FakeFetchBackend: @unchecked Sendable {
         let failure = failWith
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [self] in
             MainActor.assumeIsolated {
-                if let failure {
+                if cancelled {
+                    transfers.handle(TransfersModelTests.event(id, .cancelled))
+                } else if let failure {
                     transfers.handle(TransfersModelTests.event(id, .failed, message: failure))
                 } else {
                     FileManager.default.createFile(atPath: path, contents: Data("content \(fileId)".utf8))

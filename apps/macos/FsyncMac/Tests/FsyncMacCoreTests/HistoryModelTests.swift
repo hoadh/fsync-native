@@ -24,4 +24,21 @@ final class HistoryModelTests: EngineTestCase {
         XCTAssertTrue(m.items.isEmpty)
         XCTAssertFalse(m.hasMore)
     }
+
+    func testResetClearsLoadingFlag() async throws {
+        let (m, _) = try setup()
+        m.reset()
+        XCTAssertFalse(m.isLoading)
+    }
+
+    func testCopyBackOnlyForTextStoredInFull() {
+        func item(_ kind: ClipKind, _ preview: String?, _ size: UInt64) -> HistoryItem {
+            HistoryItem(id: "aa", outgoing: false, peer: nil, kind: kind, createdMs: 1, totalSize: size, preview: preview, pinned: false)
+        }
+        XCTAssertEqual(item(.text, "héllo", 6).copyBackText, "héllo")
+        XCTAssertNil(item(.text, String(repeating: "a", count: 200), 5000).copyBackText, "truncated preview")
+        XCTAssertNil(item(.text, "", 0).copyBackText)
+        XCTAssertNil(item(.text, nil, 3).copyBackText)
+        XCTAssertNil(item(.image, "img", 3).copyBackText)
+    }
 }

@@ -10,6 +10,11 @@ public final class FilesSync: ObservableObject {
     @Combine.Published public private(set) var offers: [ClipItem] = []
     @Combine.Published public private(set) var message: String?
 
+    /// Offers waiting for the user are capped; the oldest are dropped.
+    public static let maxOffers = 20
+    /// Auto-accept only below this many bytes per offer; bigger ones wait for the user.
+    public static let autoAcceptLimit: UInt64 = 1 << 30
+
     private static let log = Logger(subsystem: AppConfig.bundleId, category: "files")
     private let engine: FsyncEngineProtocol
     private let fetcher: FileFetchService
@@ -40,7 +45,10 @@ public final class FilesSync: ObservableObject {
     /// `on_incoming_files`: download now when the user allows it, otherwise wait for `accept`.
     public func receive(offer: ClipItem) async {
         guard running, !offer.files.isEmpty else { return }
-        if autoAccept() { await accept(offer) } else { offers.removeAll { $0.itemId == offer.itemId }; offers.insert(offer, at: 0) }
+        if autoAccept(), offer.totalSize <= Self.autoAcceptLimit { await accept(offer); return }
+        offers.removeAll { $0.itemId == offer.itemId }
+        offers.insert(offer, at: 0)
+        if offers.count > Self.maxOffers { offers.removeLast(offers.count - Self.maxOffers) }
     }
 
     /// Downloads every file of the offer into the Downloads folder; the transfer list shows progress.
@@ -49,8 +57,10 @@ public final class FilesSync: ObservableObject {
         var failed = 0
         for file in offer.files {
             if case .failure(let error) = await fetcher.fetch(itemId: offer.itemId, file: file, into: downloads) {
-                if error != .cancelled { failed += 1 }
                 Self.log.info("download failed: \(String(describing: error), privacy: .private)")
+                // The user cancelled: the rest of the offer is not wanted either.
+                if error == .cancelled { break }
+                failed += 1
             }
         }
         message = failed == 0 ? nil : "\(failed) of \(offer.files.count) files couldn't be received from \(PeerText.sanitize(offer.fromName))."

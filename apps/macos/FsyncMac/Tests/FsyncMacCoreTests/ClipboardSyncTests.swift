@@ -35,9 +35,10 @@ final class ClipboardSyncTests: EngineTestCase {
         XCTAssertEqual(r.sync.activity?.direction, .received)
     }
 
-    func testCopyBackWritesPreview() throws {
+    func testCopyBackWritesPreview() async throws {
         let r = try rig()
-        XCTAssertTrue(r.sync.copyBack(text: "from history"))
+        let copied = await r.sync.copyBack(text: "from history")
+        XCTAssertTrue(copied)
         XCTAssertEqual(r.pb.string(forType: .string), "from history")
     }
 

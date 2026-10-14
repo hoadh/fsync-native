@@ -15,21 +15,23 @@ public struct SyncActivity: Equatable, Sendable {
 /// applies clips from other devices. All engine calls go through `EngineCall` (never on the main actor).
 @MainActor
 public final class ClipboardSync: ObservableObject {
-    @Combine.Published public private(set) var activity: SyncActivity?
+    @Combine.Published public internal(set) var activity: SyncActivity?
     /// Manual mode: the newest clip from another device, waiting for the user ("Paste from <device>").
-    @Combine.Published public private(set) var pendingIncoming: ClipItem?
-    @Combine.Published public private(set) var message: String?
+    @Combine.Published public internal(set) var pendingIncoming: ClipItem?
+    @Combine.Published public internal(set) var message: String?
 
-    private static let log = Logger(subsystem: AppConfig.bundleId, category: "clipboard")
+    static let log = Logger(subsystem: AppConfig.bundleId, category: "clipboard")
     private let engine: FsyncEngineProtocol
     private let pasteboard: NSPasteboard
-    private let writer: ClipboardWriter
-    private let fileWriter: FileClipWriter?
+    let writer: ClipboardWriter
+    let fileWriter: FileClipWriter?
     private var watcher: PasteboardWatcher!
     private(set) var settings: Settings
     private var filter: SensitiveFilter
-    private var running = false
+    var running = false
     private var publishing = false
+    private var queued: Request?
+    var chain: Task<Void, Never>?
 
     /// `fetchRep` defaults to the engine's `fetch_rep`.
     public init(engine: FsyncEngineProtocol, pasteboard: NSPasteboard = .general, settings: Settings,
@@ -48,6 +50,8 @@ public final class ClipboardSync: ObservableObject {
 
     public var mode: ClipMode { settings.clipMode }
     public var isRunning: Bool { running }
+    public var retentionDays: UInt32 { settings.retentionDays }
+    public var retentionBytes: UInt64 { settings.retentionBytes }
 
     /// Begins watching (auto mode) and applying incoming clips. Safe to call twice.
     public func start() {
@@ -57,6 +61,7 @@ public final class ClipboardSync: ObservableObject {
 
     public func stop() {
         running = false
+        queued = nil
         watcher.stop()
         pendingIncoming = nil
     }
@@ -84,29 +89,60 @@ public final class ClipboardSync: ObservableObject {
 
     // MARK: Outgoing
 
+    /// A request to publish. `expected` (auto mode) is the changeCount the privacy filter decided on.
+    struct Request {
+        let explicit: Bool
+        let expected: Int?
+    }
+
     private func changed(_ change: PasteboardChange) {
         guard settings.clipMode == .auto, change.changeCount != writer.lastWriteCount,
               change.changeCount != fileWriter?.lastWriteCount else { return }
         switch change.decision {
-        case .sync: Task { await publishCurrent(explicit: false) }
-        case .skip(let reason): Self.log.debug("skipped change: \(reason.description, privacy: .public)")
+        case .sync: Task { await publish(Request(explicit: false, expected: change.changeCount)) }
+        case .skip(let reason): Self.log.debug("skipped change: \(reason.description, privacy: .private)")
         }
     }
 
-    /// "Send clipboard" (menu / hotkey) in manual mode; also what the watcher calls in auto mode.
+    /// "Send clipboard" (menu / hotkey) in manual mode.
     public func publishCurrent(explicit: Bool = true) async {
-        guard running, !publishing else { return }
-        if explicit {
+        await publish(Request(explicit: explicit, expected: nil))
+    }
+
+    /// One publish at a time. A request that arrives meanwhile is kept (the newest wins) and runs after
+    /// the current one, so a quick second copy is not lost.
+    func publish(_ request: Request) async {
+        guard running else { return }
+        if publishing { queued = request; return }
+        publishing = true
+        var next: Request? = request
+        while let current = next {
+            queued = nil
+            await publishOnce(current)
+            next = running ? queued : nil
+        }
+        queued = nil
+        publishing = false
+    }
+
+    /// Reads the pasteboard only if it is still the change the filter looked at, and re-checks before sending.
+    private func publishOnce(_ request: Request) async {
+        let count = pasteboard.changeCount
+        if let expected = request.expected, expected != count { return }
+        if request.explicit {
             let types = (pasteboard.types ?? []).map(\.rawValue)
             if case .skip(let reason) = filter.decide(types: types, frontmostBundleId: nil) {
                 message = reason.userText
                 return
             }
         }
-        publishing = true
-        defer { publishing = false }
-        switch RepresentationMapper.read(pasteboard, maxBytes: settings.maxClipBytes) {
-        case .empty: if explicit { message = "Nothing to send." }
+        let snapshot = RepresentationMapper.snapshot(pasteboard)
+        guard pasteboard.changeCount == count else { return }
+        let limit = settings.maxClipBytes
+        let read = await Task.detached(priority: .userInitiated) { snapshot.build(maxBytes: limit) }.value
+        guard running, pasteboard.changeCount == count else { return }
+        switch read {
+        case .empty: if request.explicit { message = "Nothing to send." }
         case .tooLarge: message = ErrorText.message(for: FsyncError.TooLarge, context: .general)
         case .clip(let clip): await send(clip)
         }
@@ -122,45 +158,6 @@ public final class ClipboardSync: ObservableObject {
             activity = SyncActivity(direction: .sent, summary: clip.preview ?? "Clip", at: Date())
         }
     }
-
-    // MARK: Incoming
-
-    private var chain: Task<Void, Never>?
-
-    /// Queues a clip from the engine; clips are applied one at a time, in arrival order.
-    public func enqueue(_ item: ClipItem) {
-        let previous = chain
-        chain = Task { [weak self] in
-            await previous?.value
-            await self?.receive(item)
-        }
-    }
-
-    /// A clip from another device. Auto mode writes it; manual mode keeps the newest for "Paste from…".
-    public func receive(_ item: ClipItem) async {
-        guard running, item.kind != .files || fileWriter != nil else { return }
-        if settings.clipMode == .auto { await apply(item) } else { pendingIncoming = item }
-    }
-
-    /// Manual mode: the user chose "Paste from <device>".
-    public func acceptPending() async {
-        guard let item = pendingIncoming else { return }
-        pendingIncoming = nil
-        await apply(item)
-    }
-
-    private func apply(_ item: ClipItem) async {
-        let result = if item.kind == .files, let fileWriter { await fileWriter.apply(item) } else { await writer.apply(item) }
-        switch result {
-        case .success: activity = SyncActivity(direction: .received, summary: item.preview ?? "Clip", at: Date())
-        case .failure(.nothingUsable): Self.log.info("received clip has no usable representation")
-        case .failure(.fetchFailed): message = "Couldn't receive the clip from \(PeerText.sanitize(item.fromName))."
-        }
-    }
-
-    /// History copy-back: only the stored preview (200 characters) is available.
-    @discardableResult
-    public func copyBack(text: String) -> Bool { writer.writeText(text) }
 
     public func report(_ text: String) { message = text }
 

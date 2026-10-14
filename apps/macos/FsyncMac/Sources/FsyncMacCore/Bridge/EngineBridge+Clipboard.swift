@@ -2,6 +2,8 @@ import FsyncCoreKit
 import Foundation
 
 extension EngineBridge {
+    private static let inboxCleanupInterval: UInt64 = 24 * 3600 * 1_000_000_000
+
     /// Clipboard sync, files, settings and the history list share the engine; they run only while `.ready`.
     /// Must run after `modelSubscriptions` was reset.
     func installClipboardModels(engine: FsyncEngine) {
@@ -14,6 +16,7 @@ extension EngineBridge {
         (clipSettings, clipSync, fileWriter) = (settings, sync, writer)
         (self.transfers, filesSync) = (transfers, files)
         historyModel = HistoryModel(engine: engine)
+        hotkey?.unregister()
         hotkey = HotkeyManager { [weak sync] in Task { await sync?.publishCurrent() } }
         $phase.sink { [weak self] phase in
             MainActor.assumeIsolated { self?.phaseChanged(for: phase) }
@@ -21,40 +24,66 @@ extension EngineBridge {
     }
 
     private func clipSettings(changed new: Settings) {
+        let retentionChanged = new.retentionDays != clipSync?.retentionDays || new.retentionBytes != clipSync?.retentionBytes
         clipSync?.apply(settings: new)
+        if retentionChanged, phase == .ready { startInboxCleanup() }
     }
 
     private func phaseChanged(for phase: AppPhase) {
-        if phase == .ready {
-            clipSync?.start()
-            filesSync?.start()
-            if hotkey?.register() == false { clipSync?.report("The shortcut \(HotkeyManager.sendClipboardLabel) is used by another app.") }
-            Task { [historyModel] in await historyModel?.reload() }
-            cleanInbox()
-        } else {
+        guard phase == .ready else {
             clipSync?.stop()
             filesSync?.stop()
             hotkey?.unregister()
+            inboxCleanup?.cancel()
+            return
         }
+        filesSync?.start()
+        Task { [weak self] in await self?.startClipboardWhenSettingsAreKnown() }
     }
 
-    /// Downloaded clip files older than the history retention go away; the clip on the pasteboard stays.
-    private func cleanInbox() {
-        let days = Double(clipSettings?.settings.retentionDays ?? 30)
-        let (inbox, keep) = (inbox, fileWriter?.currentItemId)
-        Task.detached {
-            inbox.removeOld(before: Date().addingTimeInterval(-days * 86_400), keeping: keep.map { [$0] } ?? [])
+    /// The stored settings decide the mode, so sync does not start on guesses: when they can't be read the
+    /// clipboard stays off and the error shows in Settings.
+    private func startClipboardWhenSettingsAreKnown() async {
+        guard let settings = clipSettings else { return }
+        guard await settings.load() else {
+            clipSync?.report("Clipboard sync is off: your settings couldn't be read.")
+            return
+        }
+        guard phase == .ready else { return }
+        clipSync?.apply(settings: settings.settings)
+        clipSync?.start()
+        if hotkey?.register() == false { clipSync?.report("The shortcut \(HotkeyManager.sendClipboardLabel) is used by another app.") }
+        await historyModel?.reload()
+        startInboxCleanup()
+    }
+
+    /// Downloaded clip files follow the history retention (days and size); runs now and then daily.
+    private func startInboxCleanup() {
+        inboxCleanup?.cancel()
+        inboxCleanup = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, let settings = self.clipSettings?.settings else { return }
+                let (inbox, keep) = (self.inbox, self.fileWriter?.currentItemId)
+                await Task.detached(priority: .utility) {
+                    inbox.clean(retentionDays: settings.retentionDays, maxBytes: settings.retentionBytes, keeping: keep.map { [$0] } ?? [])
+                }.value
+                try? await Task.sleep(nanoseconds: Self.inboxCleanupInterval)
+            }
         }
     }
 
     /// The app is quitting: do not leave a pasteboard entry that nothing can serve any more.
-    public func prepareToQuit() { clipSync?.prepareToQuit() }
+    public func prepareToQuit() {
+        clipSync?.prepareToQuit()
+        hotkey?.unregister()
+    }
 
     func removeClipboardModels() {
+        inboxCleanup?.cancel()
+        inboxCleanup = nil
         clipSync?.stop()
-        clipSync?.prepareToQuit()
+        prepareToQuit()
         filesSync?.stop()
-        hotkey?.unregister()
         (hotkey, clipSync, clipSettings, historyModel, filesSync, transfers, fileWriter) = (nil, nil, nil, nil, nil, nil, nil)
     }
 }

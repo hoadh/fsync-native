@@ -25,3 +25,24 @@ Branch `macos/phase-04-12` (from main 85f8968), pushed to origin. No core/backen
 - Hotkey Ctrl-Opt-C may clash with other apps (message shown on registration failure).
 - History window has no extra auth (phase 12 security note).
 - Lazy provider waits on the main run loop; events reach it only when the read arrives via the run loop (AppKit callback), which holds for cross-process readers (spike) but not for a read issued inside a main-queue block of our own app.
+
+
+## Round 2 (review round 1 fixes, 8.3/10)
+Tests: FsyncMac `swift test` all targets (core + FsyncMacUITests) 188 tests, 12 skipped (integration), 0 failures; FsyncCoreKit 8/0; build script ok; integration 12/12.
+
+HIGH
+1. Red UI test: device row render padded in test (`.padding(20)`); full run incl. FsyncMacUITests green.
+2. Rapid copies: `ClipboardSync.publish` keeps the newest queued request and re-runs after the current (test: second copy during publish).
+3. TOCTOU: `Request.expected` = changeCount the filter judged; bail if changed before snapshot, after snapshot and before send (tests: stale count, change during read).
+4. `prepareToQuit` now also called synchronously from `applicationShouldTerminate` (it was already reached via bridge shutdown).
+
+MEDIUM
+5/6. `ClipSettingsModel` loads off main (`load()`, `isLoaded`); edits refuse until loaded (auto-load first); on read failure the error is shown and sync is not started. No failing-engine test (engine still serves settings after `stop`).
+7. `RepresentationMapper.Snapshot` read on main, TIFF->PNG in `build` off main; oversized TIFF refused without decoding.
+8. Inbox cleanup at ready, on retentionDays/Bytes change, daily; `InboxDirectory.trim/clean` apply the byte cap (tests).
+9. Copy-back only for text stored in full (`HistoryItem.copyBackText`), footnote explains.
+10. Cancel aborts rest of an offer (not counted as failure). 11. offers cap 20, auto-accept cap 1 GiB.
+12. Run-loop spin in current (common) mode, paste timeout 180 s.
+13. HotkeyManager deinit releases; unregister before replacing.
+LOW: 14 ADR 009 states explicit send skips denylist; 15 skip-reason log private; 16 TransfersModel keeps ended outcomes, reset resolves waiters as cancelled, HistoryModel.reset clears isLoading; 17 acceptPending/copyBack serialized with the enqueue chain.
+File sizes: `ClipboardSync.swift` split (`ClipboardSync+Incoming.swift`); all changed files < 200 lines. EngineBridgeEventsTests.swift (214, pre-existing) untouched.

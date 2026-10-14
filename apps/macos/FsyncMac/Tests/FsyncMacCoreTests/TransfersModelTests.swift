@@ -64,4 +64,32 @@ final class TransfersModelTests: XCTestCase {
         model.reset()
         XCTAssertTrue(model.rows.isEmpty)
     }
+
+    func testWaiterGetsItsOutcomeAfterTheRowIsEvicted() async {
+        let model = TransfersModel()
+        model.handle(Self.event(1, .done, path: "/x"))
+        for id in 2...UInt64(TransfersModel.maxRows + 2) { model.handle(Self.event(id, .started)) }
+        XCTAssertFalse(model.rows.contains { $0.id == 1 })
+        let outcome = await model.waitOutcome(of: 1, timeout: 1)
+        XCTAssertEqual(outcome, .done(path: "/x"))
+    }
+
+    func testResetResolvesRunningTransfersAsCancelled() async {
+        let model = TransfersModel()
+        model.handle(Self.event(7, .progress, done: 1))
+        async let waiting = model.waitOutcome(of: 7, timeout: 5)
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        model.reset()
+        let outcome = await waiting
+        XCTAssertEqual(outcome, .cancelled)
+    }
+
+    func testClearFinishedKeepsOutcomes() async {
+        let model = TransfersModel()
+        model.handle(Self.event(3, .failed, message: "boom"))
+        model.clearFinished()
+        XCTAssertTrue(model.rows.isEmpty)
+        let outcome = await model.waitOutcome(of: 3, timeout: 1)
+        XCTAssertEqual(outcome, .failed("boom"))
+    }
 }

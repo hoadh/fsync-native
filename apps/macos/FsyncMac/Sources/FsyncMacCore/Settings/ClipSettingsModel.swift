@@ -11,19 +11,43 @@ public final class ClipSettingsModel: ObservableObject {
     @Combine.Published public private(set) var settings: Settings
     @Combine.Published public private(set) var errorMessage: String?
 
+    /// False until the stored settings were read; edits are refused before (they would overwrite them).
+    @Combine.Published public private(set) var isLoaded = false
+
     private let engine: FsyncEngineProtocol
     private let onChange: @MainActor (Settings) -> Void
 
-    /// Loads the stored settings, or the engine's defaults when they can't be read.
+    /// Starts with the engine's defaults as placeholders; call `load()` to read the stored settings.
     public init(engine: FsyncEngineProtocol, onChange: @escaping @MainActor (Settings) -> Void = { _ in }) {
         self.engine = engine
         self.onChange = onChange
-        settings = (try? engine.settings()) ?? Settings(
+        settings = Settings(
             clipMode: .auto, retentionDays: 30, retentionBytes: 1 << 30, maxClipBytes: 50 << 20, denylist: [], autoAcceptFiles: false)
+    }
+
+    /// Reads the stored settings off the main actor. On failure the error is shown and edits stay refused.
+    @discardableResult
+    public func load() async -> Bool {
+        let result = await EngineCall.run(engine) { try $0.settings() }
+        switch result {
+        case .success(let stored):
+            settings = stored
+            isLoaded = true
+            errorMessage = nil
+            onChange(stored)
+            return true
+        case .failure(let error):
+            errorMessage = ErrorText.message(for: error, context: .general) ?? "Couldn't read your settings."
+            return false
+        }
     }
 
     /// Applies `edit` to a copy, clamps it to the core's limits and saves it. Reverts on failure.
     public func update(_ edit: (inout Settings) -> Void) async {
+        guard isLoaded else {
+            if await !load() { return }
+            return await update(edit)
+        }
         var next = settings
         edit(&next)
         next.retentionDays = min(max(next.retentionDays, Self.retentionDaysRange.lowerBound), Self.retentionDaysRange.upperBound)

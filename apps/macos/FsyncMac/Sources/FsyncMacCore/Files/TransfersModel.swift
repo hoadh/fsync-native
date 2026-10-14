@@ -33,6 +33,9 @@ public final class TransfersModel: ObservableObject {
     @Combine.Published public private(set) var rows: [TransferRow] = []
     private let engine: FsyncEngineProtocol?
     private var names: [UInt64: String] = [:]
+    /// How transfers ended, kept after their row is gone so a waiter always gets an answer.
+    private var ended: [UInt64: TransferOutcome] = [:]
+    private var endedOrder: [UInt64] = []
 
     public init(engine: FsyncEngineProtocol? = nil) { self.engine = engine }
 
@@ -49,7 +52,10 @@ public final class TransfersModel: ObservableObject {
         row.message = event.message ?? row.message
         if let i = rows.firstIndex(where: { $0.id == row.id }) { rows[i] = row } else {
             rows.insert(row, at: 0)
-            if rows.count > Self.maxRows, let last = rows.lastIndex(where: { !$0.isActive }) { rows.remove(at: last) }
+            if rows.count > Self.maxRows, let last = rows.lastIndex(where: { !$0.isActive }) {
+                if let o = outcome(of: rows[last].id) { remember(o, for: rows[last].id) }
+                rows.remove(at: last)
+            }
         }
     }
 
@@ -59,9 +65,15 @@ public final class TransfersModel: ObservableObject {
         if let i = rows.firstIndex(where: { $0.id == id }) { rows[i].name = name }
     }
 
+    private func remember(_ outcome: TransferOutcome, for id: UInt64) {
+        names[id] = nil
+        if ended.updateValue(outcome, forKey: id) == nil { endedOrder.append(id) }
+        if endedOrder.count > 4 * Self.maxRows { ended[endedOrder.removeFirst()] = nil }
+    }
+
     /// nil while the transfer runs (or is unknown).
     public func outcome(of id: UInt64) -> TransferOutcome? {
-        guard let row = rows.first(where: { $0.id == id }) else { return nil }
+        guard let row = rows.first(where: { $0.id == id }) else { return ended[id] }
         switch row.state {
         case .started, .progress: return nil
         case .done: return .done(path: row.path)
@@ -85,9 +97,14 @@ public final class TransfersModel: ObservableObject {
         _ = await EngineCall.run(engine) { try $0.cancel(transferId: id) }
     }
 
-    public func clearFinished() { rows.removeAll { !$0.isActive } }
+    public func clearFinished() {
+        rows.filter { !$0.isActive }.forEach { if let o = outcome(of: $0.id) { remember(o, for: $0.id) } }
+        rows.removeAll { !$0.isActive }
+    }
 
+    /// Drops everything; transfers still running count as cancelled for whoever waits on them.
     public func reset() {
+        for row in rows { remember(outcome(of: row.id) ?? .cancelled, for: row.id) }
         rows = []
         names = [:]
     }

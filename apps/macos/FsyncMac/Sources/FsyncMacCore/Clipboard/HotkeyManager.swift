@@ -8,8 +8,9 @@ public final class HotkeyManager {
     public static let sendClipboard = (keyCode: UInt32(kVK_ANSI_C), modifiers: UInt32(controlKey | optionKey))
     public static let sendClipboardLabel = "⌃⌥C"
 
-    private var hotKey: EventHotKeyRef?
-    private var handler: EventHandlerRef?
+    // Carbon refs are plain pointers; nonisolated(unsafe) lets deinit release them from any thread.
+    nonisolated(unsafe) private var hotKey: EventHotKeyRef?
+    nonisolated(unsafe) private var handler: EventHandlerRef?
     private let keyCode: UInt32
     private let modifiers: UInt32
     private let action: @MainActor () -> Void
@@ -45,12 +46,16 @@ public final class HotkeyManager {
         return true
     }
 
-    public func unregister() {
+    public func unregister() { release() }
+
+    deinit { release() }  // the Carbon handler holds an unretained pointer to self
+
+    nonisolated private func release() {
         if let hotKey { UnregisterEventHotKey(hotKey) }
         if let handler { RemoveEventHandler(handler) }
         hotKey = nil
         handler = nil
     }
 
-    func fire() { action() }  // callers must `unregister()` before releasing: the handler holds an unretained pointer
+    func fire() { action() }
 }

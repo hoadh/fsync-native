@@ -42,7 +42,7 @@ public struct HistoryView: View {
                     }
                 }
             }
-            Text("Copying again restores the first 200 characters of text clips.").font(.caption).foregroundStyle(.secondary)
+            Text("Copy again is offered for text clips stored in full; longer clips, images and files can't be restored yet.").font(.caption).foregroundStyle(.secondary)
         }
         .padding(16)
         .frame(minWidth: 460, minHeight: 360)
@@ -62,7 +62,7 @@ public struct HistoryView: View {
     }
 
     private func copy(_ item: HistoryItem) -> (() -> Void)? {
-        guard item.kind == .text, let text = item.preview, let sync else { return nil }
-        return { sync.copyBack(text: text) }
+        guard item.copyBackText != nil, let text = item.copyBackText, let sync else { return nil }
+        return { Task { _ = await sync.copyBack(text: text) } }
     }
 }

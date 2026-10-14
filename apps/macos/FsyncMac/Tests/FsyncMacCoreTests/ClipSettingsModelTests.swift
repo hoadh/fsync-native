@@ -9,15 +9,34 @@ final class ClipSettingsModelTests: EngineTestCase {
         return (ClipSettingsModel(engine: engine, onChange: onChange), engine)
     }
 
-    func testLoadsEngineDefaults() throws {
-        let (m, engine) = try model()
+    func testLoadsEngineSettingsOffMainAndMarksLoaded() async throws {
+        var notified: [Settings] = []
+        let (m, engine) = try model { notified.append($0) }
+        XCTAssertFalse(m.isLoaded)
+        let ok = await m.load()
+        XCTAssertTrue(ok)
+        XCTAssertTrue(m.isLoaded)
         XCTAssertEqual(m.settings, try engine.settings())
         XCTAssertEqual(m.settings.clipMode, .auto)
+        XCTAssertEqual(notified, [m.settings])
+    }
+
+    func testEditBeforeLoadLoadsFirstSoStoredSettingsAreNotOverwritten() async throws {
+        let (m, engine) = try model()
+        var stored = try engine.settings()
+        stored.retentionDays = 11
+        try engine.setSettings(settings: stored)
+        await m.update { $0.clipMode = .manual }
+        let now = try engine.settings()
+        XCTAssertEqual(now.retentionDays, 11, "the stored value survives the edit")
+        XCTAssertEqual(now.clipMode, .manual)
     }
 
     func testUpdatePersistsInEngineAndNotifies() async throws {
         var notified: [Settings] = []
         let (m, engine) = try model { notified.append($0) }
+        await m.load()
+        notified = []
         await m.update { $0.clipMode = .manual; $0.retentionDays = 7; $0.maxClipBytes = 10 << 20 }
         let stored = try engine.settings()
         XCTAssertEqual(stored.clipMode, .manual)
@@ -42,6 +61,8 @@ final class ClipSettingsModelTests: EngineTestCase {
     func testUnchangedSettingsAreNotSavedOrAnnounced() async throws {
         var count = 0
         let (m, _) = try model { _ in count += 1 }
+        await m.load()
+        count = 0
         await m.update { _ in }
         XCTAssertEqual(count, 0)
     }

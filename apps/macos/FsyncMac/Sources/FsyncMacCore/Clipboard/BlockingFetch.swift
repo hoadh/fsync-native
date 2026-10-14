@@ -16,7 +16,15 @@ enum BlockingFetch {
         guard Thread.isMainThread else { return work() }
         let slot = Slot<T>()
         DispatchQueue.global(qos: .userInitiated).async { slot.finish(work()) }
-        while !slot.result.done { RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05)) }
+        while !slot.result.done { RunLoop.spin(for: 0.05) }
         return slot.result.value
+    }
+}
+
+extension RunLoop {
+    /// Runs the current run loop briefly in the mode it is in now (event tracking, modal panel or default),
+    /// so timers, events and the menu keep working while a pasteboard provider waits.
+    static func spin(for seconds: TimeInterval) {
+        RunLoop.current.run(mode: RunLoop.current.currentMode ?? .default, before: Date().addingTimeInterval(seconds))
     }
 }

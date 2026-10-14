@@ -17,30 +17,62 @@ public enum RepresentationMapper {
         case tooLarge(bytes: Int)
     }
 
-    /// What the pasteboard holds now, as a clip. Files take precedence over text.
-    public static func read(_ pb: NSPasteboard, maxBytes: UInt64) -> ClipRead {
+    /// The raw bytes of what the pasteboard holds, read on the main thread with no conversion. `build`
+    /// does the expensive part (TIFF to PNG) and is safe to run anywhere.
+    public struct Snapshot: Sendable {
+        let files: [URL]
+        let text: String?
+        let html: Data?
+        let rtf: Data?
+        let png: Data?
+        let tiff: Data?
+
+        /// A TIFF this much over the limit is refused without decoding it (PNG is rarely under 1/16).
+        static let tiffRefusalFactor: UInt64 = 16
+
+        public func build(maxBytes: UInt64) -> ClipRead {
+            if !files.isEmpty {
+                let names = files.map(\.lastPathComponent).joined(separator: ", ")
+                return .clip(LocalClip(reps: [], files: files.map(\.path), preview: String(names.prefix(RepresentationMapper.previewChars)), sensitive: false))
+            }
+            var reps: [Rep] = []
+            var preview: String?
+            if let text, !text.isEmpty {
+                reps.append(Rep(mime: mimeText, data: Data(text.utf8)))
+                preview = String(text.prefix(RepresentationMapper.previewChars))
+                if let html { reps.append(Rep(mime: mimeHtml, data: html)) }
+                if let rtf { reps.append(Rep(mime: mimeRtf, data: rtf)) }
+            } else if let png {
+                reps.append(Rep(mime: mimePng, data: png))
+                preview = "Image"
+            } else if let tiff {
+                if UInt64(tiff.count) > maxBytes &* Self.tiffRefusalFactor { return .tooLarge(bytes: tiff.count) }
+                guard let converted = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return .empty }
+                reps.append(Rep(mime: mimePng, data: converted))
+                preview = "Image"
+            }
+            guard !reps.isEmpty else { return .empty }
+            let total = reps.reduce(0) { $0 + $1.data.count }
+            if UInt64(total) > maxBytes { return .tooLarge(bytes: total) }
+            return .clip(LocalClip(reps: reps, files: [], preview: preview, sensitive: false))
+        }
+    }
+
+    /// Files take precedence over text, text over images. Image bytes are read only when there is no text.
+    public static func snapshot(_ pb: NSPasteboard) -> Snapshot {
         let files = fileURLs(pb)
-        if !files.isEmpty {
-            let names = files.map(\.lastPathComponent).joined(separator: ", ")
-            return .clip(LocalClip(reps: [], files: files.map(\.path), preview: String(names.prefix(previewChars)), sensitive: false))
-        }
-        var reps: [Rep] = []
-        var preview: String?
+        guard files.isEmpty else { return Snapshot(files: files, text: nil, html: nil, rtf: nil, png: nil, tiff: nil) }
+        func data(_ type: NSPasteboard.PasteboardType) -> Data? { pb.data(forType: type).flatMap { $0.isEmpty ? nil : $0 } }
         if let text = pb.string(forType: .string), !text.isEmpty {
-            reps.append(Rep(mime: mimeText, data: Data(text.utf8)))
-            preview = String(text.prefix(previewChars))
+            return Snapshot(files: [], text: text, html: data(.html), rtf: data(.rtf), png: nil, tiff: nil)
         }
-        if !reps.isEmpty {
-            if let html = pb.data(forType: .html), !html.isEmpty { reps.append(Rep(mime: mimeHtml, data: html)) }
-            if let rtf = pb.data(forType: .rtf), !rtf.isEmpty { reps.append(Rep(mime: mimeRtf, data: rtf)) }
-        } else if let png = pngData(pb) {
-            reps.append(Rep(mime: mimePng, data: png))
-            preview = "Image"
-        }
-        guard !reps.isEmpty else { return .empty }
-        let total = reps.reduce(0) { $0 + $1.data.count }
-        if UInt64(total) > maxBytes { return .tooLarge(bytes: total) }
-        return .clip(LocalClip(reps: reps, files: [], preview: preview, sensitive: false))
+        let png = data(.png)
+        return Snapshot(files: [], text: nil, html: nil, rtf: nil, png: png, tiff: png == nil ? data(.tiff) : nil)
+    }
+
+    /// What the pasteboard holds now, as a clip (reads and converts on the calling thread).
+    public static func read(_ pb: NSPasteboard, maxBytes: UInt64) -> ClipRead {
+        snapshot(pb).build(maxBytes: maxBytes)
     }
 
     /// Regular files only; folders are out of scope for the MVP.
@@ -50,13 +82,6 @@ public enum RepresentationMapper {
             var isDir: ObjCBool = false
             return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) && !isDir.boolValue
         }
-    }
-
-    /// PNG bytes for a copied image: PNG as is, TIFF (screenshots, most apps) converted.
-    static func pngData(_ pb: NSPasteboard) -> Data? {
-        if let png = pb.data(forType: .png), !png.isEmpty { return png }
-        guard let tiff = pb.data(forType: .tiff), let rep = NSBitmapImageRep(data: tiff) else { return nil }
-        return rep.representation(using: .png, properties: [:])
     }
 
     /// Pasteboard type for a representation we can apply, nil for anything else.
@@ -77,3 +102,6 @@ public enum RepresentationMapper {
         return data
     }
 }
+
+// LocalClip is generated (not marked Sendable) but only holds value types (Data, String, arrays).
+extension RepresentationMapper.ClipRead: @unchecked Sendable {}

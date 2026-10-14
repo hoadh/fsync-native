@@ -73,6 +73,13 @@ Data flow out: changeCount → read types → SensitiveFilter → Representation
 - Inbox cleanup runs when the engine becomes ready (retention days, current clip kept), not on a timer.
 - `run-fsync-mac-integration.sh` runs test classes in two groups with a backend restart in between (dev backend allows 20 OTP codes/hour/IP) and filters on the new classes.
 
+- Round 2 (review): settings are read off the main actor and clipboard sync starts only after a successful
+  read (writes are refused until then). History copy-back is offered only for text stored in full (the core
+  keeps a 200-char preview). Auto-accept capped at 1 GiB per offer, pending offers capped at 20, cancel aborts
+  the rest of an offer, paste timeout 180 s. Inbox cleanup runs at start, on retention change and daily, and
+  applies the byte cap. Publishing is serialized with the newest copy queued, and the pasteboard changeCount
+  is re-checked before read and before send.
+
 ## Success Criteria
 - Text/rich/image round-trip mac↔mac & mac↔win; Finder paste of remote file (lazy or eager per ADR); 0 concealed items synced in filter test suite; idle CPU < 0.5%.
 
