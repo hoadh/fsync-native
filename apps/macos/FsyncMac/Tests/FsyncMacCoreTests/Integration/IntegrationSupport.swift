@@ -18,7 +18,7 @@ class IntegrationTestCase: EngineTestCase {
     }
 
     override func tearDown() async throws {
-        procs.forEach { $0.terminate() }
+        for p in procs { await p.terminateAndWait() }
         procs = []
     }
 
@@ -73,7 +73,7 @@ class IntegrationTestCase: EngineTestCase {
         _ = try await backend.cliLogin(name, email: email)
         let offer = try spawn(name, ["pair", "offer", "--yes"])
         let offerEvent = try await offer.waitEvent("offer")
-        let code = try XCTUnwrap(offerEvent["code"] as? String)
+        let code = try XCTUnwrap(offerEvent.string("code"))
         let pairing = try XCTUnwrap(bridge.pairingModel)
         await pairing.join(code)
         let peer = try await sasPeer(pairing)

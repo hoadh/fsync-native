@@ -86,17 +86,6 @@ enum HarnessError: Error, CustomStringConvertible {
     }
 }
 
-/// One JSON line printed by `fsync-cli`. The values come from `JSONSerialization` (NSString, NSNumber,
-/// NSArray, NSDictionary) and are never mutated after parsing, so sharing them across isolation domains is safe.
-/// Keep it immutable: do not add mutating members.
-struct CliEvent: @unchecked Sendable {
-    private let fields: [String: Any]
-
-    init(_ fields: [String: Any]) { self.fields = fields }
-
-    subscript(key: String) -> Any? { fields[key] }
-}
-
 /// A running `fsync-cli`; stdout is parsed as JSON lines.
 final class CliProcess: @unchecked Sendable {
     private let process = Process()
@@ -139,7 +128,7 @@ final class CliProcess: @unchecked Sendable {
 
     func lastEvent(_ name: String) -> CliEvent? {
         lock.lock(); defer { lock.unlock() }
-        return lines.last { $0["event"] as? String == name }
+        return lines.last { $0.string("event") == name }
     }
 
     /// Waits for the first `name` event.
@@ -169,6 +158,14 @@ final class CliProcess: @unchecked Sendable {
     }
 
     func terminate() { if process.isRunning { process.terminate() } }
+
+    /// Terminates the process and waits (bounded) until it has exited, so it can't outlive the test.
+    func terminateAndWait(timeout: Double = 5) async {
+        terminate()
+        let deadline = Date().addingTimeInterval(timeout)
+        while exitCode == nil, Date() < deadline { try? await Task.sleep(nanoseconds: 20_000_000) }
+        if exitCode == nil, process.isRunning { kill(process.processIdentifier, SIGKILL) }
+    }
 }
 
 /// Polls `condition` every 100 ms until it holds or `timeout` passes. Returns whether it held.

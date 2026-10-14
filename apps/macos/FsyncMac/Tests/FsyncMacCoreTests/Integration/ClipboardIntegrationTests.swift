@@ -42,7 +42,7 @@ final class ClipboardIntegrationTests: IntegrationTestCase {
         let watcher = try await watch("k1")
         copy("hello from the mac", to: r.pb)
         let event = try await watcher.waitEvent("clip", timeout: 30)
-        XCTAssertEqual(event["text"] as? String, "hello from the mac")
+        XCTAssertEqual(event.string("text"), "hello from the mac")
         let history = try XCTUnwrap(r.bridge.historyModel)
         await history.reload()
         XCTAssertEqual(history.items.first?.preview, "hello from the mac")
@@ -97,7 +97,7 @@ final class ClipboardIntegrationTests: IntegrationTestCase {
         try await Task.sleep(nanoseconds: 1_500_000_000)
         copy("not a secret", to: r.pb)
         let event = try await watcher.waitEvent("clip", timeout: 30)
-        XCTAssertEqual(event["text"] as? String, "not a secret", "the concealed copy reached the other device")
+        XCTAssertEqual(event.string("text"), "not a secret", "the concealed copy reached the other device")
         let history = try XCTUnwrap(r.bridge.historyModel)
         await history.reload()
         XCTAssertEqual(history.items.compactMap(\.preview), ["not a secret"])
@@ -115,7 +115,7 @@ final class ClipboardIntegrationTests: IntegrationTestCase {
         XCTAssertNil(watcher.lastEvent("clip"), "manual mode sent on its own")
         await r.sync.publishCurrent()
         let event = try await watcher.waitEvent("clip", timeout: 30)
-        XCTAssertEqual(event["text"] as? String, "only when asked")
+        XCTAssertEqual(event.string("text"), "only when asked")
         // One engine per data dir (core `engine.lock`): the watcher must be gone before `clip put`.
         try await watcher.expectExit(0, timeout: 15)
 
