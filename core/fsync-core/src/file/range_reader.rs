@@ -17,7 +17,7 @@ use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
-use tokio::sync::OnceCell;
+use tokio::sync::{OnceCell, Semaphore};
 use uuid::Uuid;
 
 const WINDOW: u64 = 4 << 20;
@@ -45,13 +45,23 @@ pub struct RangeReader {
     file_id: u32,
     exp: Expect,
     state: Mutex<State>,
+    /// Speculative fetches allowed at once towards this peer (shared by all its readers).
+    budget: Arc<Semaphore>,
     /// In-flight prefetches; dropping the set (on `shutdown`) aborts them.
     prefetch: Mutex<tokio::task::JoinSet<()>>,
 }
 
 impl RangeReader {
-    pub fn new(sh: Arc<Shared>, from: NodeId, item: Uuid, file_id: u32, exp: Expect) -> Arc<Self> {
+    pub fn new(
+        sh: Arc<Shared>,
+        from: NodeId,
+        item: Uuid,
+        file_id: u32,
+        exp: Expect,
+        budget: Arc<Semaphore>,
+    ) -> Arc<Self> {
         Arc::new(Self {
+            budget,
             sh,
             from,
             item,
@@ -108,7 +118,7 @@ impl RangeReader {
             let Ok(mut s) = self.state.lock() else {
                 return;
             };
-            if offset == s.last_end || offset == 0 {
+            if offset == s.last_end {
                 s.run = s.run.saturating_add(1);
             } else {
                 s.run = 0;
@@ -130,9 +140,14 @@ impl RangeReader {
         };
         while set.try_join_next().is_some() {}
         for idx in missing {
+            // Foreground reads must never queue behind speculation: no permit, no prefetch.
+            let Ok(permit) = self.budget.clone().try_acquire_owned() else {
+                break;
+            };
             let me = self.clone();
             set.spawn(async move {
                 let _ = me.window(idx).await;
+                drop(permit);
             });
         }
     }
