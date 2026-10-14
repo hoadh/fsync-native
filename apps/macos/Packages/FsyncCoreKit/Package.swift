@@ -8,8 +8,10 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [
         .library(name: "FsyncCoreKit", targets: ["FsyncCoreKit"]),
+        .library(name: "TrustResetPrompt", targets: ["TrustResetPrompt"]),
     ],
     targets: [
+        // FsyncCoreKit: Rust core bindings.
         .binaryTarget(name: "FsyncFFI", path: "FsyncFFI.xcframework"),
         .target(
             name: "FsyncCoreKit",
@@ -23,5 +25,9 @@ let package = Package(
             ]
         ),
         .testTarget(name: "FsyncCoreKitTests", dependencies: ["FsyncCoreKit"]),
+
+        // TrustResetPrompt: SwiftUI trust-reset prompt over FsyncCoreKit.
+        .target(name: "TrustResetPrompt", dependencies: ["FsyncCoreKit"]),
+        .testTarget(name: "TrustResetPromptTests", dependencies: ["TrustResetPrompt", "FsyncCoreKit"]),
     ]
 )
