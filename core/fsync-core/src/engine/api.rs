@@ -175,8 +175,9 @@ impl Engine {
             size: f.size,
             hash: f.hash,
         };
+        let budget = g.budget(r.from);
         Ok(g.get_or_insert_with((item, file_id), || {
-            RangeReader::new(self.sh.clone(), r.from, item, file_id, exp)
+            RangeReader::new(self.sh.clone(), r.from, item, file_id, exp, budget)
         }))
     }
 }

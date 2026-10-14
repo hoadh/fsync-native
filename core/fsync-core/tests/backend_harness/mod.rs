@@ -17,48 +17,13 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use testcontainers::{
-    ContainerAsync, GenericImage, ImageExt,
-    core::{IntoContainerPort, WaitFor},
-    runners::AsyncRunner,
-};
-use tokio::sync::OnceCell;
 use uuid::Uuid;
 
-static CONTAINER_ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+pub mod proxy;
 
-extern "C" fn remove_container() {
-    if let Some(id) = CONTAINER_ID.get() {
-        let _ = std::process::Command::new("docker")
-            .args(["rm", "-f", "-v", id])
-            .stdout(std::process::Stdio::null())
-            .status();
-    }
-}
-
-static PG: OnceCell<(ContainerAsync<GenericImage>, String)> = OnceCell::const_new();
-
-async fn admin_url() -> &'static str {
-    let (_c, url) = PG
-        .get_or_init(|| async {
-            let c = GenericImage::new("postgres", "17")
-                .with_exposed_port(5432.tcp())
-                .with_wait_for(WaitFor::message_on_stderr(
-                    "database system is ready to accept connections",
-                ))
-                .with_env_var("POSTGRES_PASSWORD", "test")
-                .start()
-                .await
-                .expect("start postgres container (is Docker running?)");
-            let _ = CONTAINER_ID.set(c.id().to_string());
-            // SAFETY: registers a plain `extern "C" fn` with no captured state.
-            unsafe { libc::atexit(remove_container) };
-            let port = c.get_host_port_ipv4(5432).await.expect("pg port");
-            (c, format!("postgres://postgres:test@127.0.0.1:{port}"))
-        })
-        .await;
-    url
-}
+// One Postgres helper for both crates (container start, port-publish retry, atexit cleanup).
+#[path = "../../../../backend/tests/common/pg.rs"]
+mod pg;
 
 #[derive(Default)]
 pub struct CaptureSender(pub Mutex<HashMap<String, String>>);
@@ -78,7 +43,7 @@ pub struct Backend {
 
 impl Backend {
     pub async fn start() -> Self {
-        let admin = admin_url().await;
+        let admin = pg::admin_url().await;
         let name = format!("t_{}", Uuid::new_v4().simple());
         let mut conn = {
             let mut attempt = 0;

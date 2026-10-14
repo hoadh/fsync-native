@@ -89,12 +89,20 @@ docker exec "$PG_NAME" pg_isready -U postgres -d fsync >/dev/null || fail "postg
 log "backend (dev mode)"
 API_PORT="$(free_port)"
 API="http://127.0.0.1:$API_PORT"
-DATABASE_URL="postgres://postgres:e2e@127.0.0.1:$PGPORT/fsync" BIND_ADDR="127.0.0.1:$API_PORT" \
-  FSYNC_DEV_MODE=1 RUST_LOG="fsync_backend=debug,info" NO_COLOR=1 \
-  "$BACKEND" >"$WORK/backend.log" 2>&1 &
-PIDS+=($!)
-for _ in $(seq 1 100); do curl -fs "$API/health" >/dev/null 2>&1 && break; sleep 0.2; done
-curl -fs "$API/health" >/dev/null || fail "backend not healthy"
+BACKEND_PID=""
+# Dev backend on a fixed port. Restarting it clears its in-memory OTP rate limit (20 sign-in codes per
+# hour per IP), which one run of all test classes would exceed.
+start_backend() {
+  [[ -n "$BACKEND_PID" ]] && { kill "$BACKEND_PID" 2>/dev/null || true; wait "$BACKEND_PID" 2>/dev/null || true; }
+  DATABASE_URL="postgres://postgres:e2e@127.0.0.1:$PGPORT/fsync" BIND_ADDR="127.0.0.1:$API_PORT" \
+    FSYNC_DEV_MODE=1 RUST_LOG="fsync_backend=debug,info" NO_COLOR=1 \
+    "$BACKEND" >>"$WORK/backend.log" 2>&1 &
+  BACKEND_PID=$!
+  PIDS+=($BACKEND_PID)
+  for _ in $(seq 1 100); do curl -fs "$API/health" >/dev/null 2>&1 && break; sleep 0.2; done
+  curl -fs "$API/health" >/dev/null || fail "backend not healthy"
+}
+start_backend
 
 log "relay"
 "$SPIKE" relay "$(free_port)" >"$WORK/relay.log" 2>&1 &
@@ -111,10 +119,14 @@ log "swift test (integration)"
 : >"$WORK/swift-test.log"
 tail -f "$WORK/swift-test.log" &
 PIDS+=($!)
-swift test --package-path "$ROOT/apps/macos/FsyncMac" --filter FsyncMacIntegrationTests >>"$WORK/swift-test.log" 2>&1 &
-SWIFT_PID=$!
-PIDS+=($SWIFT_PID)
-wait "$SWIFT_PID" || { sleep 0.5; fail "swift test failed"; }
+# Test classes in groups of at most 8 sign-ins each (see start_backend).
+for filter in "ClipboardIntegrationTests" "FilesIntegrationTests|FsyncMacIntegrationTests"; do
+  [[ "$filter" == "ClipboardIntegrationTests" ]] || start_backend
+  swift test --package-path "$ROOT/apps/macos/FsyncMac" --filter "$filter" >>"$WORK/swift-test.log" 2>&1 &
+  SWIFT_PID=$!
+  PIDS+=($SWIFT_PID)
+  wait "$SWIFT_PID" || { sleep 0.5; fail "swift test failed ($filter)"; }
+done
 sleep 0.5
 grep -Eq "Executed [1-9][0-9]* tests?, with 0 failures" "$WORK/swift-test.log" || fail "no integration tests ran"
 grep -Eq "[1-9][0-9]* tests? skipped" "$WORK/swift-test.log" && fail "integration tests were skipped"

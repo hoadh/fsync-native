@@ -29,6 +29,11 @@ pub struct EngineConfig {
     #[cfg(any(test, feature = "test-hooks"))]
     #[doc(hidden)]
     pub serve_hook: Option<ServeHook>,
+    /// Test hook (feature `test-hooks`): the sender waits this long before answering each file/1
+    /// request, which stands in for one network round trip.
+    #[cfg(any(test, feature = "test-hooks"))]
+    #[doc(hidden)]
+    pub serve_delay: Option<Duration>,
 }
 
 impl Default for EngineConfig {
@@ -43,6 +48,8 @@ impl Default for EngineConfig {
             read_timeout: Duration::from_secs(30),
             #[cfg(any(test, feature = "test-hooks"))]
             serve_hook: None,
+            #[cfg(any(test, feature = "test-hooks"))]
+            serve_delay: None,
         }
     }
 }

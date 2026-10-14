@@ -26,6 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Stops the engine off the main thread before quitting (it can block for seconds).
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // First, synchronously: a lazy file entry on the pasteboard cannot be served once we are gone.
+        MainActor.assumeIsolated { AppRuntime.bridge.prepareToQuit() }
         Task { @MainActor in
             await AppRuntime.bridge.shutdown()
             NSApp.reply(toApplicationShouldTerminate: true)

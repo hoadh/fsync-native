@@ -16,6 +16,17 @@ errors as `FsyncException.<Case>`); C# specifics in ADR 008.
 - Releasing the last reference to the engine stops it (blocks up to ~5 s). Call `stop()` first.
 - Key material (`device_secret`, `history_key`) comes from the app's Keychain / DPAPI. Session
   tokens are persisted by the app (`on_session_changed`), never by core.
+- `start()` takes an exclusive lock on `<data_dir>/engine.lock`; a second engine on the same data
+  dir fails with `Invalid("another fsync engine is already running on this data directory")`. The
+  lock is released by `stop()` or when the engine is dropped.
+- `logout()` takes the refresh token first, then clears tokens, presence and pinned trust. Network
+  errors are not surfaced (local ones are). Revocation (whole session family) is tried once inline
+  (bounded to 3 s), then retried in the background (5 s doubling to 5 min) while the engine lives.
+  The refresh token is never persisted by core: if the app quits first, it stays valid until its
+  30-day expiry.
+- `on_session_changed` delivers each rotated token pair outside core's token lock. Do not call
+  `logout()` from it and block on the result. After `logout()` returns, no session callback from a
+  refresh that began earlier is delivered.
 
 ## Object
 ```

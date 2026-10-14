@@ -12,7 +12,7 @@ struct FsyncMacApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuPopover(bridge: bridge, openMain: showMain, openSettings: showSettings)
+            MenuPopover(bridge: bridge, openMain: showMain, openSettings: showSettings, openHistory: showHistory)
         } label: {
             Image(systemName: bridge.anyPeerOnline ? "doc.on.clipboard.fill" : "doc.on.clipboard")
                 .onReceive(bridge.$phase) { phase in
@@ -33,6 +33,14 @@ struct FsyncMacApp: App {
             RootView(bridge: bridge)
         }
 
+        Window("Clipboard history", id: "history") {
+            if let history = bridge.historyModel, bridge.phase == .ready {
+                HistoryView(history: history, sync: bridge.clipSync)
+            } else {
+                Text("Sign in to see your history.").padding(40)
+            }
+        }
+
         Settings { SettingsView(bridge: bridge) }
     }
 
@@ -41,6 +49,11 @@ struct FsyncMacApp: App {
         // SettingsLink needs macOS 14 and a view hierarchy; the responder-chain action works from a menu on both.
         let name = if #available(macOS 14, *) { "showSettingsWindow:" } else { "showPreferencesWindow:" }
         NSApp.sendAction(Selector(name), to: nil, from: nil)
+    }
+
+    private func showHistory() {
+        openWindow(id: "history")
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func showMain() {
