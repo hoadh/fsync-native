@@ -10,13 +10,14 @@ STACK_DIR="${STACK_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 BACKUP_DIR="${BACKUP_DIR:-$STACK_DIR/backups}"
 KEEP_DAYS="${KEEP_DAYS:-14}"
 cd "$STACK_DIR"
+if docker info >/dev/null 2>&1; then D=(docker); else D=(sudo -n docker); fi
 mkdir -p "$BACKUP_DIR"
 chmod 700 "$BACKUP_DIR"
 
 out="$BACKUP_DIR/fsync-$(date -u +%Y%m%dT%H%M%SZ).dump"
 tmp="$out.partial"
 trap 'rm -f "$tmp"' EXIT
-docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$tmp"
+"${D[@]}" compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$tmp"
 # A valid custom-format archive starts with the "PGDMP" magic; an empty/failed dump does not.
 [ "$(head -c 5 "$tmp")" = "PGDMP" ] || { echo "backup failed: not a pg_dump archive" >&2; exit 1; }
 mv "$tmp" "$out"
