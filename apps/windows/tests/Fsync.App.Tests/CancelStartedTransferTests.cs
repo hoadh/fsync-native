@@ -1,3 +1,4 @@
+using Fsync.App.Bridge;
 using Fsync.App.Clipboard;
 using Fsync.App.Services;
 using Fsync.Core;
@@ -82,7 +83,7 @@ public sealed class CancelStartedTransferTests : IDisposable
     public async Task AFailingSecondStartCancelsTheFirstTransfer()
     {
         await _h.Bridge.InitializeAsync();
-        _h.Engine.OnFetchFileTo = (_, fileId, _) => fileId == 0 ? 44 : throw new FsyncException.Network("down");
+        _h.Engine.OnFetchFileTo = (_, fileId, _) => fileId == 0 ? 44UL : throw new FsyncException.Network("down");
         await Assert.ThrowsAnyAsync<FsyncException>(() => _svc.DownloadAsync(Clip(2), CancellationToken.None));
         Assert.Equal([44UL], await CancelledEventually(1));
     }
