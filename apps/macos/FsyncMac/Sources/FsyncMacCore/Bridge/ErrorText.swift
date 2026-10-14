@@ -19,7 +19,7 @@ public enum ErrorText {
         case .Auth, .ReauthRequired:
             // During sign-in a rejected code can come back as Auth.
             return context == .login ? invalidText(context) : signInAgain
-        case .Invalid: return invalidText(context)
+        case .Invalid, .EngineAlreadyRunning: return invalidText(context)
         case .NotFound: return "This changed. Review it again."
         case .PeerOffline: return "That device is offline."
         case .HistoryKeyMismatch: return "The saved history belongs to a different key."
