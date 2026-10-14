@@ -24,6 +24,7 @@ LLVM clang for ARM64 (`ring`; the script also looks in `%ProgramFiles%\LLVM\bin`
 
 ```powershell
 scripts/build-windows-dll.ps1                        # x64 + ARM64 DLLs + regenerated C#
+                                                     # (the DLLs are gitignored: rebuild them whenever Generated/fsync_ffi.cs changes, or record decoding fails)
 dotnet test apps/windows/tests/Fsync.CoreBindings.Tests -c Release
 dotnet test apps/windows/tests/Fsync.App.Tests -c Release
 dotnet test apps/windows/Fsync.sln                    # all tests; clipboard tests use the real clipboard

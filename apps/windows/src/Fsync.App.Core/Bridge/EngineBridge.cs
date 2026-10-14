@@ -130,14 +130,6 @@ public sealed partial class EngineBridge : ObservableObject, IDisposable
         await GoOnlineAsync();
     }
 
-    public async Task LogoutAsync()
-    {
-        await LogoutKeepingRevokeAsync();
-        _secrets.ClearSession();
-        Phase = AccountPhase.SignedOut;
-        DevicesChanged?.Invoke();
-    }
-
     /// <summary>After the user confirmed: move the old history aside and start again.</summary>
     public async Task ResetHistoryAsync()
     {

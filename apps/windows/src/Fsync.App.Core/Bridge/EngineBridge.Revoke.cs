@@ -7,8 +7,28 @@ namespace Fsync.App.Bridge;
 public sealed partial class EngineBridge
 {
     /// <summary>
-    /// Sign-out half that talks to the backend. Order matters: persist the pending revoke BEFORE
-    /// <c>LogoutConfirmed</c>, so a quit during the call still leaves a retry for the next launch.
+    /// Signs out; does not throw on backend or secret-store trouble. Whatever happens while talking to the backend or the secret store, the local session
+    /// is cleared: the pending revoke (if it was saved) is what retries the server side.
+    /// </summary>
+    public async Task LogoutAsync()
+    {
+        try { await LogoutKeepingRevokeAsync(); }
+        finally
+        {
+            try { _secrets.ClearSession(); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
+            {
+                // Tokens stay on disk but are revoked or queued for revoke; the next launch lands signed out on Auth.
+                AppLog.Warn($"bridge: could not clear the session: {e.GetType().Name}");
+            }
+            Phase = AccountPhase.SignedOut;
+            DevicesChanged?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// Backend half. Order matters: persist the pending revoke BEFORE <c>LogoutConfirmed</c>, so a quit
+    /// during the call still leaves a retry for the next launch. 
     /// </summary>
     private async Task LogoutKeepingRevokeAsync()
     {
@@ -16,18 +36,19 @@ public sealed partial class EngineBridge
         await Task.Run(() =>
         {
             var saved = SavePendingRevoke();
-            if (engine is null)
-            {
-                // No engine to log out with (boot failed): revoke directly.
-                if (saved is not null) RunPendingRevoke();
-                return;
-            }
             try
             {
+                if (engine is null)
+                {
+                    // No engine to log out with (boot failed): revoke directly.
+                    if (saved is not null) RunPendingRevoke();
+                    return;
+                }
                 // Only drop the entry this sign-out saved; a newer one stays for the next launch.
+                // A failed settle is harmless: the retry gets 401, which counts as revoked.
                 if (engine.LogoutConfirmed() && saved is not null) _secrets.SettlePendingRevoke(saved, null);
             }
-            catch (FsyncException e)
+            catch (Exception e)
             {
                 AppLog.Warn($"bridge: logout failed: {e.GetType().Name}");
             }
@@ -51,17 +72,11 @@ public sealed partial class EngineBridge
         }
     }
 
-    /// <summary>The newest refresh token the store holds (every rotation is stored by the delegate).</summary>
+    /// <summary>Keeps the newest refresh token (every rotation is stored by the delegate). Null if it could not.</summary>
     private PendingRevoke? SavePendingRevoke()
     {
-        try
-        {
-            if (_secrets.Session is not { } session) return null;
-            var pending = new PendingRevoke(session.refresh, _settings.ApiBase, DateTimeOffset.UtcNow);
-            _secrets.SavePendingRevoke(pending);
-            return pending;
-        }
-        catch (Exception e) when (e is IOException or System.Security.Cryptography.CryptographicException)
+        try { return _secrets.SavePendingRevokeFromSession(_settings.ApiBase, DateTimeOffset.UtcNow); }
+        catch (Exception e)
         {
             AppLog.Warn($"bridge: could not keep a pending revoke: {e.GetType().Name}");
             return null;

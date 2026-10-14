@@ -20,6 +20,22 @@ public sealed partial class SecretStore
     }
 
     /// <summary>
+    /// Reads the newest session and saves its refresh token as the pending revoke under ONE lock, so a
+    /// rotation arriving on the callback thread cannot slip in between. Null when signed out.
+    /// </summary>
+    public PendingRevoke? SavePendingRevokeFromSession(string apiBase, DateTimeOffset now)
+    {
+        lock (_lock)
+        {
+            if (_data.Refresh is not { } refresh) return null;
+            var pending = new PendingRevoke(refresh, apiBase, now);
+            _data.PendingRevoke = pending;
+            Save();
+            return pending;
+        }
+    }
+
+    /// <summary>
     /// After a retry of <paramref name="retried"/>: deletes the entry (<paramref name="replacement"/> null) or
     /// replaces it, but only while it still holds the same refresh token. A newer token is kept untouched.
     /// </summary>
