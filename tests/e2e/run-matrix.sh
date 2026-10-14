@@ -46,7 +46,7 @@ run_cell() { # scenario relay -> appends a summary row
   local wd=$!
   set +m
   # Ctrl-C: the cell has its own process group (set -m), so forward the signal to it.
-  trap 'kill -TERM -- "-$pid" 2>/dev/null; kill "$wd" 2>/dev/null' INT TERM
+  trap 'kill -TERM -- "-$pid" 2>/dev/null; kill "$wd" 2>/dev/null; wait "$pid" 2>/dev/null; exit 130' INT TERM
   wait "$pid"; rc=$?
   trap - INT TERM
   kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
