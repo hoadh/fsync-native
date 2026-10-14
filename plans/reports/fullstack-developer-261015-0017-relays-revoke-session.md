@@ -31,3 +31,10 @@ Commits: `45bc673` feat(core) relays + logout_confirmed + revoke_session; `d806b
 - macOS `AppConfig` still has a single `relayUrl`; multi-relay host wiring is for S6.
 - FFI test leaves some temp dirs in /tmp on success.
 - This report is at the worktree path (plans/reports/ inside the worktree, uncommitted): writes to the main checkout path were refused by the worktree isolation guard. Copy it to /Users/alex/Code/fsync-native/plans/reports/ if needed.
+
+## Review fixes
+- H1: `relay_urls` moved to the end of `EngineConfig` (default `[]`); bindings and xcframework regenerated (Swift init unchanged for callers). docs/ffi-contract.md now says additive for Swift only; C# hosts must regenerate `fsync_ffi.cs`, update the positional `EngineConfig` call, and ship the DLL together with the new binding (old binding against a new DLL fails at record decode). apps/windows untouched.
+- Note for plan item S5 (lead to add): "S5: regenerate fsync_ffi.cs and update the positional EngineConfig call at apps/windows/src/Fsync.App.Core/Bridge/EngineBridge.cs:57 (relay_urls is the last field); ship binding and DLL together."
+- M1: `AppSecrets.settlePendingRevoke(retried:replacement:)` re-reads the entry and deletes or updates it only if the refresh token still equals the retried one; it and `savePendingRevoke` share a short lock (no network call held). `PendingRevokeResume` uses it on every outcome. New test `testNewerPendingSavedDuringRetryIsKept` (token B saved mid-retry survives both success and Network failure).
+- Low: CLI `--relay` help now says to repeat or comma-separate.
+- Gates: fmt, clippy -D warnings clean; cargo test fsync-core/ffi/cli pass (logout_revocation and e2e_pair_flow hit the Postgres container-start flake `connect admin ... EOF` once, then passed on rerun; one logout_revocation run hung at 0 CPU and was killed, rerun passed); swift test FsyncMac 207 tests 0 failures; run-fsync-mac-integration.sh PASS.
