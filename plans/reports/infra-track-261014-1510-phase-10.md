@@ -58,3 +58,17 @@ Then `sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload
 3. Second relay region location (US vs EU) and SG VPS?
 4. Enable QAD (needs root-readable Caddy cert dir + udp/7842)?
 5. Is the GitHub repo allowed macOS/Windows runner minutes for every PR?
+
+## Review fixes round (code-reviewer 7.5/10), 2026-10-14
+- H1 bootstrap-vps.sh: requires `--dedicated`; aborts on non-fsync containers or a listener on 80/443.
+- H2 compose network pinned (`FSYNC_SUBNET`, default 172.29.0.0/24, free on cms-node: docker nets 172.17-19, VPC 172.26.0.0/20); TRUSTED_PROXIES = subnet + 127.0.0.0/8. New `CHECK_PROXY_TRUST=1` smoke step (14 unauth presence sockets with distinct X-Forwarded-For; passes only if the peer is trusted). Runs in deploy.sh on-host and in the e2e. Passed on cms-node via docker-proxy, which is the same loopback path host Caddy uses. Not testable here: real Caddy XFF (snippet not applied).
+- Cloudflare: README/.env.example/phase file now say api-fsync DNS-only; Cloudflare-ranges + hops=2 only documented as alternative.
+- M1 QAD mounts only the relay host cert dir (`RELAY_CERT_DIR`, replaces RELAY_CERT_VOLUME). M2 relay is uid 10001 unless `RELAY_USER=0` (QAD only; verified `user=10001:10001` on cms-node).
+- M3 `deploy.sh --install-backup-cron` (writes only /etc/cron.d/fsync-backup; installed on cms-node, daily 03:15), warning when not scheduled, free-disk check (1 GiB), umask 077, `restore-postgres.sh` (user/db from container env).
+- M4 remote flock, atomic .env (temp + mv, grep re-terminates last line). M5 `compose.yml.prev` kept and swapped on `--rollback`; rollback rehearsed on cms-node and rolled forward again; migrations documented forward-only.
+- M6 ci.yml `changes` job gates macos/windows by path (dispatch = all); deploy-stack.yml uses buildx gha layer cache + `SKIP_BUILD=1`. Third-party actions pinned by SHA (rust-toolchain needs explicit `toolchain: 1.99.0`). Not run on GitHub yet; actionlint clean.
+- M7 postgres max_connections=25 (backend pool 20, db.rs), memswap_limit = mem_limit for all three.
+- Lows: root `.dockerignore` (note: deploy/backend/Dockerfile.dockerignore already excluded target for the backend build), COPYFILE_DISABLE=1, WS probe `-m 3`, `--remote-build` removed.
+- Redeploy: release 89df2da43875, subnet 172.29.0.0/24, ~27 MiB total. Remote .env had its old TRUSTED_PROXIES line removed (was 172.16.0.0/12).
+- Local e2e re-run PASS (random /24, restore script, proxy-trust check).
+- Open: positive proxy-trust check only (negative case not exercised); QAD path with the host-dir mount untested on the VPS.
