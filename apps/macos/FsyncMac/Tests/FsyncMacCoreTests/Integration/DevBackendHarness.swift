@@ -95,6 +95,7 @@ final class CliProcess: @unchecked Sendable {
     private var errText = ""
     private var buffer = Data()
     private var exited: Int32?
+    private var eofStreams = 0   // stdout and stderr each reach EOF once
 
     init(executable: URL, arguments: [String]) throws {
         process.executableURL = executable
@@ -103,9 +104,14 @@ final class CliProcess: @unchecked Sendable {
         process.standardOutput = out
         process.standardError = err
         process.standardInput = FileHandle.nullDevice
-        out.fileHandleForReading.readabilityHandler = { [weak self] h in self?.append(h.availableData) }
+        out.fileHandleForReading.readabilityHandler = { [weak self] h in
+            let d = h.availableData
+            if d.isEmpty { h.readabilityHandler = nil; self?.sync { $0.eofStreams += 1 }; return }
+            self?.append(d)
+        }
         err.fileHandleForReading.readabilityHandler = { [weak self] h in
             let d = h.availableData
+            if d.isEmpty { h.readabilityHandler = nil; self?.sync { $0.eofStreams += 1 }; return }
             self?.sync { $0.errText += String(decoding: d, as: UTF8.self) }
         }
         process.terminationHandler = { [weak self] p in self?.sync { $0.exited = p.terminationStatus } }
@@ -144,7 +150,8 @@ final class CliProcess: @unchecked Sendable {
         throw HarnessError.timeout("CLI event \(name)\n\(diagnostics)")
     }
 
-    var exitCode: Int32? { lock.lock(); defer { lock.unlock() }; return exited }
+    /// The exit status, reported only once both output streams are drained, so no printed event is still in flight.
+    var exitCode: Int32? { lock.lock(); defer { lock.unlock() }; return eofStreams >= 2 ? exited : nil }
 
     func expectExit(_ want: Int32, timeout: Double) async throws {
         let deadline = Date().addingTimeInterval(timeout)
@@ -163,8 +170,8 @@ final class CliProcess: @unchecked Sendable {
     func terminateAndWait(timeout: Double = 5) async {
         terminate()
         let deadline = Date().addingTimeInterval(timeout)
-        while exitCode == nil, Date() < deadline { try? await Task.sleep(nanoseconds: 20_000_000) }
-        if exitCode == nil, process.isRunning { kill(process.processIdentifier, SIGKILL) }
+        while exitCode == nil, !Task.isCancelled, Date() < deadline { try? await Task.sleep(nanoseconds: 20_000_000) }
+        if process.isRunning { kill(process.processIdentifier, SIGKILL) }
     }
 }
 
