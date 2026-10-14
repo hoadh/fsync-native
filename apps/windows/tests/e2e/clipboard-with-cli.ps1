@@ -13,6 +13,7 @@ param(
     [string]$App = (Join-Path $PSScriptRoot '..\..\src\Fsync.App\bin\x64\Release\net8.0-windows10.0.19041.0\win-x64\Fsync.exe'),
     [string]$PasteHelper = (Join-Path $PSScriptRoot '..\Fsync.Interop.PasteHelper\bin\Release\net8.0-windows10.0.19041.0\Fsync.Interop.PasteHelper.exe'),
     [string]$Relay = '',
+    [int]$LazyMiB = 5, # size of the virtual-file paste W1 -> W2 (throughput runs: 200)
     [switch]$Keep
 )
 $ErrorActionPreference = 'Continue'
@@ -112,7 +113,7 @@ try {
     Invoke-Name $w1 'Devices'
     Wait-Like $w1 '*W2*' 60 | Out-Null
     Add-Pass $c 'W2 paired and in manual mode; W1 lists it'
-    $lazy = Join-Path $c.Work "lazy-$tag.bin"; New-RandomFile $lazy (5MB)
+    $lazy = Join-Path $c.Work "lazy-$tag.bin"; New-RandomFile $lazy ($LazyMiB * 1MB)
     $folder = Join-Path $c.Work "folder-$tag"; New-Item -ItemType Directory (Join-Path $folder 'sub') | Out-Null
     New-RandomFile (Join-Path $folder 'sub\nested.bin') (300KB)
     Set-ClipRetry @{ Path = @($lazy, $folder) }
@@ -128,10 +129,13 @@ try {
     $helper = [System.Diagnostics.Process]::Start($psi)
     [void]$c.Procs.Add($helper)
     $pasted = Join-Path $pasteDir (Split-Path $lazy -Leaf)
-    Wait-Until -Seconds 120 -What 'pasted file complete' { (Test-Path $pasted) -and (Get-FileHashHex $pasted) -eq (Get-FileHashHex $lazy) } | Out-Null
+    # Done = the copy engine closed the file (it pre-sizes targets, so the length says nothing); hash once after.
+    Wait-Until -Seconds ([Math]::Max(120, 2 * $LazyMiB)) -What 'pasted file closed' { Test-FileClosed $pasted } | Out-Null
+    $secs = ((Get-Date) - $t0).TotalSeconds
+    if ((Get-FileHashHex $pasted) -ne (Get-FileHashHex $lazy)) { throw 'lazy paste: hash differs' }
     $nested = Join-Path $pasteDir "folder-$tag\sub\nested.bin"
     Wait-Until -Seconds 60 -What 'pasted folder' { (Test-Path $nested) -and (Get-FileHashHex $nested) -eq (Get-FileHashHex (Join-Path $folder 'sub\nested.bin')) } | Out-Null
-    Add-Pass $c ("Explorer paste of a 5 MiB file + a folder copied on W1 streamed into W2's virtual entry in {0:N1} s, hashes ok, folder kept" -f ((Get-Date) - $t0).TotalSeconds)
+    Add-Pass $c ("Explorer paste of a {0} MiB file + a folder copied on W1 streamed into W2's virtual entry in {1:N1} s ({2:N1} MiB/s), hashes ok, folder kept" -f $LazyMiB, $secs, ($LazyMiB / $secs))
     $helper.StandardInput.WriteLine("done")
 
     Write-E2e 'eager fallback on W2'

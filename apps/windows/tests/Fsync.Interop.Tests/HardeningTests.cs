@@ -95,7 +95,9 @@ public sealed class HardeningTests
     {
         var sta = new StaThread("test-dispose");
         using var gate = new ManualResetEventSlim();
-        var blocker = sta.InvokeAsync(() => gate.Wait(2000));
+        using var running = new ManualResetEventSlim();
+        var blocker = sta.InvokeAsync(() => { running.Set(); return gate.Wait(2000); });
+        Assert.True(running.Wait(5000)); // the thread is busy with it before we queue more
         var queued = sta.InvokeAsync(() => 1);
         sta.Dispose(TimeSpan.FromMilliseconds(100));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => queued.WaitAsync(TimeSpan.FromSeconds(5)));

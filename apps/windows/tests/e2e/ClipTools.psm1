@@ -28,6 +28,12 @@ function Get-ClipFormats {
 
 function Get-FileHashHex([string]$path) { (Get-FileHash -Algorithm SHA256 $path).Hash }
 
+# True once nobody holds $path open (an exclusive open succeeds): the writer has finished.
+function Test-FileClosed([string]$path) {
+    if (-not (Test-Path $path)) { return $false }
+    try { [System.IO.File]::Open($path, 'Open', 'Read', 'None').Dispose(); $true } catch { $false }
+}
+
 function New-RandomFile([string]$path, [int]$bytes) {
     $buf = New-Object byte[] $bytes
     (New-Object System.Random).NextBytes($buf)
