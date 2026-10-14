@@ -88,6 +88,7 @@ public partial class App : Application
 
     private void OnPhaseChanged()
     {
+        if (_quitting) return; // no retry timer, no clipboard start while tearing down
         if (Bridge.Phase == AccountPhase.Offline) StartRetry();
         else _retry?.Stop();
         if (Bridge.Phase == AccountPhase.Ready) // idempotent; re-reads settings
@@ -142,6 +143,7 @@ public partial class App : Application
     {
         if (_quitting) return;
         _quitting = true;
+        _retry?.Stop(); // no account retry may run into the engine while it is torn down
         _window?.Close();
         _tray?.Dispose();
         Devices.Dispose();

@@ -32,9 +32,12 @@ public sealed partial class ClipboardService
         if (_settings is not { } s) return 0;
         try
         {
-            var keep = new HashSet<string>(_inFlight.Keys, StringComparer.OrdinalIgnoreCase);
-            if (_currentItemId is { } id) keep.Add(id);
-            var removed = _inbox.Clean(s.retentionDays, s.retentionBytes, keep);
+            var removed = _inbox.Clean(s.retentionDays, s.retentionBytes, () =>
+            {
+                var keep = new HashSet<string>(_inFlight.Keys, StringComparer.OrdinalIgnoreCase);
+                if (_currentItemId is { } id) keep.Add(id);
+                return keep;
+            });
             if (removed > 0) AppLog.Info($"clipboard: inbox cleanup removed {removed} folder(s)");
             return removed;
         }

@@ -30,9 +30,29 @@ public sealed class InboxDirectory(string root)
     /// Applies retention; never removes <paramref name="keeping"/> (clip on the clipboard, downloads
     /// in flight) nor folders younger than <see cref="MinAge"/>. One clean at a time. Returns removed folders.
     /// </summary>
-    public int Clean(uint retentionDays, ulong maxBytes, IReadOnlyCollection<string> keeping, DateTime? nowUtc = null)
+    public int Clean(uint retentionDays, ulong maxBytes, IReadOnlyCollection<string> keeping, DateTime? nowUtc = null) =>
+        Clean(retentionDays, maxBytes, () => keeping, nowUtc);
+
+    /// <summary>
+    /// Same, with the kept set read inside the cleanup lock, so a mark taken with
+    /// <see cref="Exclusive{T}"/> is either seen by this clean or taken after it finished.
+    /// </summary>
+    public int Clean(uint retentionDays, ulong maxBytes, Func<IReadOnlyCollection<string>> keeping, DateTime? nowUtc = null)
     {
-        lock (_cleanLock) return CleanLocked(retentionDays, maxBytes, keeping, nowUtc ?? DateTime.UtcNow);
+        lock (_cleanLock) return CleanLocked(retentionDays, maxBytes, keeping(), nowUtc ?? DateTime.UtcNow);
+    }
+
+    /// <summary>Runs <paramref name="f"/> while no clean runs (marking a folder as in use).</summary>
+    public T Exclusive<T>(Func<T> f)
+    {
+        lock (_cleanLock) return f();
+    }
+
+    /// <summary>Marks a reused folder as recently written (cleanup minimum age).</summary>
+    public void Touch(string dir)
+    {
+        try { Directory.SetLastWriteTimeUtc(dir, DateTime.UtcNow); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     }
 
     private int CleanLocked(uint retentionDays, ulong maxBytes, IReadOnlyCollection<string> keeping, DateTime now)

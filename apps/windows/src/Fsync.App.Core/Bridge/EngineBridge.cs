@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Fsync.App.Services;
 using Fsync.Core;
 
 namespace Fsync.App.Bridge;
@@ -107,6 +108,11 @@ public sealed partial class EngineBridge : ObservableObject, IDisposable
             // Network, rate limits, a pin to another account: keep the session, allow a retry.
             Phase = AccountPhase.Offline;
             StatusMessage = UserMessages.For(e);
+        }
+        catch (InvalidOperationException)
+        {
+            // The engine is gone (quit or history reset in progress): nothing to bring online.
+            AppLog.Info("bridge: go online skipped, no engine");
         }
     }
 

@@ -21,50 +21,61 @@ public sealed partial class ClipboardService
 
     /// <summary>
     /// Downloads the clip's files into inbox\&lt;item&gt; (a file already there with the right size is
-    /// reused) and returns the top-level paths for CF_HDROP. The folder is marked in flight so the
-    /// inbox cleanup leaves it alone.
+    /// reused) and returns the top-level paths for CF_HDROP. One budget (<see cref="EagerTimeout"/>)
+    /// and one cancellation (<paramref name="ct"/>: newer clip, quit) cover starting the transfers
+    /// (fetch_file_to can block through the dial) and waiting for them; every transfer that started
+    /// and did not finish is cancelled on the way out, whatever ended the download. The folder is
+    /// marked in flight (before it exists) so the inbox cleanup leaves it alone.
     /// </summary>
     internal async Task<List<string>> DownloadAsync(ClipItem item, CancellationToken ct)
     {
         if (!Files.InboxDirectory.IsValidItemId(item.itemId)) throw new ArgumentException("invalid item id");
-        using var inFlight = BeginInFlight(item.itemId); // before the folder exists: cleanup never sees it unguarded
+        using var inFlight = BeginInFlight(item.itemId);
         var dir = _inbox.Folder(item.itemId);
-        var started = new List<ulong>();
-        foreach (var f in item.files)
+        _inbox.Touch(dir); // a reused folder is fresh again for the cleanup's minimum age
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        budget.CancelAfter(EagerTimeout);
+        var ids = new List<ulong>();
+        var waits = new List<Task<string>>();
+        try
         {
-            ct.ThrowIfCancellationRequested();
-            if (EagerFiles.Existing(dir, f) is not null) continue;
-            started.Add(await _gate.RunAsync(() => _bridge.RunAsync(e => e.FetchFileTo(item.itemId, f.fileId, dir))));
+            foreach (var f in item.files)
+            {
+                budget.Token.ThrowIfCancellationRequested();
+                if (EagerFiles.Existing(dir, f) is not null) continue;
+                var start = _gate.RunAsync(() => _bridge.RunAsync(e => e.FetchFileTo(item.itemId, f.fileId, dir)));
+                try { ids.Add(await start.WaitAsync(budget.Token)); }
+                catch (OperationCanceledException)
+                {
+                    CancelOnceStarted(start); // we stop waiting; the transfer must not run on unattended
+                    throw;
+                }
+                waits.Add(Register(ids[^1])); // at once: its outcome is kept and the finally can cancel it
+            }
+            if (waits.Count > 0) Post(() => LastActivity = $"Downloading {waits.Count} file(s) from {item.fromName}");
+            await Task.WhenAll(waits).WaitAsync(budget.Token);
         }
-        if (started.Count > 0) Post(() => LastActivity = $"Downloading {started.Count} file(s) from {item.fromName}");
-        await AwaitDownloadsAsync(started, ct);
-        var tops = EagerFiles.TopLevel(dir, item.files);
-        return tops.Count > 0 ? tops : throw new InvalidDataException("no usable file names in the clip");
-    }
-
-    /// <summary>
-    /// Waits for transfers <paramref name="ids"/>, at most <see cref="EagerTimeout"/> or until
-    /// <paramref name="ct"/> is cancelled (newer clip, quit); unfinished transfers are then cancelled.
-    /// </summary>
-    internal async Task AwaitDownloadsAsync(IReadOnlyList<ulong> ids, CancellationToken ct)
-    {
-        var waits = ids.Select(Register).ToList();
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(EagerTimeout);
-        try { await Task.WhenAll(waits).WaitAsync(timeout.Token); }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             throw new TimeoutException("eager download timed out");
         }
         finally
         {
-            foreach (var id in ids.Where(id => _downloads.TryRemove(id, out _)))
-            {
-                CancelledTransfers.Enqueue(id);
-                try { await _bridge.RunAsync(e => e.Cancel(id)); }
-                catch (Exception e) { AppLog.Warn($"clipboard: cancel transfer {id}: {e.GetType().Name}"); }
-            }
+            foreach (var id in ids.Where(id => _downloads.TryRemove(id, out _))) await CancelTransferAsync(id);
         }
+        var tops = EagerFiles.TopLevel(dir, item.files);
+        return tops.Count > 0 ? tops : throw new InvalidDataException("no usable file names in the clip");
+    }
+
+    private void CancelOnceStarted(Task<ulong> start) =>
+        start.ContinueWith(t => CancelTransferAsync(t.Result), CancellationToken.None,
+            TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
+
+    private async Task CancelTransferAsync(ulong id)
+    {
+        CancelledTransfers.Enqueue(id);
+        try { await _bridge.RunAsync(e => e.Cancel(id)); }
+        catch (Exception e) { AppLog.Warn($"clipboard: cancel transfer {id}: {e.GetType().Name}"); }
     }
 
     /// <summary>The outcome of transfer <paramref name="id"/>, also when it already arrived.</summary>
@@ -96,7 +107,8 @@ public sealed partial class ClipboardService
     /// <summary>Marks an item folder as being written; dispose to release.</summary>
     internal IDisposable BeginInFlight(string itemId)
     {
-        _inFlight.AddOrUpdate(itemId, 1, (_, n) => n + 1);
+        // Under the cleanup lock: a clean that is running finishes first, a later one sees this mark.
+        _inbox.Exclusive(() => _inFlight.AddOrUpdate(itemId, 1, (_, n) => n + 1));
         return new Release(() =>
         {
             if (_inFlight.AddOrUpdate(itemId, 0, (_, n) => n - 1) <= 0) _inFlight.TryRemove(new KeyValuePair<string, int>(itemId, 0));
