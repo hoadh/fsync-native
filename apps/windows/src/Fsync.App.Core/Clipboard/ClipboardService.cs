@@ -62,13 +62,18 @@ public sealed partial class ClipboardService : ObservableObject, IDisposable
             _listener.HotKey += OnHotKey;
         });
         await ApplyHotkeysAsync();
+        AppLog.Info($"clipboard: listening, mode {_settings?.clipMode}, hotkeys {HotkeysRegistered}");
     }
 
     /// <summary>Re-reads core settings (mode, size limit, denylist) after they changed.</summary>
     public async Task RefreshSettingsAsync()
     {
         try { _settings = await _bridge.RunAsync(e => e.Settings()); }
-        catch (FsyncException e) { LastError = UserMessages.For(e); }
+        catch (FsyncException e)
+        {
+            LastError = UserMessages.For(e);
+            AppLog.Warn($"clipboard: settings unavailable: {e.GetType().Name}");
+        }
     }
 
     public async Task ApplyHotkeysAsync()
@@ -112,10 +117,14 @@ public sealed partial class ClipboardService : ObservableObject, IDisposable
 
     private void ReadAndPublishIfAuto()
     {
-        if (IsManual || _bridge.Phase != AccountPhase.Ready || _settings is null) return;
+        if (IsManual || _bridge.Phase != AccountPhase.Ready || _settings is null)
+        {
+            AppLog.Info($"clipboard: change not published (manual {IsManual}, phase {_bridge.Phase}, settings {_settings is not null})");
+            return;
+        }
         var snap = ReadSnapshot();
         if (snap.Skip == SkipReason.None) _ = PublishAsync(snap);
-        else System.Diagnostics.Trace.TraceInformation($"clipboard change skipped: {snap.Describe()}");
+        else AppLog.Info($"clipboard: change skipped: {snap.Describe()}");
     }
 
     private async Task PublishAsync(ClipboardSnapshot snap)
@@ -125,6 +134,7 @@ public sealed partial class ClipboardService : ObservableObject, IDisposable
             var clip = await RepresentationMapper.ToLocalClipAsync(snap);
             if (clip is null) return;
             var r = await _bridge.RunAsync(e => e.PublishClip(clip));
+            AppLog.Info($"clipboard: published reps={clip.reps.Length} files={clip.files.Length} echo={r.echo} delivered={r.delivered.Length} failed={r.failed.Length}");
             if (r.echo) return; // the clip we just received: core's echo guard
             Post(() =>
             {
@@ -133,9 +143,14 @@ public sealed partial class ClipboardService : ObservableObject, IDisposable
                 LastError = r.failed.Length > 0 ? $"{r.failed.Length} device(s) did not get it" : null;
             });
         }
-        catch (FsyncException e) { Post(() => LastError = UserMessages.For(e)); }
+        catch (FsyncException e)
+        {
+            AppLog.Warn($"clipboard: publish failed: {e.GetType().Name}");
+            Post(() => LastError = UserMessages.For(e));
+        }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
+            AppLog.Warn($"clipboard: publish failed: {e.GetType().Name}");
             Post(() => LastError = $"Could not send: {e.Message}");
         }
     }
@@ -159,7 +174,7 @@ public sealed partial class ClipboardService : ObservableObject, IDisposable
         try { _sta.Invoke(ReleaseClipboard); }
         catch (Exception e) when (e is System.Runtime.InteropServices.COMException or InvalidOperationException)
         {
-            System.Diagnostics.Trace.TraceWarning($"clipboard release on exit: {e.Message}");
+            AppLog.Warn($"clipboard: release on exit failed: {e.GetType().Name}");
         }
         _sta.Dispose();
     }

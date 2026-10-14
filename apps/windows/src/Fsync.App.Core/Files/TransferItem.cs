@@ -23,6 +23,10 @@ public sealed partial class TransferItem : ObservableObject
     [ObservableProperty] private string _detail = "Starting...";
     /// <summary>Final path of a received file (Open / Show in folder).</summary>
     [ObservableProperty] private string? _path;
+    /// <summary>A failed pull that can be started again (Retry).</summary>
+    [ObservableProperty] private bool _canRetry;
+    /// <summary>Core's message of the last failure (diagnostics, retry decisions).</summary>
+    public string? FailureMessage { get; private set; }
 
     public bool IsActive => State is TransferState.Started or TransferState.Progress;
 
@@ -31,6 +35,7 @@ public sealed partial class TransferItem : ObservableObject
         State = ev.state;
         if (ev.bytesTotal > 0) Percent = Math.Min(100, 100.0 * ev.bytesDone / ev.bytesTotal);
         if (ev.path is { } p) Path = p;
+        if (ev.state == TransferState.Failed) FailureMessage = ev.message;
         Detail = ev.state switch
         {
             TransferState.Done => Direction == TransferDirection.Send ? "Sent" : "Received",

@@ -71,6 +71,11 @@ public sealed partial class TransfersPage : Page, INotifyPropertyChanged
         if (TagOf<TransferItem>(sender) is { } t) await ViewModel.CancelAsync(t);
     }
 
+    private async void OnRetry(object sender, RoutedEventArgs e)
+    {
+        if (TagOf<TransferItem>(sender) is { } t) await ViewModel.RetryAsync(t);
+    }
+
     private void OnShow(object sender, RoutedEventArgs e)
     {
         if (TagOf<TransferItem>(sender)?.Path is not { } p || !File.Exists(p)) return;

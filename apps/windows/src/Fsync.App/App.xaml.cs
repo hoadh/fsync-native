@@ -42,6 +42,8 @@ public partial class App : Application
         _showWindowAtStart = showWindowAtStart;
         _startArgs = startArgs;
         InitializeComponent();
+        // Type and stack only reach the log; the process still ends (state may be inconsistent).
+        UnhandledException += (_, e) => AppLog.Warn($"unhandled {e.Exception.GetType().FullName}: {e.Message}\n{e.Exception.StackTrace}");
     }
 
     internal static new App Current => (App)Application.Current;
@@ -49,6 +51,7 @@ public partial class App : Application
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         _ui = DispatcherQueue.GetForCurrentThread();
+        AppLog.Start(_settings.LogPath);
         var secrets = new SecretStore(_settings.SecretsPath);
         Bridge = new EngineBridge(_settings, secrets, new WinUiDispatcher(_ui));
         Devices = new DevicesViewModel(Bridge);
@@ -56,7 +59,7 @@ public partial class App : Application
         RunAtLogin = new RunAtLogin("Fsync", Services.RunAtLogin.CommandFor(Environment.ProcessPath!));
         Preferences = AppPreferences.Load(_settings.PreferencesPath);
         Clipboard = new ClipboardService(Bridge, Preferences, new WinUiDispatcher(_ui), _settings.InboxDir);
-        Transfers = new TransfersViewModel(Bridge, () => Path.Combine(Interop.Shell.KnownFolders.DownloadsPath(), "fsync"),
+        Transfers = new TransfersViewModel(Bridge, () => _settings.DownloadDir,
             () => Clipboard.CurrentSettings?.autoAcceptFiles ?? false);
         SendTo = new SendToShortcut(Environment.ProcessPath!);
         _tray = new TrayHost(this, new TrayStatusViewModel(Bridge, Devices), Clipboard);

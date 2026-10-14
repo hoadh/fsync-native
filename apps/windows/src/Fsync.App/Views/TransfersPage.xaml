@@ -71,6 +71,7 @@
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                                 <Button Content="Cancel" Tag="{x:Bind}" Click="OnCancel" Visibility="{x:Bind local:Ui.Show(IsActive), Mode=OneWay}" />
+                                <Button Content="Retry" Tag="{x:Bind}" Click="OnRetry" Visibility="{x:Bind local:Ui.Show(CanRetry), Mode=OneWay}" />
                                 <Button Content="Show" Tag="{x:Bind}" Click="OnShow" Visibility="{x:Bind local:Ui.ShowIf(Path), Mode=OneWay}" />
                             </StackPanel>
                         </Grid>

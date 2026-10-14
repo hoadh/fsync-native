@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Fsync.App.Bridge;
+using Fsync.App.Services;
 using Fsync.Core;
 using Fsync.Interop.Clipboard;
 
@@ -24,6 +25,7 @@ public sealed partial class ClipboardService
     private void OnRemoteClip(ClipItem item)
     {
         if (item.push) return; // "Send to" offers arrive as IncomingFiles
+        AppLog.Info($"clipboard: received {item.kind} reps={item.reps.Length} files={item.files.Length} bytes={item.totalSize} manual={IsManual}");
         Remember(item);
         if (IsManual)
         {
@@ -78,16 +80,23 @@ public sealed partial class ClipboardService
             await _sta.InvokeAsync(() =>
             {
                 var obj = new ClipDataObject(entries, files);
+                obj.RenderFailed += (_, e) => AppLog.Warn($"clipboard: delayed render failed: {e.GetType().Name}");
                 obj.RenderFailed += (_, e) => Post(() => LastError = e is FsyncException f ? UserMessages.For(f) : "Could not fetch the clip");
                 OleClipboard.Set(obj);
                 _current = obj;
                 Written?.Invoke(obj);
+                AppLog.Info($"clipboard: wrote formats={entries.Count} virtual files={files.Count}");
             });
             Post(() => { LastActivity = $"{Kind(item)} from {item.fromName}"; LastError = null; });
         }
-        catch (FsyncException e) { Post(() => LastError = UserMessages.For(e)); }
+        catch (FsyncException e)
+        {
+            AppLog.Warn($"clipboard: write failed: {e.GetType().Name}");
+            Post(() => LastError = UserMessages.For(e));
+        }
         catch (Exception e) when (e is System.Runtime.InteropServices.COMException or IOException or InvalidOperationException)
         {
+            AppLog.Warn($"clipboard: write failed: {e.GetType().Name}");
             Post(() => LastError = $"Could not write the clipboard: {e.Message}");
         }
     }

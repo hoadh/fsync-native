@@ -19,6 +19,7 @@ internal sealed class TrayHost : IDisposable
     private readonly TrayStatusViewModel _status;
     private readonly ClipboardService _clipboard;
     private readonly MenuFlyoutItem _activity, _pastePending;
+    private StatusKind? _badge;
 
     public TrayHost(App app, TrayStatusViewModel status, ClipboardService clipboard)
     {
@@ -69,6 +70,10 @@ internal sealed class TrayHost : IDisposable
         _activity.Visibility = activity is null ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
         _pastePending.IsEnabled = _clipboard.Pending is not null;
         _pastePending.Text = _clipboard.Pending is { } p ? $"Paste from {p.fromName} (Ctrl+Alt+V)" : "Paste from another device (Ctrl+Alt+V)";
+        // Regenerate the icon only when the badge changes: clipboard activity calls this often
+        // and each GeneratedIconSource renders a new bitmap.
+        if (_badge == _status.Kind) return;
+        _badge = _status.Kind;
         _icon.IconSource = new GeneratedIconSource
         {
             Text = "f",

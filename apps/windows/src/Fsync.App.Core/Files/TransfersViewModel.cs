@@ -16,6 +16,12 @@ public sealed partial class TransfersViewModel : ObservableObject, IDisposable
     private readonly EngineBridge _bridge;
     private readonly Func<string> _downloadDir;
     private readonly Func<bool> _autoAccept;
+    private readonly TimeSpan _autoRetryDelay;
+    private readonly Dictionary<ulong, Pull> _pulls = [];
+    private readonly Dictionary<TransferItem, Pull> _failed = [];
+
+    /// <summary>What a pull needs to start again.</summary>
+    private sealed record Pull(string ItemId, uint FileId, string Name, int Attempt);
 
     public ObservableCollection<TransferItem> Transfers { get; } = [];
     public ObservableCollection<IncomingOffer> Offers { get; } = [];
@@ -23,8 +29,10 @@ public sealed partial class TransfersViewModel : ObservableObject, IDisposable
 
     /// <param name="downloadDir">Where accepted files go (created on demand).</param>
     /// <param name="autoAccept">Current core setting auto_accept_files.</param>
-    public TransfersViewModel(EngineBridge bridge, Func<string> downloadDir, Func<bool> autoAccept)
+    /// <param name="autoRetryDelay">A pull that failed on the network is retried once after this (default 20 s).</param>
+    public TransfersViewModel(EngineBridge bridge, Func<string> downloadDir, Func<bool> autoAccept, TimeSpan? autoRetryDelay = null)
     {
+        _autoRetryDelay = autoRetryDelay ?? TimeSpan.FromSeconds(20);
         _bridge = bridge;
         _downloadDir = downloadDir;
         _autoAccept = autoAccept;
@@ -44,6 +52,10 @@ public sealed partial class TransfersViewModel : ObservableObject, IDisposable
             Transfers.Insert(0, item);
         }
         item.Apply(ev);
+        if (ev.state is TransferState.Failed or TransferState.Done or TransferState.Cancelled)
+            Services.AppLog.Info($"transfer {ev.transferId} {ev.direction} {ev.state} bytes={ev.bytesDone}{(ev.state == TransferState.Failed ? $" ({ev.message})" : "")}");
+        if (ev.state == TransferState.Failed && _pulls.Remove(ev.transferId, out var pull)) OnPullFailed(item, pull, ev.message);
+        else if (ev.state is TransferState.Done or TransferState.Cancelled) _pulls.Remove(ev.transferId);
         OnPropertyChanged(nameof(ActiveCount));
     }
 
@@ -63,15 +75,58 @@ public sealed partial class TransfersViewModel : ObservableObject, IDisposable
         try
         {
             Directory.CreateDirectory(dir);
-            foreach (var f in offer.Item.files)
-            {
-                var id = await _bridge.RunAsync(e => e.FetchFileTo(offer.Item.itemId, f.fileId, dir));
-                Track(id, f.name, TransferDirection.Receive);
-            }
+            foreach (var f in offer.Item.files) await StartPullAsync(new Pull(offer.Item.itemId, f.fileId, f.name, 0));
             Error = null;
         }
         catch (FsyncException e) { Error = UserMessages.For(e); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Error = $"Could not save files: {e.Message}"; }
+    }
+
+    private async Task StartPullAsync(Pull p)
+    {
+        var id = await _bridge.RunAsync(e => e.FetchFileTo(p.ItemId, p.FileId, _downloadDir()));
+        _pulls[id] = p;
+        Services.AppLog.Info($"transfer {id}: pull started (attempt {p.Attempt}), rows={Transfers.Count}");
+        Track(id, p.Name, TransferDirection.Receive);
+        // fetch_file_to may return only after the dial: the outcome can already be here.
+        if (Transfers.FirstOrDefault(t => t.Id == id) is { IsActive: false } row && _pulls.Remove(id) && row.State == TransferState.Failed)
+            OnPullFailed(row, p, row.FailureMessage);
+    }
+
+    /// <summary>
+    /// A failed pull gets a Retry button. A network failure is retried once by itself: right after
+    /// the sender restarted, dials can time out for ~30 s (stale path to the same node id).
+    /// </summary>
+    private void OnPullFailed(TransferItem row, Pull p, string? message)
+    {
+        Services.AppLog.Info($"transfer {row.Id}: pull failed (attempt {p.Attempt}): {message}");
+        _failed[row] = p;
+        row.CanRetry = true;
+        if (p.Attempt == 0 && message?.StartsWith("network", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            row.Detail += $" (trying again in {_autoRetryDelay.TotalSeconds:0} s)";
+            _ = RetryLaterAsync(row);
+        }
+    }
+
+    private async Task RetryLaterAsync(TransferItem row)
+    {
+        await Task.Delay(_autoRetryDelay);
+        if (_failed.ContainsKey(row)) await RetryAsync(row);
+    }
+
+    /// <summary>Starts a failed pull again (the old row is replaced by the new transfer).</summary>
+    [RelayCommand]
+    public async Task RetryAsync(TransferItem row)
+    {
+        if (!_failed.Remove(row, out var p)) return;
+        Transfers.Remove(row);
+        try
+        {
+            await StartPullAsync(p with { Attempt = p.Attempt + 1 });
+            Error = null;
+        }
+        catch (FsyncException e) { Error = UserMessages.For(e); }
     }
 
     [RelayCommand]

@@ -2,10 +2,10 @@ namespace Fsync.App.Bridge;
 
 /// <summary>
 /// Where the app keeps its files and which servers it talks to. Same variables as fsync-cli:
-/// FSYNC_API, FSYNC_RELAY; FSYNC_DATA_DIR overrides %LOCALAPPDATA%\fsync (a second instance
+/// FSYNC_API, FSYNC_RELAY; FSYNC_DOWNLOAD_DIR overrides Downloadssync; FSYNC_DATA_DIR overrides %LOCALAPPDATA%\fsync (a second instance
 /// for tests). Plain http is allowed only for loopback backends (dev).
 /// </summary>
-public sealed record AppSettings(string DataDir, string ApiBase, string? RelayUrl, string DeviceName)
+public sealed record AppSettings(string DataDir, string ApiBase, string? RelayUrl, string DeviceName, string? DownloadDirOverride = null)
 {
     public const string DefaultApi = "http://127.0.0.1:8080";
 
@@ -15,6 +15,8 @@ public sealed record AppSettings(string DataDir, string ApiBase, string? RelayUr
     public string PreferencesPath => Path.Combine(DataDir, "preferences.json");
     /// <summary>Eager file pastes land here, one folder per clip (user-only ACL, inherited from LocalAppData).</summary>
     public string InboxDir => Path.Combine(DataDir, "inbox");
+    /// <summary>Accepted pushed files: Downloadssync, or FSYNC_DOWNLOAD_DIR (tests).</summary>
+    public string DownloadDir => DownloadDirOverride ?? Path.Combine(Fsync.Interop.Shell.KnownFolders.DownloadsPath(), "fsync");
 
     public bool AllowInsecureHttp =>
         Uri.TryCreate(ApiBase, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttp && u.IsLoopback;
@@ -32,6 +34,7 @@ public sealed record AppSettings(string DataDir, string ApiBase, string? RelayUr
         var api = env("FSYNC_API") is { Length: > 0 } a ? a : DefaultApi;
         var relay = env("FSYNC_RELAY") is { Length: > 0 } r ? r : null;
         var name = env("FSYNC_DEVICE_NAME") is { Length: > 0 } n ? n : Environment.MachineName;
-        return new AppSettings(dataDir, api, relay, name);
+        var downloads = env("FSYNC_DOWNLOAD_DIR") is { Length: > 0 } dl ? Path.GetFullPath(dl) : null;
+        return new AppSettings(dataDir, api, relay, name, downloads);
     }
 }
