@@ -39,3 +39,23 @@ pub fn reset_history(data_dir: String) -> Result<(), FsyncError> {
     fsync_core::service::FsyncService::reset_history(std::path::Path::new(&data_dir))
         .map_err(FsyncError::from)
 }
+
+/// Revokes a refresh token without an engine: the retry of a `logout` that was not confirmed
+/// (see `FsyncEngine::logout_confirmed`), e.g. at the next launch. Blocking, bounded by about
+/// 10 s: call it off the UI thread. `Ok` = revoked or already dead (401): delete the token.
+/// `Network` = no answer in time or backend trouble: keep it and retry later. Other errors are
+/// final. `allow_insecure_http` is for dev backends only.
+#[uniffi::export]
+pub fn revoke_session(
+    api_url: String,
+    refresh_token: String,
+    allow_insecure_http: bool,
+) -> Result<(), FsyncError> {
+    fsync_core::service::revoke_session(
+        &api_url,
+        &refresh_token,
+        allow_insecure_http,
+        fsync_core::service::REVOKE_SESSION_BUDGET,
+    )
+    .map_err(FsyncError::from)
+}

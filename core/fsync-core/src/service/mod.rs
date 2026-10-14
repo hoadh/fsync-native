@@ -25,6 +25,7 @@ mod pairing_control;
 mod pairing_events;
 mod presence;
 mod revoke;
+mod revoke_session;
 #[cfg(test)]
 mod stop_leak_tests;
 mod transfers;
@@ -38,6 +39,7 @@ pub use crate::settings::{ClipMode, Settings};
 pub use config::{ServiceConfig, key32};
 pub use delegate::ServiceDelegate;
 pub use error::{FsyncError, SvcResult};
+pub use revoke_session::{REVOKE_SESSION_BUDGET, revoke_session};
 pub use types::*;
 pub use types_history::*;
 

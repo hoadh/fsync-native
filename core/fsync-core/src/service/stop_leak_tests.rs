@@ -22,7 +22,7 @@ fn service(dir: &std::path::Path) -> FsyncService {
     let cfg = ServiceConfig {
         data_dir: dir.to_owned(),
         api_base: "http://127.0.0.1:9".into(),
-        relay_url: None,
+        relay_urls: vec![],
         device_name: "leak-test".into(),
         platform: Platform::Mac,
         device_secret: Zeroizing::new([3; 32]),

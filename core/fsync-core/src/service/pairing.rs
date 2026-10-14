@@ -27,7 +27,9 @@ const RELAY_WAIT: Duration = Duration::from_secs(3);
 impl Inner {
     /// Our relay URL for the offer; waits (bounded) for the relay connection.
     async fn wait_relay(&self, engine: &crate::engine::Engine) -> Option<String> {
-        self.cfg.relay_url.as_ref()?;
+        if self.cfg.relay_urls.is_empty() {
+            return None;
+        }
         engine.node().wait_online(RELAY_WAIT).await;
         engine.node().local_addrs().relay_url
     }

@@ -10,8 +10,9 @@ pub struct ServiceConfig {
     /// Holds `history.db` and `blobs/` (created 0700).
     pub data_dir: PathBuf,
     pub api_base: String,
-    /// Our relay (none: LAN only).
-    pub relay_url: Option<String>,
+    /// Our relays (empty: LAN only). With several, iroh picks the home relay by latency.
+    /// Validated and deduplicated by `FsyncService::new` (https unless `allow_insecure_http`).
+    pub relay_urls: Vec<String>,
     pub device_name: String,
     pub platform: Platform,
     /// Device identity seed (ed25519), kept by the app in Keychain / DPAPI.

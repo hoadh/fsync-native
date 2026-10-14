@@ -52,11 +52,18 @@ pub struct Peer {
 }
 
 pub async fn peer() -> Peer {
+    peer_with_relays(vec![], false).await
+}
+
+/// Peer that uses `relays` (all in one map) and, if `relay_only`, no IP transports.
+pub async fn peer_with_relays(relays: Vec<String>, relay_only: bool) -> Peer {
     let id = Identity::generate().unwrap();
     let (sink, events) = EventSink::channel();
     let trust =
         Arc::new(TrustManager::new(Arc::new(MemoryTrustStore::default()), sink.clone()).unwrap());
     let node = Node::builder(id.clone(), trust.clone(), sink)
+        .relays(relays)
+        .relay_only(relay_only)
         .protocol(TEST_ALPN, Echo)
         .spawn()
         .await

@@ -42,7 +42,7 @@ fn cfg(dir: &std::path::Path, api: &str, seed: u8, hist: u8) -> ServiceConfig {
     ServiceConfig {
         data_dir: dir.to_owned(),
         api_base: api.to_owned(),
-        relay_url: None,
+        relay_urls: vec![],
         device_name: "test-mac".into(),
         platform: Platform::Mac,
         device_secret: Zeroizing::new([seed; 32]),

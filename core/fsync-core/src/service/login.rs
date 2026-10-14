@@ -61,14 +61,17 @@ impl Inner {
 
     /// Signs out locally first (never blocked by the network), then revokes the refresh token
     /// server-side: retried briefly inline, then in the background (see `revoke.rs`).
-    pub(super) async fn logout(self: &Arc<Self>) -> SvcResult<()> {
+    /// Returns whether the server-side revocation settled; `false` also when there was no
+    /// session to revoke (the app's own copy of a token may still be live).
+    pub(super) async fn logout(self: &Arc<Self>) -> SvcResult<bool> {
         // Take the token first: a later local failure must not leave the session unrevoked.
         let refresh = self.api.take_refresh();
         let local = self.sign_out_locally();
-        if let Some(refresh) = refresh {
-            self.revoke_or_queue(refresh).await;
-        }
-        local
+        let settled = match refresh {
+            Some(refresh) => self.revoke_or_queue(refresh).await,
+            None => false,
+        };
+        local.map(|()| settled)
     }
 }
 
@@ -93,6 +96,14 @@ impl FsyncService {
     /// means signed out locally; if the backend stays unreachable and the app quits first, the
     /// token stays valid until its 30 day expiry.
     pub fn logout(&self) -> SvcResult<()> {
+        self.logout_confirmed().map(drop)
+    }
+
+    /// `logout` that also reports whether the backend settled the revocation (`true`: revoked,
+    /// already dead or refused for good). `false`: it is only queued in memory (backend
+    /// unreachable, or no session was held), so the app should keep its refresh token and call
+    /// `revoke_session` later.
+    pub fn logout_confirmed(&self) -> SvcResult<bool> {
         self.run(self.inner.logout())
     }
 }

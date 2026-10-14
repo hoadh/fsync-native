@@ -43,7 +43,7 @@ pub fn open(g: &Global) -> Result<Ctx> {
     let cfg = ServiceConfig {
         data_dir,
         api_base: g.api.clone(),
-        relay_url: g.relay.clone(),
+        relay_urls: g.relay.clone(),
         device_name: g.name.clone(),
         platform: Platform::Cli,
         device_secret: identity.seed(),

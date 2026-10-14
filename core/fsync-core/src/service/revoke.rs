@@ -7,7 +7,8 @@
 //!
 //! Tokens live in the app's keystore and are never written by core, so a pending revocation
 //! exists in memory only: if the app quits first, the refresh token stays valid until its own
-//! 30 day expiry (access tokens last 15 minutes).
+//! 30 day expiry (access tokens last 15 minutes). Hence `logout_confirmed` (tells the app
+//! whether the revocation settled) and `revoke_session` (engine-free retry at next launch).
 
 use super::inner::{AbortOnDrop, Inner, lock};
 use crate::error::CoreError;
@@ -29,13 +30,15 @@ fn transient(e: &CoreError) -> bool {
 
 impl Inner {
     /// Revoke `refresh`; if the backend does not answer in time, keep trying in the background.
-    pub(super) async fn revoke_or_queue(self: &Arc<Self>, refresh: String) {
+    /// `true`: settled (revoked, already dead, or refused for good: a retry cannot help).
+    /// `false`: queued in memory only; the app must keep the token to retry (`revoke_session`).
+    pub(super) async fn revoke_or_queue(self: &Arc<Self>, refresh: String) -> bool {
         let first = tokio::time::timeout(INLINE_BUDGET, self.api.revoke(&refresh)).await;
         match first {
-            Ok(Ok(())) => return,
+            Ok(Ok(())) => return true,
             Ok(Err(e)) if !transient(&e) => {
                 tracing::warn!("logout: server refused to revoke the session: {e}");
-                return;
+                return true;
             }
             Ok(Err(e)) => tracing::warn!("logout: revocation queued: {e}"),
             Err(_) => tracing::warn!("logout: backend did not answer, revocation queued"),
@@ -55,6 +58,7 @@ impl Inner {
             q.retain(|t| !t.0.is_finished());
             q.push(AbortOnDrop(task));
         }
+        false
     }
 
     fn revoke_base(&self) -> Duration {
