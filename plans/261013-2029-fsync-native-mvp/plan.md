@@ -25,7 +25,9 @@ A = Rust core | B = backend+DevOps | C = macOS | D = Windows
 - Gate on final tree (2026-10-14 11:48): fmt, clippy `-D warnings`, workspace tests 253 pass / 0 fail, Swift 8/8, xcframework, e2e PASS. Earlier `devices_reset` PortNotExposed flake did not recur; root cause still open.
 - **Open (P0 exit):** e2e recorded once on final tree, target 3 runs (relay-only stability). Mac-to-Windows run not done.
 - Scope changes: own file/1 instead of iroh-blobs (ADR 007 addendum). History wrong-key no longer auto-resets (explicit `reset_history`). Re-pair after reset via `listed_head` (round 7). M5 TrustReset confirm API done (core, FFI, CLI; ADR 012). macOS reset prompt UI built as library `TrustResetPrompt` (plan 261014-1206), wiring in phase 11. Not built: email notice on reset. mdns-sd fallback deferred.
-- Out of scope this sync (04, 05, 10-16): status unchanged, not synced.
+- Phase 11 (macOS app shell): Done on Mac, manual visual checks open. Plan: [macos-app-shell-pairing](261014-1235-macos-app-shell-pairing/plan.md). Review 9.0 → 9.5 → 9.6 (0 critical). FsyncMac 89 tests (3 integration skipped by default), CoreKit 8+14, integration PASS, Cargo 253 passed / 1 ignored. Bundle ad-hoc signed, runtime. Deviations in phase 11 file.
+- Phase 12 note: Lan/Relay status needs live connections (phase 11 shows "Online" until sync connects peers). A signed build should verify the Keychain migration.
+- Out of scope this sync (04, 05, 10, 12-16): status unchanged, not synced.
 
 ## Phases
 | # | Phase | Owner | Wk | Blocked by | Status |
@@ -40,7 +42,7 @@ A = Rust core | B = backend+DevOps | C = macOS | D = Windows
 | 08 | [Core: encrypted history store, FFI surface, CLI harness](phase-08-core-history-ffi-cli.md) | A | P0 w4-6 | 03, 07 | Partial |
 | 09 | [Backend: auth, device registry, pairing codes, presence](phase-09-backend-auth-registry-presence.md) | B | P0 w1-4 | 01 | Partial |
 | 10 | [Infra: relay + backend deploy, CI](phase-10-infra-relay-backend-deploy.md) | B | P0 w3-5 | 09 | pending |
-| 11 | [macOS app: shell, auth, pairing, devices](phase-11-macos-app-shell-pairing.md) | C | P1 w1-5 | 03,04,08,09 | pending |
+| 11 | [macOS app: shell, auth, pairing, devices](phase-11-macos-app-shell-pairing.md) | C | P1 w1-5 | 03,04,08,09 | Done on Mac (manual visual checks open) |
 | 12 | [macOS app: clipboard, files, history, settings](phase-12-macos-clipboard-files-history.md) | C | P1 w5-11 | 11 | pending |
 | 13 | [Windows app: shell, auth, pairing, devices](phase-13-windows-app-shell-pairing.md) | D | P1 w1-5 | 03,05,08,09 | pending |
 | 14 | [Windows app: clipboard, files, history, settings](phase-14-windows-clipboard-files-history.md) | D | P1 w5-11 | 13 | pending |
@@ -72,3 +74,7 @@ Auth = own email OTP · Min OS = macOS 13+, Win 10 22H2+/11 · Recovery = trust 
 1. Pricing per tier (limits configurable, not tied to tiers in MVP).
 2. Second relay region: US or EU (depends on target market).
 3. Email provider for OTP (SES / Resend / Postmark). Blocks real OTP delivery (backend has `LogSender` only).
+4. Developer ID / signing decision (data-protection Keychain, signed launch-at-login check; phase 16).
+5. Core offline `logout()` leaves the refresh token valid server-side (core change needed).
+6. macOS integration script is not in CI (phase 10 to wire it).
+7. Optional Low items from phase 11 review round 3 (LoginModel waits for pending clear; boot awaits `sessionClear`).
