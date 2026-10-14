@@ -43,6 +43,6 @@ public sealed partial class HistoryPage : Page
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary) await ViewModel.ClearAsync(keep.IsChecked == true);
+        if (await Dialogs.ShowAsync(dialog) == ContentDialogResult.Primary) await ViewModel.ClearAsync(keep.IsChecked == true);
     }
 }

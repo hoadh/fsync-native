@@ -19,7 +19,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        AppWindow.Resize(new SizeInt32(560, 640));
+        AppWindow.Resize(new SizeInt32(720, 680)); // wide enough for the five top-level tabs (no "More" overflow)
         if (AppWindow.Presenter is OverlappedPresenter p) p.IsMaximizable = false;
     }
 
@@ -90,6 +90,6 @@ public sealed partial class MainWindow : Window
             PrimaryButtonText = "Start new history",
             CloseButtonText = "Cancel",
         };
-        if (await confirm.ShowAsync() == ContentDialogResult.Primary) await App.Current.Bridge.ResetHistoryAsync();
+        if (await Views.Dialogs.ShowAsync(confirm) == ContentDialogResult.Primary) await App.Current.Bridge.ResetHistoryAsync();
     }
 }

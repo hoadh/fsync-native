@@ -53,6 +53,6 @@ public sealed partial class DevicesPage : Page
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary) await ViewModel.RemoveCommand.ExecuteAsync(item);
+        if (await Dialogs.ShowAsync(dialog) == ContentDialogResult.Primary) await ViewModel.RemoveCommand.ExecuteAsync(item);
     }
 }
