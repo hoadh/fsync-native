@@ -38,3 +38,8 @@ Branch `fix/review-followups` (from ee9e2c8).
 - macOS Low: only `EngineBridge.settingsOffMessage` is cleared on start.
 - Swift tests (7 total in `ClipboardStartAfterFailedLoadTests`): hotkey registered asserted after recovery (XCTSkip if ⌃⌥C taken), unrelated message kept, no start after prepareToQuit, prepareToQuit stops running sync, no start after sign-out, not-ready load.
 - Gates: fmt, clippy -D warnings pass; cargo test --workspace 269 passed/0 failed/2 ignored; xcframework rebuilt; FsyncCoreKit 8/0 failures; FsyncMac 194 (12 skipped integration)/0 failures, hotkey test not skipped.
+
+## Round 2 lows
+- stop_leak_tests split into two deterministic tests: long hold (300 s) observes held+not closed then frees on last drop; short hold waits for lock free then asserts closed. No timing window assertion.
+- Node::is_closed now cfg(test) pub(crate). isQuitting doc says quit is final.
+- Gates: fmt/clippy pass; cargo test --workspace --no-fail-fast 270 passed/0 failed/2 ignored (65 suites, file_transfer ok); FsyncCoreKit 8/0; FsyncMac 194 (12 skipped)/0. Two earlier runs hit a Postgres-container start failure (Docker flake, different test each time; third run clean).

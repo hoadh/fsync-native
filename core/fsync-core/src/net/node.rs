@@ -163,7 +163,8 @@ impl Node {
         self.ep.close().await;
     }
 
-    pub fn is_closed(&self) -> bool {
+    #[cfg(test)]
+    pub(crate) fn is_closed(&self) -> bool {
         self.ep.is_closed()
     }
 }

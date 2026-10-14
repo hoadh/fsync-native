@@ -32,7 +32,8 @@ public final class EngineBridge: ObservableObject {
     var fileWriter: FileClipWriter?
     var hotkey: HotkeyManager?
     var inboxCleanup: Task<Void, Never>?
-    /// Set by `prepareToQuit`: no clipboard start path may run afterwards (until models are reinstalled).
+    /// Set by `prepareToQuit`. Quit is final: it is never cancelled, so no clipboard start path runs
+    /// afterwards and sync stays off until the next boot (models reinstalled).
     var isQuitting = false
     /// True while at least one other device is on LAN or relay (drives the menubar icon).
     @Combine.Published public internal(set) var anyPeerOnline = false

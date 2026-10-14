@@ -39,35 +39,65 @@ fn lock_is_free(dir: &std::path::Path) -> bool {
     f.try_lock().is_ok()
 }
 
+fn wait_until_lock_free(dir: &std::path::Path) -> bool {
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while !lock_is_free(dir) && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    lock_is_free(dir)
+}
+
+/// The hold is far longer than the test, so "still held, not closed" is observed
+/// deterministically; releasing the handle then lets the holder shut down cleanly.
 #[test]
-fn leaked_engine_handle_is_closed_and_lock_released_after_bounded_hold() {
+fn lock_is_held_while_a_handle_is_leaked_and_freed_when_it_drops() {
     let dir = tempfile::tempdir().unwrap();
     let svc = service(dir.path());
     svc.start().unwrap();
     let leaked = svc.inner.engine().unwrap();
-    assert!(!leaked.node().is_closed());
 
     svc.run(async {
         svc.inner
-            .stop_with(Duration::from_millis(50), Duration::from_millis(600))
+            .stop_with(Duration::from_millis(50), Duration::from_secs(300))
             .await;
         Ok(())
     })
     .unwrap();
     assert!(!lock_is_free(dir.path()), "held while the handle is leaked");
-    assert!(
-        !leaked.node().is_closed(),
-        "not closed before the hold ends"
-    );
+    assert!(!leaked.node().is_closed());
 
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
-    while !lock_is_free(dir.path()) && std::time::Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    assert!(lock_is_free(dir.path()), "lock released after the hold");
+    drop(leaked);
+    assert!(
+        wait_until_lock_free(dir.path()),
+        "freed after the last drop"
+    );
+    svc.start().expect("restart works");
+    svc.stop().unwrap();
+}
+
+/// After the (short) hold the leaked engine is closed before the lock is released, so once
+/// the lock is free the node is already closed; no timing assumption beyond a generous wait.
+#[test]
+fn leaked_engine_is_closed_before_the_lock_is_released_on_timeout() {
+    let dir = tempfile::tempdir().unwrap();
+    let svc = service(dir.path());
+    svc.start().unwrap();
+    let leaked = svc.inner.engine().unwrap();
+
+    svc.run(async {
+        svc.inner
+            .stop_with(Duration::from_millis(50), Duration::from_millis(300))
+            .await;
+        Ok(())
+    })
+    .unwrap();
+    assert!(
+        wait_until_lock_free(dir.path()),
+        "lock released after the hold"
+    );
     assert!(
         leaked.node().is_closed(),
-        "node closed before the lock was released"
+        "closed before the lock was released"
     );
 
     // Dropping the last handle after close must be harmless, and a restart works.
