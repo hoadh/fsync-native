@@ -10,6 +10,7 @@ mod node_addrs;
 mod node_builder;
 mod pair_handler;
 pub mod path_state;
+pub mod relays;
 
 pub use dialer::Dialer;
 pub use discovery::Discovery;

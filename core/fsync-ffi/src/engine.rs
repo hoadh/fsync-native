@@ -15,7 +15,7 @@ pub struct EngineConfig {
     /// Holds `history.db` and `blobs/`.
     pub data_dir: String,
     pub api_base: String,
-    /// Our relay (none: LAN only).
+    /// Our relay (none: LAN only). Merged with `relay_urls`.
     pub relay_url: Option<String>,
     pub device_name: String,
     pub platform: Platform,
@@ -27,6 +27,11 @@ pub struct EngineConfig {
     pub force_relay: bool,
     /// Dev backends on plain http.
     pub allow_insecure_http: bool,
+    /// More relays, e.g. one per region: iroh picks the home relay by latency. Merged with
+    /// `relay_url` and deduplicated; https only unless `allow_insecure_http`. Added after v2, kept last (uniffi records are positional),
+    /// defaults to `[]`.
+    #[uniffi(default = [])]
+    pub relay_urls: Vec<String>,
 }
 
 #[derive(uniffi::Object)]
@@ -42,7 +47,7 @@ impl FsyncEngine {
         let sc = ServiceConfig {
             data_dir: PathBuf::from(cfg.data_dir),
             api_base: cfg.api_base,
-            relay_url: cfg.relay_url,
+            relay_urls: cfg.relay_url.into_iter().chain(cfg.relay_urls).collect(),
             device_name: cfg.device_name,
             platform: cfg.platform.into(),
             device_secret: key32(&cfg.device_secret, "device_secret")?,
@@ -76,6 +81,12 @@ impl FsyncEngine {
     }
     pub fn logout(&self) -> FfiResult<()> {
         unit(self.svc.logout())
+    }
+    /// `logout` that says whether the backend settled the revocation: `true` = revoked, already
+    /// dead or refused for good (drop your pending revoke); `false` = only queued in memory, or
+    /// no session was held (keep the refresh token, retry with `revoke_session` at next launch).
+    pub fn logout_confirmed(&self) -> FfiResult<bool> {
+        map(self.svc.logout_confirmed())
     }
     pub fn ensure_account(&self) -> FfiResult<AccountState> {
         map(self.svc.ensure_account())

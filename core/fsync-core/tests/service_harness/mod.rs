@@ -94,7 +94,7 @@ pub fn dev_with(be: &Backend, seed: u8, name: &str, mdns: bool) -> Dev {
     let cfg = ServiceConfig {
         data_dir: Path::new(dir.path()).to_owned(),
         api_base: be.base.clone(),
-        relay_url: None,
+        relay_urls: vec![],
         device_name: name.into(),
         platform: Platform::Mac,
         device_secret: Zeroizing::new([seed; 32]),

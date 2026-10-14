@@ -14,6 +14,7 @@ use crate::{
     events::{EngineEvent, EventSink, PairDecision},
     history::History,
     identity::Identity,
+    net::relays::parse_relays,
     trust::{SqliteTrustStore, TrustManager},
 };
 use fsync_proto::{NodeId, api_dto::TokenPair};
@@ -87,9 +88,13 @@ pub(super) fn lock<T>(m: &Mutex<T>) -> SvcResult<MutexGuard<'_, T>> {
 
 impl Inner {
     pub(super) fn open(
-        cfg: ServiceConfig,
+        mut cfg: ServiceConfig,
         delegate: Arc<dyn ServiceDelegate>,
     ) -> SvcResult<(Self, mpsc::Receiver<EngineEvent>)> {
+        cfg.relay_urls = parse_relays(&cfg.relay_urls, cfg.allow_insecure_http)?
+            .iter()
+            .map(ToString::to_string)
+            .collect();
         let identity = Identity::from_seed(&cfg.device_secret);
         let (sink, events) = EventSink::channel();
         let fs = Arc::new(FsBlobStore::open(cfg.data_dir.join("blobs"))?);

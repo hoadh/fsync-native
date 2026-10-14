@@ -120,7 +120,7 @@ log "swift test (integration)"
 tail -f "$WORK/swift-test.log" &
 PIDS+=($!)
 # Test classes in groups of at most 8 sign-ins each (see start_backend).
-for filter in "ClipboardIntegrationTests" "FilesIntegrationTests|FsyncMacIntegrationTests"; do
+for filter in "ClipboardIntegrationTests" "FilesIntegrationTests|FsyncMacIntegrationTests|PendingRevokeIntegrationTests"; do
   [[ "$filter" == "ClipboardIntegrationTests" ]] || start_backend
   swift test --package-path "$ROOT/apps/macos/FsyncMac" --filter "$filter" >>"$WORK/swift-test.log" 2>&1 &
   SWIFT_PID=$!

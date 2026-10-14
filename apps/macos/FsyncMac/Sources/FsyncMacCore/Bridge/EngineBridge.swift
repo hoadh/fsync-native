@@ -53,6 +53,8 @@ public final class EngineBridge: ObservableObject {
     /// Seconds between `ensureAccount` retries while offline; the last value repeats.
     let retryDelays: [Double]
     var started = false
+    /// The pending revoke of an earlier sign-out is retried once per launch.
+    var pendingRevokeTried = false
     /// Test seam: runs on the engine thread just before `setSession`/`start` during boot.
     var beforeEngineStart: (@Sendable () -> Void)?
     /// The Keychain delete started by the last `requireSignIn`; awaited by `signOut` and `shutdown`.
@@ -142,9 +144,7 @@ public final class EngineBridge: ObservableObject {
     public func signOut() async {
         bootTask?.cancel()
         sessionGate.set(open: false)
-        if let engine, case .failure(let error) = await EngineCall.run(engine, { try $0.logout() }) {
-            Self.log.error("logout failed: \(String(describing: error), privacy: .private)")
-        }
+        await logoutKeepingRevoke()
         requireSignIn(banner: nil)
         await sessionClear?.value
     }

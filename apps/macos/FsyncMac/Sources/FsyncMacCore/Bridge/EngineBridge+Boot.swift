@@ -11,6 +11,10 @@ extension EngineBridge {
     }
 
     private func runBoot() async {
+        if !pendingRevokeTried {
+            pendingRevokeTried = true
+            resumePendingRevoke()
+        }
         if engine == nil, !(await makeEngine()) { return }
         guard let engine else { return }
         // Keychain reads can block (even on a system prompt), so never on the main actor.

@@ -7,6 +7,7 @@ use super::{
     node_addrs::spawn_feed,
     pair_handler::PairHandler,
     path_state::PathTracker,
+    relays::{parse_relays, relay_map},
 };
 use crate::{
     error::{CoreError, Result},
@@ -17,7 +18,7 @@ use crate::{
 };
 use fsync_proto::ALPN_PAIR;
 use iroh::{
-    Endpoint, RelayMode, RelayUrl,
+    Endpoint, RelayMode,
     address_lookup::MemoryLookup,
     endpoint::presets,
     protocol::{ProtocolHandler, Router, RouterBuilder},
@@ -61,14 +62,8 @@ impl NodeBuilder {
     }
 
     pub async fn spawn(self) -> Result<Node> {
-        let relays = self
-            .relays
-            .iter()
-            .map(|u| {
-                u.parse::<RelayUrl>()
-                    .map_err(|_| CoreError::Invalid("invalid relay url"))
-            })
-            .collect::<Result<Vec<_>>>()?;
+        // Scheme policy is the service's (it knows dev mode); here it is parse + dedup only.
+        let relays = parse_relays(&self.relays, true)?;
         if self.relay_only && relays.is_empty() {
             return Err(CoreError::Invalid("relay_only needs a relay url"));
         }
@@ -76,7 +71,7 @@ impl NodeBuilder {
         let mode = if relays.is_empty() {
             RelayMode::Disabled
         } else {
-            RelayMode::custom(relays)
+            RelayMode::Custom(relay_map(&relays))
         };
         let lookup = MemoryLookup::new();
         let mut eb = Endpoint::builder(presets::Minimal)

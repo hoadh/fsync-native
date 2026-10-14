@@ -66,7 +66,7 @@ async fn offline_logout(down: Mode) {
     let cfg = ServiceConfig {
         data_dir: dir.path().to_owned(),
         api_base: format!("http://{}", proxy.addr),
-        relay_url: None,
+        relay_urls: vec![],
         device_name: "logout-test".into(),
         platform: Platform::Mac,
         device_secret: Zeroizing::new([3; 32]),
@@ -97,7 +97,10 @@ async fn offline_logout(down: Mode) {
     }
     let svc = off_rt(move || {
         let t = Instant::now();
-        svc.logout().expect("local sign-out succeeds offline");
+        let settled = svc
+            .logout_confirmed()
+            .expect("local sign-out succeeds offline");
+        assert!(!settled, "unreachable backend: revocation only queued");
         // Apps may call this on a UI thread: bounded, whatever the network does.
         assert!(t.elapsed() < Duration::from_secs(6), "{:?}", t.elapsed());
         assert!(svc.devices().is_empty());

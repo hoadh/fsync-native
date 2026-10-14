@@ -24,8 +24,8 @@ impl Inner {
         let mut b = Node::builder(self.identity.clone(), self.trust.clone(), self.sink.clone())
             .mdns(c.mdns && !c.force_relay)
             .relay_only(c.force_relay);
-        if let Some(r) = &c.relay_url {
-            b = b.relays(vec![r.clone()]);
+        if !c.relay_urls.is_empty() {
+            b = b.relays(c.relay_urls.clone());
         }
         let ecfg = EngineConfig {
             max_clip_bytes: settings.max_clip_bytes,
