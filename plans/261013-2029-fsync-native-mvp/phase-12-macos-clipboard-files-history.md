@@ -4,7 +4,7 @@
 - Design §4 flows 3-6; ADR 009 ([phase-04](phase-04-spike-macos-clipboard-lazy-paste.md)); [phase-07](phase-07-core-protocols-clip-file.md), [phase-08](phase-08-core-history-ffi-cli.md)
 
 ## Overview
-- Priority: P1 | Status: Partial (implemented, automated gates green on merged main, review 9.5; manual QA open: Finder/app paste matrix, real password managers, GUI privacy alert, Mac↔Win app round trip) | Effort: 5-6 wk (C) — parallel with phase 14
+- Priority: P1 | Status: Partial (implemented, automated gates green on merged main, review 9.5; manual QA open: Finder/app paste matrix, real password managers, GUI privacy alert, Mac↔Win app round trip; relay list + pending revoke live in phase 11) | Effort: 5-6 wk (C) — parallel with phase 14
 - Productionize spike: watcher + filters, auto/manual modes, reps mapping (text/rtf/html/png/tiff→png/file URLs), write incoming clips, lazy/eager file paste per ADR 009, drag-drop + Share/"Send to…", history UI, retention settings.
 
 ## Key Insights

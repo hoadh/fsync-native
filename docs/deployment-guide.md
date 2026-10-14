@@ -62,6 +62,21 @@ tests/e2e/compose-stack-sync.sh          # local verification
 - **Backups.** `backup-postgres.sh` runs daily when installed with `deploy.sh --install-backup-cron` (full stack only). Copy dumps off the host and enable provider snapshots; both live on the same disk otherwise.
 - **Rotating `JWT_SIGNING_KEY`** signs every user out.
 
+## Client Release Builds
+
+Release clients must carry both relays. A client with no relay is LAN only, and no default is built in.
+
+| Client | Command or setting |
+|--------|--------------------|
+| macOS | `apps/macos/scripts/build-fsync-mac-app.sh --api https://api-fsync.10z.one --relay https://relay-fsync.10z.one,https://relay-sg-fsync.10z.one` (add `--sign`, `--profile` for Developer ID). Writes Info.plist `FsyncRelayUrl`. |
+| Windows | `FSYNC_RELAY=https://relay-fsync.10z.one,https://relay-sg-fsync.10z.one` in the environment the app starts from. Read at launch; no build-time value. |
+
+Rules:
+- The list is comma-separated and https only. One bad entry fails engine start for the whole list. Order does not matter: the home relay is picked by latency.
+- The macOS build needs `apps/macos/Packages/FsyncCoreKit/FsyncFFI.xcframework`: run `scripts/build-xcframework.sh` first.
+- Rebuild `fsync_ffi.dll` whenever the Rust FFI or its bindings change: `scripts/gen-bindings-cs.ps1` (C#), then `scripts/build-windows-dll.ps1`, which copies the DLL into `apps/windows/src/Fsync.CoreBindings/runtimes/<rid>/native`. Ship the DLL and the generated `fsync_ffi.cs` together. A mismatch fails at record decode.
+- Same rule on macOS: rerun `scripts/build-xcframework.sh` after an FFI change.
+
 ## Related
 
 - [System architecture: deployment topology](./system-architecture.md#deployment-topology)

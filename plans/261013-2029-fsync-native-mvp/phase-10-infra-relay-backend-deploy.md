@@ -4,7 +4,7 @@
 - Design §2 Networking, §5 relay cost; ADR 007 ([phase-02](phase-02-spike-iroh-discovery-relay.md)); [phase-09](phase-09-backend-auth-registry-presence.md)
 
 ## Overview
-- Priority: P0 | Status: Partial (single shared VPS staging live with public TLS 2026-10-14; success criteria below still open) | Effort: 1-1.5 wk (B)
+- Priority: P0 | Status: Partial (shared VPS staging live 2026-10-14; SG relay-only live 2026-10-15 (S2/S6); alerts, rollback, prod split open) | Effort: 1-1.5 wk (B)
 - Deploy staging + prod: backend (container) + managed Postgres + iroh-relay in **2 regions at launch (Singapore + US/EU)** <!-- Updated: Validation Session 1 - 2 relay regions -->, TLS, monitoring, CI pipelines producing core artifacts.
 
 ## Key Insights
@@ -50,25 +50,27 @@ env `staging` + dev mode (OTP in logs; no email provider yet). Host Caddy untouc
 
 ## Todo List
 - [~] DNS done (`api-fsync` grey cloud, `relay-fsync` .10z.one, public TLS OK); mail auth records (SPF/DKIM/DMARC) pending, no provider yet
-- [x] Relay stack (iroh-relay 1.3.0 image, limits, optional QAD) - deployed, public TLS smoke ok (relay-fsync.10z.one); second region pending
+- [x] Relay stack (iroh-relay 1.3.0 image, limits, optional QAD) - deployed, public TLS smoke ok (relay-fsync.10z.one, Ohio)
+- [x] Second region: Singapore relay-only at relay-sg-fsync.10z.one (S2/S6, 2026-10-15). Both relays in app configs; e2e PASS
 - [x] Backend + Postgres stack, deploy/rollback/smoke scripts, `pg_dump` backup (cron 03:15 on cms-node + restore script); off-box copy pending
 - [~] CI: `.github/workflows/ci.yml` (rust, macOS swift, Windows dotnet) + `deploy-stack.yml` written; never run on GitHub yet (Windows job unverified on a real runner)
 - [x] Public two-client e2e (staging, from Mac): login, pair (SAS), clip direct 22 ms / relay 802 ms, 16 MiB file direct and relay hash-verified
 - [ ] Monitoring + alerts
 - [ ] Core artifacts workflow
 - [~] Deployment runbook (in `deploy/README.md`; `docs/deployment-guide.md` not written)
-- [ ] Second relay region, staging/prod split, backend-deploy workflow, rollback rehearsal on the VPS
+- [ ] Staging/prod split, backend-deploy workflow, rollback rehearsal on the VPS
 
 ## Owner Action Needed
 1-3. Done 2026-10-14: Caddy site blocks applied; DNS for both hosts (api-fsync must stay grey cloud, else per-IP limits bucket by edge); `deploy.sh --public-smoke` ok.
 4. Lightsail firewall: 443/80/22 already open; open 7842/udp only if enabling QAD (`RELAY_QAD=1`).
-5. Email provider + secret (and a backend sender; none exists) before any real user; then switch `FSYNC_ENV=production`, dev mode off.
+5. Email: Gmail SMTP sender done 2026-10-15 (S1, deployed). Still open: confirm `FSYNC_ENV=production` and dev mode off on cms-node (not in 10-15 facts, verify); SPF/DKIM/DMARC status unverified.
 6. Enable Lightsail snapshots; off-box copy of dumps (daily cron already installed on cms-node, same-disk only); decide second region (SG + US/EU).
 7. RAM is tight (~600 MiB available on the shared host); consider a dedicated VPS before launch.
 
 ## Success Criteria
 - CLI pairs + transfers via prod relay with `--force-relay`; backend deploy rollback rehearsed once in staging; alerts fire on simulated relay outage.
-- 2026-10-14 status: pairs + transfers via public staging relay PASS. Open: rollback rehearsal, alerts, prod split, second region.
+- 2026-10-14 status: pairs + transfers via public staging relay PASS.
+- 2026-10-15 status: two-relay e2e PASS (SG relay-only clip 0.42 s, 8 MiB 0.63 MiB/s; both relays clip 1.18 s, 8 MiB via relay 0.55 MiB/s). Open: rollback rehearsal, alerts, prod split, first CI run on GitHub.
 
 ## Risk Assessment
 | Risk | L x I | Mitigation |

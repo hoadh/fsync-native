@@ -167,7 +167,7 @@ FsyncError { NotPaired, PeerOffline, Network{msg}, Integrity, TooLarge, Auth, Re
   compile unchanged. C# records are positional: a C# host must regenerate `fsync_ffi.cs`, update
   its positional `EngineConfig` call, and ship the native DLL together with the new binding. An
   old binding against a new DLL fails at record decode. `apps/windows` is updated in a
-  follow-up (S5), not with this change. It is merged with `relay_url`: `relay_url` first, then `relay_urls`, duplicates dropped
+  The Windows host uses it since S5 (`FSYNC_RELAY` comma list). Merged with `relay_url`: `relay_url` first, then `relay_urls`, duplicates dropped
   (`https://a` and `https://a/` are one relay). All of them go into one iroh `RelayMap`; the
   endpoint probes them and picks its home relay by latency (and moves it when the network
   changes), so a US-East-2 and a Singapore relay need no host logic. A peer that cannot reach one
@@ -191,7 +191,8 @@ FsyncError { NotPaired, PeerOffline, Network{msg}, Integrity, TooLarge, Auth, Re
 ## Hard logout after quit (host pattern)
 Core never persists the refresh token, so a revoke that could not finish before the app quit
 would leave the token valid for up to 30 days. Hosts do this (macOS: `PendingRevoke` and
-`PendingRevokeResume` with `AppSecrets` in FsyncMacCore, on the Keychain):
+`PendingRevokeResume` with `AppSecrets` in FsyncMacCore, on the Keychain; Windows: `PendingRevoke`
+and `SecretStore.PendingRevoke` in Fsync.App.Core, in the DPAPI secret store):
 1. On logout, BEFORE calling `logout_confirmed()`, store the current refresh token in the secure
    store as a "pending revoke" with the API URL and the time (use the newest token the host
    got from `on_session_changed`).

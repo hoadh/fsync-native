@@ -5,7 +5,7 @@
 - Client: [phase-06](phase-06-core-identity-trust-transport.md) `api_client.rs`
 
 ## Overview
-- Priority: P0 | Status: Partial (deployed to shared staging VPS 2026-10-14; email sender and load test open) | Effort: 3-4 wk (B)
+- Priority: P0 | Status: Partial (deployed to shared VPS 2026-10-14; Gmail SMTP sender done 2026-10-15 (S1); 10k WS load test open) | Effort: 3-4 wk (B)
 - Rust axum service + Postgres: passwordless email OTP auth, signed device list storage (opaque to trust, but verified as defense-in-depth), pairing code rendezvous, WebSocket presence + address hints for discovery.
 
 ## Key Insights
@@ -84,7 +84,8 @@ Data flow: client → axum → auth middleware → repo (sqlx) → Postgres; dev
 - Deviation: history pruned to 100 rows per account and epoch. Rate limiter in memory (single instance).
 - Hardening from reviews: TRUSTED_PROXIES CIDR list, trust reset needs auth under 5 min, WS closes at access-token expiry (4401).
 - Open: Postgres TLS not enabled (add sqlx `tls-rustls` before a remote DB). No global TCP connection cap (proxy responsibility).
-- Open: email is `LogSender` only. No real provider chosen (plan Q3).
+- Done 2026-10-15 (S1): `SmtpSender` (lettre, rustls) to Gmail SMTP (smtp.gmail.com:587 STARTTLS, App Password). Env `EMAIL_*`/`SMTP_*`. Prod refuses `log` sender. `OTP_DAILY_SEND_CAP` 450/24 h (migration 0003). Review 9.6, deployed cms-node release 519ec821e90f, real OTP received (owner). Transactional provider still advised before real traffic.
+- Flake: smtp_mailpit test failed once under load, 8/8 on rerun.
 - Flake `PortNotExposed` (any test binary that starts Postgres): root cause found 2026-10-14. About 1 in 20-30 container starts under Docker Desktop load, the container runs and postgres is ready but Docker never publishes the port (`docker inspect`: `"5432/tcp": []`, permanent; the start itself then takes ~6 s). Waiting does not help (old retry, 12 s probe). Fix: `backend/tests/common/pg.rs` `start_with_port` retries only on `PortNotExposed` for 2 s, then removes the container and starts a new one (up to 4). 60 consecutive starts: 2 hits, both recovered on attempt 2. core `backend_harness` now shares this helper.
 - Deployed 2026-10-14 (Track D): `api-fsync.10z.one` behind host Caddy; client IP from X-Forwarded-For of trusted proxy only (spoofed XFF ignored, per-IP cap verified).
 - Not done: 10k idle WS load test (<1 GiB RAM target).

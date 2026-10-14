@@ -7,7 +7,7 @@
 - [macOS app shell + pairing](../261014-1235-macos-app-shell-pairing/plan.md) (sync 2026-10-14)
 
 ## Overview
-- Priority: P1 | Status: Done on Mac (manual visual checks open; Mac↔Win CLI pairing PASS via Track X, Tailscale; app-to-app run open, 2026-10-14) | Effort: 4-5 wk (C) — parallel with phase 13
+- Priority: P1 | Status: Done on Mac (manual visual checks open; Mac↔Win CLI pairing PASS via Track X, Tailscale; app-to-app run open; pending revoke + relay list merged 2026-10-15) | Effort: 4-5 wk (C) — parallel with phase 13
 - SwiftUI `MenuBarExtra` app (LSUIElement), FsyncCoreKit Swift package wrapping generated bindings, login (email OTP), pairing UI (show QR/code, scan/enter code, SAS confirm), devices with status, launch at login.
 
 ## Key Insights
@@ -56,6 +56,9 @@ Data flow: View → EngineBridge (async Task) → FsyncEngine (FFI) → core; co
 - [x] Device list + remove
 - [x] Launch at login (toggle and approval still a manual check)
 - [x] Tests (FsyncMac 89 incl. 3 integration, skipped by default; FsyncCoreKit 8+14)
+- [x] Pending revoke on quit, retry at launch, drop after 5 fails / 30 d (S4, bb412e8; Keychain; `revoke_session`)
+- [x] Multi-relay config: comma list via `FSYNC_RELAY`, Info.plist `FsyncRelayUrl`, build script `--relay` (S6, ca466f7)
+- [ ] App-to-app Mac↔Win pairing via GUI; manual visual checks
 
 ## Deviations (as built)
 - SwiftPM package `apps/macos/FsyncMac/`, not `FsyncMac.xcodeproj`. The bundle comes from `apps/macos/scripts/build-fsync-mac-app.sh`.
@@ -66,7 +69,8 @@ Data flow: View → EngineBridge (async Task) → FsyncEngine (FFI) → core; co
 
 ## Success Criteria
 - Fresh Mac: login → first device; second Mac/Win (CLI ok) pairs via code with SAS match; status flips LAN/relay/offline within 5 s of change.
-- 2026-10-14: pairing part met via Track X (Mac↔Win, Tailscale, code+SAS). Status flip timing not verified in Track X; LAN path unreachable.
+- 2026-10-14: pairing part met via Track X (Mac↔Win, Tailscale, code+SAS). Status flip timing not verified in Track X; LAN path unreachable (S7 blocked, owner cabling).
+- 2026-10-15: release builds must pass both relay URLs (`--relay` per build). Pending revoke verified in merged main (bb412e8).
 
 ## Risk Assessment
 | Risk | L x I | Mitigation |

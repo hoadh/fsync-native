@@ -2,7 +2,7 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
-## 2026-10-15 - OTP email over SMTP, relay-only deploy, Singapore relay, Windows phase 14
+## 2026-10-15 - OTP email over SMTP, relay-only deploy, Singapore relay, Windows phase 14, multiple relays, hard logout
 
 ### Added
 - OTP email sender `EMAIL_SENDER=smtp` (lettre, STARTTLS on `smtp.gmail.com:587` by default; 465 = implicit TLS). Env: `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, optional `SMTP_HOST`, `SMTP_PORT`. Production refuses `log` unless `ALLOW_LOG_EMAIL=1`. Code: `backend/src/email/` (`smtp.rs`, `config.rs`, `sender.rs`).
@@ -11,18 +11,29 @@ Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-n
 - Singapore relay `relay-sg-fsync.10z.one` on a relay-only host (release `519ec821e90f`). See [deployment guide](./deployment-guide.md#hosts).
 - Windows phase 14 merged: clipboard sync, files, history and settings. Default hotkeys Win+Alt+C (send) and Win+Alt+V (paste from another device). Windows 11 x64: `dotnet` 124/124.
 - `tests/e2e/p0-exit-demo.sh` accepts `E2E_RELAY_URL` to run against a deployed relay.
+- Core multiple relays: `EngineConfig.relay_urls` (last field, uniffi default `[]`), merged with `relay_url` (first), duplicates dropped. All relays go into one iroh `RelayMap`; the endpoint picks the home relay by latency. Code: `core/fsync-core/src/net/relays.rs`, `core/fsync-ffi/src/engine.rs`.
+- Core and FFI `logout_confirmed()` (`true` = backend settled the revoke) and free function `revoke_session(api_url, refresh_token, allow_insecure_http)`, which needs no engine. A 401 counts as success. See [FFI contract](./ffi-contract.md#additive-since-v2-no-version-bump).
+- macOS pending revoke: the refresh token is kept in the Keychain at sign-out and retried at the next launch. Dropped after 5 failed launches or 30 days. Code: `apps/macos/FsyncMac/.../Bridge/PendingRevoke*.swift`.
+- Windows pending revoke: same rules, stored in the DPAPI secret store (`PendingRevoke.cs`, `SecretStore.PendingRevoke.cs`, `EngineBridge.Revoke.cs`).
+- Relay lists accept comma-separated URLs: macOS and Windows `FSYNC_RELAY` (macOS also Info.plist `FsyncRelayUrl`); `apps/macos/scripts/build-fsync-mac-app.sh --relay URL[,URL]`.
+- Windows C# bindings regenerated for `relay_urls`, `logout_confirmed` and `revoke_session`.
 
 ### Changed
 - OTP send failures now follow the outcome: a definite failure (refused, TLS/auth, rejected) deletes the code and refunds the slot and quotas. A timeout keeps the code and counts. See [api](./api.md#auth).
 - Ohio full stack moved to release `519ec821e90f` with migrations 0001-0003.
+- Windows sign-out always completes locally, even when the pending revoke save or the logout call fails. The pending revoke is saved under one lock (fix `27ed996`).
+- macOS sign-out settles only the pending revoke that this sign-out saved (a newer one is not cleared by an older retry).
 
 ### Verification
 - Ohio: real OTP through Gmail SMTP, `otp/start` 204 in 1.8 s (2026-10-15).
 - Singapore relay e2e (client in Vietnam): relay-only clip 0.42 s; 8 MiB via relay at 0.63 MiB/s, hash OK. Ohio relay measured earlier at about 0.105 MiB/s, so about 6x.
+- E2E with both relays configured (`relay-fsync.10z.one`, `relay-sg-fsync.10z.one`): relay-only 8 MiB at 0.55 MiB/s; relay-only clip 1.18 s.
+- Tests: `dotnet` 144/144; `cargo` 300 passed, 0 failed; `swift` 208.
 
 ### Open
 - Phase 14 manual GUI QA (Windows app) not done.
 - Alert on the log line `global OTP send cap reached` (alerting setup is not in the repo).
+- Hard logout after quit is closed for the macOS and Windows apps only when the app launches again. If it is never launched again, the refresh token stays valid until its 30-day expiry. The core retry queue stays in memory (unchanged). The backend needed no change: the revoke was already persisted (`refresh_tokens.revoked_at`).
 
 ## 2026-10-14 - Track merge: core hardening, infra phase 10, macOS phases 04 and 12
 

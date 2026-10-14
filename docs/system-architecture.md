@@ -1,6 +1,6 @@
 # System Architecture
 
-Last updated: 2026-10-14. Covers the P0 Rust track (phases 01, 02, 06-09) with its hardening (read-ahead, logout revocation, data-dir lock), the production deployment (phase 10), the macOS FFI package, and the macOS app (phases 04, 11, 12). Windows (phases 03 C# half, 05, 13, 14) is partial or not started, and phases 15-16 are not started; see [development-roadmap](./development-roadmap.md).
+Last updated: 2026-10-15. Covers the P0 Rust track (phases 01, 02, 06-09) with its hardening (read-ahead, logout revocation, data-dir lock, multiple relays), the production deployment (phase 10), the macOS FFI package, the macOS app (phases 04, 11, 12) and the Windows app (phases 03 C# half, 13, 14). Windows phase 05 is partial and phases 15-16 are not started; see [development-roadmap](./development-roadmap.md).
 
 ## Overview
 
@@ -128,6 +128,7 @@ Mac-side logic lives in `FsyncMacCore/Clipboard`, `Files`, `Settings` and `Featu
 - Production relays: `deploy/relay/` builds an image from `iroh-relay` 1.3.0 (pinned to `Cargo.lock`). Two regions, each published on loopback `18081` behind its host's Caddy (no buffering: `flush_interval -1`):
   - US-East-2 (Ohio): `relay-fsync.10z.one`, in the full compose stack with the backend.
   - ap-southeast-1 (Singapore): `relay-sg-fsync.10z.one`, relay-only host (`deploy.sh --relay-only`), no backend or Postgres.
+- **Clients use both relays.** The macOS and Windows apps pass both URLs (`relay_urls`, comma-separated in `FSYNC_RELAY` or `--relay`). The core merges them into one iroh `RelayMap` (`net/relays.rs`); the endpoint probes all of them and picks the home relay by latency, and moves it when the network changes. A device reports its current home relay in presence. A peer that cannot reach one relay can use the other.
 - The backend runs only in Ohio.
 - QUIC address discovery (QAD, udp/7842) is off by default. With `RELAY_QAD=1` the relay needs the Caddy-managed certificate for its own hostname, mounted alone.
 - For local runs and the e2e demo, `spikes/iroh-discovery` starts an in-process `iroh-relay` in HTTP dev mode (`relay [port]`).
@@ -217,7 +218,7 @@ Limits: at most 3 unauthenticated sessions per window, one attempt per source no
 1. The core takes the refresh token, then signs out locally: session, tokens, pinned device list and presence. `logout()` returns `Ok` after this step, even when the network is down.
 2. One inline revoke attempt (`POST /v1/auth/logout`), capped at 3 s. The backend revokes the whole refresh family, so rotated tokens die with it.
 3. If there is no answer, or the answer is 408, 429 or 5xx, the revoke is retried in the background: 5 s, doubling to 5 min, while the service object lives. Other answers end the retries (401 means already revoked).
-4. Tokens are never persisted by core. If the app quits before a revoke succeeds, the refresh token stays valid until its 30-day expiry (access tokens last 15 minutes).
+4. Tokens are never persisted by core. `logout_confirmed()` reports whether the revoke settled. If the app quits first, the host keeps a pending revoke (macOS Keychain, Windows DPAPI) and calls the engine-free `revoke_session` at the next launch; it is dropped after 5 failed launches or 30 days. See [FFI contract](./ffi-contract.md#hard-logout-after-quit-host-pattern).
 
 ## Storage
 
@@ -267,7 +268,7 @@ Defaults (settings): history mode Auto, 30 days, 1 GiB size cap, 50 MiB max clip
 | Backend adds a rogue device | Clients verify the signed chain from a pinned root. The server checks defensively but is not trusted. | A malicious backend can still show a fake code in code mode. The SAS catches this only if the users compare words. QR mode avoids it. |
 | Network MITM during pairing | SPAKE2 or HKDF with nonces, MAC confirm, 36-bit SAS on both devices, explicit consent. | 36-bit SAS. A first connector can burn a window (DoS only). |
 | Untrusted peer connects | Accept gate: only pinned node ids. Live connections for a removed device close with 403. | None known. |
-| Stolen auth tokens | 15 min access tokens, rotating refresh with reuse detection, family revoke on logout or reuse. Logout revokes server-side, retrying in the background. | A stolen live access token works until it expires (about 15 min). A refresh token survives an app quit that comes before its revoke reaches the backend (the retry is in memory only). |
+| Stolen auth tokens | 15 min access tokens, rotating refresh with reuse detection, family revoke on logout or reuse. Logout revokes server-side, retrying in the background. | A stolen live access token works until it expires (about 15 min). A refresh token survives an app quit that comes before its revoke reaches the backend. The macOS and Windows apps keep a pending revoke and retry it at launch; if the app is never launched again, the token lives until its 30-day expiry. |
 | Account takeover then device-list change | Trust reset and account delete need fresh auth (5 min). Resets are capped at 3 per day. Old devices get `TrustReset`. | An email takeover can still trigger a reset; the user of each old device must confirm or decline it (`confirm_trust_reset` / `decline_trust_reset`). |
 | Disk theft or same-user read of history | SQLCipher with the Keychain/DPAPI key. Blobs encrypted. | Received files exported to user folders are plaintext by design. `.part` staging is plaintext until finish. |
 | Sensitive clip stored | Sender does not store it. `ClipOffer.sensitive` tells the receiver to record nothing; blobs it fetched for that item are removed after use. | Honouring the flag is the receiver's behaviour. A modified receiver can ignore it. |
@@ -283,7 +284,7 @@ Defaults (settings): history mode Auto, 30 days, 1 GiB size cap, 50 MiB max clip
 - Root of a fresh device's chain is learned only when a chain through the head is seen. An old genesis replayed to a fresh device triggers a reset prompt, not a silent accept.
 - The denylist setting is stored and validated, but the core does not enforce it. Apps must filter before publishing.
 - Windows (phases 03 C#, 05, 13, 14) is partial: phase 14 is merged, manual GUI QA is open, and ARM64 is not run. Phase 10 has two relay regions; the backend is still single-region (Ohio).
-- Logout revocation is in memory only. A hard guarantee after an app quit needs an additive FFI (`revoke_session`), which is not built.
+- Logout after an app quit: `revoke_session` and the pending revoke (macOS, Windows) are built. Still open: a host that is never launched again keeps the refresh token until its 30-day expiry. The core retry queue itself is in memory.
 - Public relay throughput from Vietnam to the US-East-2 VPS is about 0.1 MiB/s, the same as the raw path. A Vietnam client measured about 0.63 MiB/s (8 MiB, relay-only) through the Singapore relay, about 6x the Ohio figure.
 
 ## Related docs

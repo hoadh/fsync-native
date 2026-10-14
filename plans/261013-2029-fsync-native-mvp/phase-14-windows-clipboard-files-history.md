@@ -4,7 +4,7 @@
 - Design §4 flows 3-6; ADR 010 ([phase-05](phase-05-spike-windows-clipboard-lazy-paste.md)); [phase-07](phase-07-core-protocols-clip-file.md), [phase-08](phase-08-core-history-ffi-cli.md); ADR 013 (decisions of this phase)
 
 ## Overview
-- Priority: P1 | Status: done with concerns (2026-10-14; review round 1 fixed 2026-10-15; Windows 11 x64: code, unit tests and e2e pass; open items below) | Effort: 5-6 wk (D) — parallel with phase 12
+- Priority: P1 | Status: done with concerns (merged to main 37e0430, 2026-10-15; Windows 11 x64: code, unit tests and e2e pass; open: manual QA checklist, ARM64 hardware, core findings below) | Effort: 5-6 wk (D) — parallel with phase 12
 - Productionize spike: listener + filters, auto/manual, format mapping, delayed-render writer, virtual-file paste (or eager per ADR 010), drag-drop + Explorer "Send to", history, settings.
 
 ## Key Insights
@@ -58,6 +58,7 @@ Data flow out: WM_CLIPBOARDUPDATE (150 ms settle) → skip rules + denylist → 
 - [x] Tests (unit 117/117; e2e `clipboard-with-cli.ps1` and `pair-with-cli.ps1` PASS)
 - [ ] ARM64 hardware run (ARM64 build compiles; no ARM64 host)
 - [ ] Manual QA checklist (below)
+- Sync 2026-10-15: merged to main (37e0430); Windows dotnet 144/144 on merged main incl. S5 (7cc8cfd). Final review round 4 scored 9.6 (plans/reports/code-reviewer-261015-0200-windows-phase-14-round-4.md); round 3 below was 9.0.
 
 ## Verification (Windows 11 x64, 2026-10-14)
 - `dotnet test apps/windows/Fsync.sln`: CoreBindings 9, Interop 31, App 52 — all pass. Interop tests use the real
