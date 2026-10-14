@@ -28,7 +28,8 @@ public final class TrustResetPromptModel: ObservableObject {
     @Combine.Published public internal(set) var pending: [TrustResetInfo] = []
     /// True while a confirm or decline call is running; further taps are ignored.
     @Combine.Published public private(set) var isBusy = false
-    @Combine.Published public private(set) var outcome: TrustResetOutcome = .unanswered
+    /// The last answer. `internal(set)` so the app's tests can drive the real `$outcome` sink.
+    @Combine.Published public internal(set) var outcome: TrustResetOutcome = .unanswered
     /// Short, user-readable text for the last failure.
     @Combine.Published public private(set) var errorMessage: String?
     /// True when `errorMessage` is informational (the request changed), not a failure.
