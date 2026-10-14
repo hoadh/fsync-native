@@ -12,6 +12,7 @@ class IntegrationTestCase: EngineTestCase {
     // No `super.setUp()` / `super.tearDown()`: EngineTestCase overrides neither (XCTestCase's are empty), and
     // calling a nonisolated async super method from this main-actor class sends `self` across isolation,
     // which Swift 6.1 (Xcode 16.4 on CI) rejects.
+    // If EngineTestCase ever gains its own async setUp/tearDown, this subclass must be revisited.
     override func setUp() async throws {
         backend = try DevBackend.fromEnvironment()
     }
