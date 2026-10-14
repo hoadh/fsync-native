@@ -59,25 +59,53 @@ public sealed class Round2Tests
         Assert.All(registered.Select((t, k) => (t.Result, k)), x => Assert.Equal($"p{ids[x.k]}", x.Result));
     }
 
+    private static ClipItem FilesClip(params CoreFile[] files) =>
+        new(Guid.NewGuid().ToString(), new string('b', 64), "Mac", ClipKind.Files, 1, null, [], files, 10, false);
+
+    /// <summary>Old enough for the retention: the cleanup removes it only if no download holds it.</summary>
+    private static void Age(string dir) => Directory.SetLastWriteTimeUtc(dir, DateTime.UtcNow.AddDays(-400));
+
     [Fact]
-    public async Task EagerWaitGivesUpAfterItsTimeoutAndCancelsTheTransfer()
+    public async Task EagerBudgetCoversStartingTheTransfers()
     {
         using var r = await RealEngine.StartAsync();
-        r.Clipboard.EagerTimeout = TimeSpan.FromMilliseconds(200);
-        await Assert.ThrowsAsync<TimeoutException>(() => r.Clipboard.AwaitDownloadsAsync([424_242], CancellationToken.None));
-        Assert.Contains(424_242UL, r.Clipboard.CancelledTransfers);
+        await r.Clipboard.RefreshSettingsAsync();
+        r.Clipboard.EagerTimeout = TimeSpan.Zero; // spent before the first fetch_file_to
+        var clip = FilesClip(new CoreFile(0, "a.bin", "a.bin", 10));
+        await Assert.ThrowsAsync<TimeoutException>(() => r.Clipboard.DownloadAsync(clip, CancellationToken.None));
+        var dir = Path.Combine(r.Clipboard.Inbox.Root, clip.itemId);
+        Age(dir);
+        Assert.Equal(1, r.Clipboard.CleanInbox()); // the in-flight mark was released on the way out
     }
 
     [Fact]
-    public async Task ANewerClipCancelsTheOlderClipsDownloads()
+    public async Task ANewerClipStopsAnOlderDownloadWhileItStarts()
     {
         using var r = await RealEngine.StartAsync();
-        var older = r.Clipboard.AwaitDownloadsAsync([515_151], r.Clipboard.LatestWriteToken); // the 180 s wait
+        var olderToken = r.Clipboard.LatestWriteToken; // the token an older eager write downloads with
         var text = new ClipItem(Guid.NewGuid().ToString(), new string('b', 64), "Mac", ClipKind.Text, 1, "hi",
             [new RepInfo("text/plain", 2)], [], 2, false);
-        await r.Clipboard.WriteAsync(text); // fails to fetch (unknown item), but it is newer
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => older.WaitAsync(TimeSpan.FromSeconds(5)));
-        Assert.Contains(515_151UL, r.Clipboard.CancelledTransfers);
+        await r.Clipboard.WriteAsync(text); // newer: replaces (and cancels) the older write
+        var clip = FilesClip(new CoreFile(0, "a.bin", "a.bin", 10));
+        // Cancelled, not "unknown item": no transfer is started for a superseded clip.
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => r.Clipboard.DownloadAsync(clip, olderToken));
+        Assert.Empty(r.Clipboard.CancelledTransfers);
+    }
+
+    [Fact]
+    public async Task AFailingStartReleasesTheFolderAndKeepsReusedFiles()
+    {
+        using var r = await RealEngine.StartAsync();
+        await r.Clipboard.RefreshSettingsAsync();
+        var clip = FilesClip(new CoreFile(0, "have.txt", "have.txt", 2), new CoreFile(1, "missing.bin", "missing.bin", 8));
+        var dir = r.Clipboard.Inbox.Folder(clip.itemId);
+        File.WriteAllText(Path.Combine(dir, "have.txt"), "ok"); // reused: no fetch for it
+        Age(dir);
+        await Assert.ThrowsAnyAsync<FsyncException>(() => r.Clipboard.DownloadAsync(clip, CancellationToken.None)); // core cannot start it
+        Assert.True(DateTime.UtcNow - Directory.GetLastWriteTimeUtc(dir) < TimeSpan.FromMinutes(1)); // touched on reuse
+        Assert.Equal(0, r.Clipboard.CleanInbox()); // fresh again: younger than the minimum age
+        Age(dir);
+        Assert.Equal(1, r.Clipboard.CleanInbox()); // and no longer marked in flight
     }
 
     [Fact]
