@@ -90,6 +90,8 @@ final class ClipboardIntegrationTests: IntegrationTestCase {
         await r.sync.publishCurrent()
         let event = try await watcher.waitEvent("clip", timeout: 30)
         XCTAssertEqual(event["text"] as? String, "only when asked")
+        // One engine per data dir (core `engine.lock`): the watcher must be gone before `clip put`.
+        try await watcher.expectExit(0, timeout: 15)
 
         _ = try spawn("k4", ["clip", "put", "--text", "waiting for you", "--wait", "40"])
         let pending = await waitUntil(timeout: 40) { r.sync.pendingIncoming != nil }
