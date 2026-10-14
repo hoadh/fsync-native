@@ -7,7 +7,8 @@
 #
 # Own project name and free ports; never touches other containers. Needs docker, cargo, python3.
 # Staging mode (FSYNC_ENV=staging + dev mode) is used only so the OTP can be read from the
-# backend log: there is no email provider yet. Honors CARGO_TARGET_DIR, KEEP=1.
+# backend log: there is no email provider yet. Honors CARGO_TARGET_DIR, KEEP=1, SKIP_BUILD=1
+# (images fsync-backend:local / fsync-relay:local already built, e.g. restored from a CI cache).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -35,6 +36,8 @@ trap cleanup EXIT INT TERM
 
 BACKEND_PORT="$(free_port)"; RELAY_HTTP_PORT="$(free_port)"; LOCAL_HTTPS_PORT="$(free_port)"
 QUIC_PORT="$(free_port)"
+# Pinned compose subnet (TRUSTED_PROXIES follows it): a random /24 so parallel runs do not collide.
+SUBNET="172.29.$((RANDOM % 200 + 20)).0/24"
 # Base env from the template, then local-test overrides (later assignments win in compose).
 "$DEPLOY/scripts/gen-env.sh" api.localhost relay.localhost >"$ENVF"
 cat >>"$ENVF" <<ENV
@@ -46,18 +49,21 @@ RELAY_HTTP_PORT=$RELAY_HTTP_PORT
 LOCAL_HTTPS_PORT=$LOCAL_HTTPS_PORT
 RELAY_QAD=1
 RELAY_QUIC_PORT=$QUIC_PORT
+RELAY_USER=0
+FSYNC_SUBNET=$SUBNET
 ENV
 
 log "building CLI"
 (cd "$ROOT" && cargo build --release -p fsync-cli)
 CLI="$BUILD/release/fsync-cli"; [[ -x "$CLI" ]] || fail "missing $CLI"
 
+BUILD_FLAG=--build; [[ -z "${SKIP_BUILD:-}" ]] || BUILD_FLAG=--no-build
 log "compose up (project $PROJECT)"
-dc up -d --build --wait --wait-timeout 900 || fail "compose up"
+dc up -d "$BUILD_FLAG" --wait --wait-timeout 900 || fail "compose up"
 dc ps
 
-log "smoke: loopback HTTP (what deploy.sh checks on the host)"
-"$DEPLOY/scripts/smoke-check.sh" "http://127.0.0.1:$BACKEND_PORT" "http://127.0.0.1:$RELAY_HTTP_PORT"
+log "smoke: loopback HTTP (what deploy.sh checks on the host), incl. proxy-peer trust"
+CHECK_PROXY_TRUST=1 "$DEPLOY/scripts/smoke-check.sh" "http://127.0.0.1:$BACKEND_PORT" "http://127.0.0.1:$RELAY_HTTP_PORT"
 log "smoke: HTTPS through Caddy (local CA)"
 dc cp caddy:/data/caddy/pki/authorities/local/root.crt "$WORK/ca.pem" >/dev/null
 CURL_EXTRA="--cacert $WORK/ca.pem --resolve api.localhost:$LOCAL_HTTPS_PORT:127.0.0.1 --resolve relay.localhost:$LOCAL_HTTPS_PORT:127.0.0.1" \
@@ -134,7 +140,6 @@ log "postgres backup + restore"
 export COMPOSE_PROJECT_NAME="$PROJECT" COMPOSE_ENV_FILES="$ENVF" COMPOSE_FILE="$DEPLOY/compose.yml"
 STACK_DIR="$DEPLOY" BACKUP_DIR="$WORK/backups" "$DEPLOY/scripts/backup-postgres.sh"
 dump="$(ls "$WORK"/backups/fsync-*.dump | head -1)"
-dc exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists' <"$dump" \
-  || fail "pg_restore"
+"$DEPLOY/scripts/restore-postgres.sh" "$dump" || fail "restore"
 curl -fsS "$API/health" >/dev/null || fail "backend unhealthy after restore"
 log "PASS"

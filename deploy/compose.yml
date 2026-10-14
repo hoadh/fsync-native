@@ -19,9 +19,10 @@ services:
     <<: *hardening
     image: postgres:17
     # Small host (shared, ~2 GiB RAM): keep Postgres lean.
-    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=40",
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=25",
               "-c", "work_mem=2MB", "-c", "maintenance_work_mem=32MB", "-c", "effective_cache_size=128MB"]
     mem_limit: 192m
+    memswap_limit: 192m   # no swap use: an overload restarts the container instead of thrashing the host
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-fsync}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
@@ -49,9 +50,12 @@ services:
       BIND_ADDR: 0.0.0.0:8080
       FSYNC_ENV: ${FSYNC_ENV:-production}
       FSYNC_DEV_MODE: ${FSYNC_DEV_MODE:-0}
-      # Caddy is the one proxy in front; it appends the client address to X-Forwarded-For.
+      # Caddy is the one proxy in front; it appends the client address to X-Forwarded-For. It reaches
+      # the published loopback port, so the backend sees the pinned network's gateway (docker-proxy)
+      # or 127.0.0.1 (userland-proxy off). Trust exactly those. api-fsync must be DNS-only (grey
+      # cloud): behind Cloudflare there are two hops and per-IP limits would bucket by the CF edge.
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
-      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-172.16.0.0/12}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-${FSYNC_SUBNET:-172.29.0.0/24},127.0.0.0/8}
       MAX_UNAUTH_WS: ${MAX_UNAUTH_WS:-1000}
       MAX_UNAUTH_WS_PER_IP: ${MAX_UNAUTH_WS_PER_IP:-10}
       MAX_IN_FLIGHT: ${MAX_IN_FLIGHT:-512}
@@ -60,6 +64,7 @@ services:
     read_only: true
     cap_drop: [ALL]
     mem_limit: 96m
+    memswap_limit: 96m
     ports:
       - "127.0.0.1:${BACKEND_PORT:-18080}:8080"
     # Image HEALTHCHECK (curl /health, which also runs SELECT 1) applies.
@@ -77,12 +82,13 @@ services:
       RELAY_RX_BYTES_PER_SEC: ${RELAY_RX_BYTES_PER_SEC:-}
       RUST_LOG: ${RELAY_RUST_LOG:-info}
     volumes:
-      # Only used when RELAY_QAD=1: Caddy's data dir (host path, e.g.
-      # /var/lib/caddy/.local/share/caddy, or a docker volume). Caddy's keys are root-owned 0600,
-      # so the relay container runs as root (read-only fs, no capabilities, read-only mount).
-      - ${RELAY_CERT_VOLUME:-relay_nocert}:/caddy-data:ro
-    user: "0"
+      # Only used when RELAY_QAD=1: ONLY the relay hostname's certificate directory that Caddy
+      # manages (RELAY_CERT_DIR, host path), never Caddy's whole data dir (it holds the keys of every
+      # site on the host). Caddy's key is root-owned 0600, so QAD also needs RELAY_USER=0.
+      - ${RELAY_CERT_DIR:-relay_nocert}:/relay-cert:ro
+    user: "${RELAY_USER:-10001:10001}"
     mem_limit: 96m
+    memswap_limit: 96m
     read_only: true
     tmpfs: ["/tmp"]
     cap_drop: [ALL]
@@ -90,6 +96,14 @@ services:
       - "127.0.0.1:${RELAY_HTTP_PORT:-18081}:3340"
       # Loopback unless QAD is on: then set RELAY_QUIC_BIND=0.0.0.0 and open udp/7842 in the firewall.
       - "${RELAY_QUIC_BIND:-127.0.0.1}:${RELAY_QUIC_PORT:-7842}:7842/udp"
+
+networks:
+  default:
+    # Pinned so TRUSTED_PROXIES can name it exactly. Must not overlap another docker network or the
+    # VPC (cms-node: 172.17-19/16 in use, VPC 172.26.0.0/20). Override with FSYNC_SUBNET if needed.
+    ipam:
+      config:
+        - subnet: ${FSYNC_SUBNET:-172.29.0.0/24}
 
 volumes:
   pgdata:

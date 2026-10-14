@@ -19,7 +19,7 @@ internet --7842/udp--> relay (QUIC address discovery; optional, off by default)
 | `backend/Dockerfile`, `relay/Dockerfile` | images (relay = `iroh-relay` 1.3.0 from crates.io, pinned to Cargo.lock) |
 | `relay/entrypoint.sh` | renders the relay config; with QAD waits for the Caddy certificate |
 | `.env.example` | all settings, no secrets; `scripts/gen-env.sh` fills secrets |
-| `scripts/` | `deploy.sh`, `smoke-check.sh`, `backup-postgres.sh`, `gen-env.sh`, `bootstrap-vps.sh` (fresh dedicated VPS only) |
+| `scripts/` | `deploy.sh`, `smoke-check.sh`, `backup-postgres.sh`, `gen-env.sh`, `restore-postgres.sh`, `bootstrap-vps.sh` (fresh dedicated VPS only, needs `--dedicated`) |
 | `backend/compose.yml` | older backend + Postgres only compose for development |
 
 ## Host Caddy snippet (owner applies; the deploy never edits or reloads Caddy)
@@ -37,11 +37,22 @@ relay-fsync.10z.one {
 ```
 
 ## DNS
-`api-fsync` may stay proxied (orange cloud); WebSocket idle timeouts apply (presence heartbeat is
-60 s, fine). **`relay-fsync` must be DNS-only (grey cloud)**: the relay carries long-lived upgraded
-connections and, with QAD, UDP, neither of which the Cloudflare proxy supports. Both point to the
-Lightsail static IP.
+Both hostnames point to the Lightsail static IP and should be **DNS-only (grey cloud)**.
+`relay-fsync` must be: the relay carries long-lived upgraded connections and, with QAD, UDP, neither
+of which the Cloudflare proxy supports. `api-fsync` should be too: host Caddy has no
+`trusted_proxies`, so behind Cloudflare it would replace `X-Forwarded-For` with the Cloudflare edge
+IP and every per-IP limit (unauthenticated presence sockets, rate limits) would bucket by edge.
+(Alternative, not recommended: keep it orange, add Caddy global `servers { trusted_proxies static
+<Cloudflare ranges> }` so XFF keeps the real client, and set `TRUST_PROXY_HOPS=2`.)
 
+## Client IP trust
+Caddy connects to the backend's published loopback port, so the backend sees the gateway of the compose
+network (docker-proxy) or 127.0.0.1 (userland proxy off). The network is pinned to `FSYNC_SUBNET`
+(default `172.29.0.0/24`; must not overlap other docker networks or the VPC: on cms-node 172.17-19/16
+and 172.26.0.0/20 are in use) and `TRUSTED_PROXIES` defaults to that subnet + `127.0.0.0/8`.
+`smoke-check.sh` with `CHECK_PROXY_TRUST=1` (run by `deploy.sh` on the host and by the e2e test)
+opens more unauthenticated presence sockets than the per-IP limit, each with a different
+`X-Forwarded-For`; it passes only if the backend honors the header from its peer.
 
 ## Ports (Lightsail firewall; ufw is inactive on the shared host and we do not touch it)
 | Port | Proto | Needed | Why |
@@ -65,9 +76,11 @@ records `FSYNC_TAG` in the remote `.env` (600; uploaded only if missing, never o
 `docker compose up -d`, waits for container health and smoke-checks loopback ports over SSH. Docker is
 used through `sudo -n` when the ssh user is not in the docker group. Re-running the same commit
 converges without rebuilding. Releases are immutable git-sha tags; the host keeps current + previous.
-`--remote-build` builds on the VPS (will OOM on a 2 GiB host: avoid).
+Concurrent deploys are refused (flock), `.env` is rewritten atomically, and `compose.yml.prev` is kept.
+`--install-backup-cron` writes `/etc/cron.d/fsync-backup` (daily 03:15, only that file).
 
-On a **dedicated** fresh VPS `scripts/bootstrap-vps.sh` installs Docker, ufw rules, swap and a backup
+On a **dedicated** fresh VPS `scripts/bootstrap-vps.sh HOST --dedicated` (aborts when other containers or
+something on 80/443 exist) installs Docker, ufw rules, swap and a backup
 cron. Do not run it on the shared host.
 
 ## Rollback / stop
@@ -76,7 +89,8 @@ deploy/scripts/deploy.sh ubuntu@cms-node --rollback      # previous release (FSY
 ssh ubuntu@cms-node 'cd /opt/fsync && sudo docker compose -p fsync down'      # stop (data kept)
 ssh ubuntu@cms-node 'cd /opt/fsync && sudo docker compose -p fsync down -v'   # stop and delete data
 ```
-Migrations must stay backward compatible (expand/contract) for rollback to be safe.
+Rollback restores the previous images **and** the previous `compose.yml`. Migrations are forward-only (never
+rolled back): keep them backward compatible (expand/contract) so the old release still runs on the new schema.
 
 ## Staging until an email provider exists
 No email sender is wired, so a `production` deployment cannot deliver OTPs. For a private pre-launch
@@ -88,17 +102,19 @@ set `FSYNC_ENV=staging`, `FSYNC_DEV_MODE=1`, `RUST_LOG=fsync_backend=debug,info`
 cd /opt/fsync                                  # prefix docker with sudo if needed
 docker compose ps; docker compose logs -f --tail 100 backend relay
 ./scripts/backup-postgres.sh                   # dumps to backups/, keeps 14 days
-docker compose exec -T postgres pg_restore -U fsync -d fsync --clean --if-exists < backups/<file>.dump
-# daily backup (owner decides where cron lives): 15 3 * * * cd /opt/fsync && ./scripts/backup-postgres.sh
+./scripts/restore-postgres.sh backups/<file>.dump   # user/db from the stack .env; stop backend first
+# deploy.sh --install-backup-cron schedules the daily backup; the script refuses below 1 GiB free
 ```
 Backups share the disk: also enable Lightsail automatic snapshots and copy dumps off-box. Rotating
 `JWT_SIGNING_KEY` signs everyone out (edit `.env`, `docker compose up -d backend`).
 
 ### Enabling QUIC address discovery
-Needs the relay certificate that host Caddy manages. Set in `/opt/fsync/.env`:
-`RELAY_QAD=1`, `RELAY_QUIC_BIND=0.0.0.0`, `RELAY_CERT_VOLUME=/var/lib/caddy/.local/share/caddy`
-(read-only mount of Caddy's data dir; confirm the path with `sudo caddy environ | grep -i data`),
-open udp/7842, then `docker compose up -d relay`. Reads a root-only directory: the owner's call.
+Needs the relay certificate that host Caddy manages, mounted **alone** (never Caddy's whole data dir,
+which holds every site's keys). Set in `/opt/fsync/.env` (path: `sudo caddy environ | grep -i data`;
+the directory exists once Caddy has served the relay host):
+`RELAY_QAD=1`, `RELAY_QUIC_BIND=0.0.0.0`, `RELAY_USER=0` (Caddy's key is root-only 0600),
+`RELAY_CERT_DIR=/var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/relay-fsync.10z.one`,
+open udp/7842, then `docker compose up -d relay`. Without QAD the relay runs as uid 10001.
 
 ## Local verification
 `tests/e2e/compose-stack-sync.sh` builds and runs the stack with Docker (own project and free ports),

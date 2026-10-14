@@ -4,7 +4,7 @@
 # TLS is terminated by the reverse proxy (Caddy) in front: the relay speaks plain HTTP on :3340
 # (dangerous_http_only, the behind-a-proxy mode). With RELAY_QAD=1 it also runs QUIC address
 # discovery on udp/7842, which needs a certificate for RELAY_HOSTNAME: it reads the one Caddy
-# manages from /caddy-data (re-read periodically, so renewals are picked up).
+# manages, mounted read-only at /relay-cert (re-read periodically, so renewals are picked up).
 set -eu
 : "${RELAY_HOSTNAME:?RELAY_HOSTNAME is required}"
 CONF=/tmp/iroh-relay.toml
@@ -18,13 +18,14 @@ TOML
 
 if [ "${RELAY_QAD:-0}" = "1" ]; then
   # Caddy obtains the certificate shortly after it first sees the hostname; wait for it
-  # (compose restarts us if it never shows up). Layout-agnostic: docker volume or host path.
+  # (compose restarts us if it never shows up). Mount is the host's cert dir (flat) or, in the
+  # local test, a whole Caddy volume: find handles both.
   i=0; CRT=""
   while [ -z "$CRT" ]; do
-    CRT="$(find /caddy-data -path "*/certificates/*/${RELAY_HOSTNAME}/${RELAY_HOSTNAME}.crt" 2>/dev/null | head -1)"
+    CRT="$(find /relay-cert -name "${RELAY_HOSTNAME}.crt" 2>/dev/null | head -1)"
     [ -n "$CRT" ] && break
     i=$((i + 1))
-    if [ "$i" -gt 120 ]; then echo "no certificate for ${RELAY_HOSTNAME} under /caddy-data after 120 s" >&2; exit 1; fi
+    if [ "$i" -gt 120 ]; then echo "no certificate for ${RELAY_HOSTNAME} under /relay-cert after 120 s" >&2; exit 1; fi
     sleep 1
   done
   KEY="${CRT%.crt}.key"

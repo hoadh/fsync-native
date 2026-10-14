@@ -24,7 +24,7 @@ services:
       retries: 10
   relay:
     volumes:
-      - caddy_data:/caddy-data:ro
+      - caddy_data:/relay-cert:ro
     depends_on: [caddy]
 volumes:
   caddy_data:

@@ -4,26 +4,26 @@
 #
 #   deploy/scripts/deploy.sh [user@]host [options]
 #     --env-file F     upload F as the remote .env if the host has none (never overwrites)
-#     --remote-build   build the images on the VPS (DOCKER_HOST=ssh://) instead of locally
 #     --rollback       redeploy the previous release (FSYNC_TAG_PREV in the remote .env)
 #     --dir D          stack dir on the host (default /opt/fsync)
 #     --platform P     image platform for local builds (default linux/amd64)
 #     --public-smoke   also smoke-check https://API_HOST and https://RELAY_HOST (needs DNS + proxy)
 #     --skip-smoke     skip the on-host smoke check
+#     --install-backup-cron  write /etc/cron.d/fsync-backup (daily pg_dump; touches nothing else)
 # Env: SSH_OPTS (default "-o StrictHostKeyChecking=accept-new"), DEPLOY_TAG (override image tag).
 #
 # Default flow: build images locally (buildx, the VPS stays small), `docker save | ssh docker load`
 # only for tags the host lacks, copy compose files, update FSYNC_TAG in the remote .env, `up -d`,
-# wait for container health, smoke-check the public endpoints. Releases are immutable git-sha tags;
+# wait for container health, smoke-check over loopback. Releases are immutable git-sha tags;
 # the last two are kept on the host.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 HERE="$ROOT/deploy"
-host="" env_file="" remote_build=0 rollback=0 dir=/opt/fsync platform=linux/amd64 smoke=1 public=0
+host="" env_file="" cron=0 rollback=0 dir=/opt/fsync platform=linux/amd64 smoke=1 public=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --env-file) env_file="${2:?}"; shift 2;;
-    --remote-build) remote_build=1; shift;;
+    --install-backup-cron) cron=1; shift;;
     --rollback) rollback=1; shift;;
     --dir) dir="${2:?}"; shift 2;;
     --platform) platform="${2:?}"; shift 2;;
@@ -62,20 +62,13 @@ have_image() { rsh "$D image inspect fsync-backend:$tag fsync-relay:$tag >/dev/n
 
 # --- images
 if [[ $rollback -eq 0 ]] && ! have_image; then
-  if [[ $remote_build -eq 1 ]]; then
-    log "building on $host"
-    export DOCKER_HOST="ssh://$host"
-    docker build -t "fsync-backend:$tag" -f "$ROOT/deploy/backend/Dockerfile" "$ROOT"
-    docker build -t "fsync-relay:$tag" "$HERE/relay"
-    unset DOCKER_HOST
-  else
-    log "building $platform images locally"
-    docker buildx build --platform "$platform" --load -t "fsync-backend:$tag" \
-      -f "$ROOT/deploy/backend/Dockerfile" "$ROOT"
-    docker buildx build --platform "$platform" --load -t "fsync-relay:$tag" "$HERE/relay"
-    log "shipping images"
-    docker save "fsync-backend:$tag" "fsync-relay:$tag" | gzip | rsh "gunzip | $D load"
-  fi
+  # Built locally (cross-compiled, see the Dockerfiles): a 2 GiB shared VPS must never compile Rust.
+  log "building $platform images locally"
+  docker buildx build --platform "$platform" --load -t "fsync-backend:$tag" \
+    -f "$ROOT/deploy/backend/Dockerfile" "$ROOT"
+  docker buildx build --platform "$platform" --load -t "fsync-relay:$tag" "$HERE/relay"
+  log "shipping images"
+  docker save "fsync-backend:$tag" "fsync-relay:$tag" | gzip | rsh "gunzip | $D load"
 elif [[ $rollback -eq 1 ]]; then
   have_image || die "images for $tag are gone from the host"
 else
@@ -83,28 +76,47 @@ else
 fi
 
 # --- files, env
-log "copying compose files"
-tar -C "$HERE" -cf - compose.yml Caddyfile scripts | rsh "tar -C '$dir' -xf -"
+if [[ $rollback -eq 0 ]]; then
+  log "copying compose files"
+  rsh "rm -rf '$dir/.incoming' && mkdir -p '$dir/.incoming'"
+  COPYFILE_DISABLE=1 tar -C "$HERE" -cf - compose.yml Caddyfile scripts | rsh "tar -C '$dir/.incoming' -xf -"
+fi
 if ! rsh "test -s '$dir/.env'"; then
   [[ -n "$env_file" ]] || die "no $dir/.env on the host: pass --env-file (see deploy/scripts/gen-env.sh)"
-  rsh "umask 077 && cat > '$dir/.env'" < "$env_file"
+  rsh "umask 077 && cat > '$dir/.env.new' && mv '$dir/.env.new' '$dir/.env'" < "$env_file"
   log "uploaded .env"
 fi
 rsh "chmod 600 '$dir/.env'"
 
-# --- switch release
-rsh "bash -s '$dir' '$tag' '$D'" <<'REMOTE'
+# --- switch release (one deploy at a time; .env edited atomically; compose.yml.prev kept for rollback)
+rsh "bash -s '$dir' '$tag' '$D' '$rollback'" <<'REMOTE'
 set -euo pipefail
-dir="$1" tag="$2" D="$3 "; D="${D% }"; cd "$dir"
+dir="$1" tag="$2" D="$3 "; D="${D% }"; rollback="$4"; cd "$dir"
+exec 9>.deploy.lock
+flock -n 9 || { echo "another deploy is running on this host" >&2; exit 1; }
+umask 077
 cur="$(sed -n 's/^FSYNC_TAG=//p' .env | tail -1)"
-sed -i '/^FSYNC_TAG=/d' .env
-[ "$cur" = "$tag" ] || { sed -i '/^FSYNC_TAG_PREV=/d' .env; [ -z "$cur" ] || echo "FSYNC_TAG_PREV=$cur" >> .env; }
-echo "FSYNC_TAG=$tag" >> .env
+if [ "$rollback" = 1 ]; then
+  if [ -f compose.yml.prev ]; then mv compose.yml compose.yml.tmp; mv compose.yml.prev compose.yml; mv compose.yml.tmp compose.yml.prev; fi
+else
+  [ "$cur" = "$tag" ] || { [ ! -f compose.yml ] || cp compose.yml compose.yml.prev; }
+  cp .incoming/compose.yml compose.yml.new && mv compose.yml.new compose.yml
+  cp .incoming/Caddyfile Caddyfile; mkdir -p scripts; cp -r .incoming/scripts/. scripts/; rm -rf .incoming
+fi
+{
+  grep -v -e '^FSYNC_TAG=' -e '^FSYNC_TAG_PREV=' .env || true
+  prev="$cur"; [ "$cur" != "$tag" ] || prev="$(sed -n 's/^FSYNC_TAG_PREV=//p' .env | tail -1)"
+  [ -z "$prev" ] || echo "FSYNC_TAG_PREV=$prev"
+  echo "FSYNC_TAG=$tag"
+} > .env.new
+# (grep re-terminates a last line that lacks its newline, so appended keys never merge into it)
+mv .env.new .env; chmod 600 .env
 $D compose up -d --no-build --remove-orphans
 for _ in $(seq 1 90); do
   bad=0
   for s in postgres backend relay; do
     cid="$($D compose ps -q "$s")"
+    [ -n "$cid" ] || { bad=1; continue; }
     st="$($D inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$cid" 2>/dev/null || echo missing)"
     case "$st" in healthy|running) ;; *) bad=1;; esac
   done
@@ -120,11 +132,20 @@ for img in fsync-backend fsync-relay; do
 done
 REMOTE
 
+# --- backups: dumps are scheduled by a cron.d file scoped to this stack (the only host file we write)
+if [[ $cron -eq 1 ]]; then
+  rsh "printf '15 3 * * * %s cd %s && ./scripts/backup-postgres.sh >> %s/backup.log 2>&1\n' \"\$(id -un)\" '$dir' '$dir' \
+    | sudo -n tee /etc/cron.d/fsync-backup >/dev/null && sudo -n chmod 644 /etc/cron.d/fsync-backup"
+  log "backup cron installed: /etc/cron.d/fsync-backup (daily 03:15, 14 days kept)"
+elif ! rsh "test -f /etc/cron.d/fsync-backup"; then
+  log "WARNING: backups are NOT scheduled on this host (rerun with --install-backup-cron)"
+fi
+
 # --- smoke (on the host over loopback; the public endpoints need DNS + the proxy snippet)
 if [[ $smoke -eq 1 ]]; then
   bp="$(rsh "sed -n 's/^BACKEND_PORT=//p' '$dir/.env'")"; rp="$(rsh "sed -n 's/^RELAY_HTTP_PORT=//p' '$dir/.env'")"
   log "on-host smoke check (127.0.0.1:${bp:-18080} / ${rp:-18081})"
-  rsh "bash -s -- http://127.0.0.1:${bp:-18080} http://127.0.0.1:${rp:-18081}" < "$HERE/scripts/smoke-check.sh" \
+  rsh "CHECK_PROXY_TRUST=1 bash -s -- http://127.0.0.1:${bp:-18080} http://127.0.0.1:${rp:-18081}" < "$HERE/scripts/smoke-check.sh" \
     || die "smoke check failed (release $tag is running; inspect: ssh $host 'cd $dir && $D compose logs')"
 fi
 if [[ $public -eq 1 ]]; then
