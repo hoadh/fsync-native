@@ -1,1 +1,9 @@
 build/
+# Signing material lives outside the repo (~/.fsync-signing); never commit it.
+*.provisionprofile
+*.p12
+*.cer
+*.certSigningRequest
+*.p8
+*.mobileprovision
+*.keychain-db
