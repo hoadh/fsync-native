@@ -2,11 +2,13 @@ import FsyncCoreKit
 import Foundation
 
 extension EngineBridge {
+    static let settingsOffMessage = "Clipboard sync is off: your settings couldn't be read."
     private static let inboxCleanupInterval: UInt64 = 24 * 3600 * 1_000_000_000
 
     /// Clipboard sync, files, settings and the history list share the engine; they run only while `.ready`.
     /// Must run after `modelSubscriptions` was reset.
     func installClipboardModels(engine: FsyncEngine) {
+        isQuitting = false
         let settings = ClipSettingsModel(engine: engine) { [weak self] in self?.clipSettings(changed: $0) }
         let transfers = TransfersModel(engine: engine)
         let fetcher = FileFetchService(engine: engine, transfers: transfers)
@@ -28,7 +30,7 @@ extension EngineBridge {
     private func clipSettings(changed new: Settings) {
         let retentionChanged = new.retentionDays != clipSync?.retentionDays || new.retentionBytes != clipSync?.retentionBytes
         clipSync?.apply(settings: new)
-        guard phase == .ready else { return }
+        guard phase == .ready, !isQuitting else { return }
         if clipSync?.isRunning == false {
             startClipboard()
         } else if retentionChanged {
@@ -44,6 +46,7 @@ extension EngineBridge {
             inboxCleanup?.cancel()
             return
         }
+        guard !isQuitting else { return }
         filesSync?.start()
         Task { [weak self] in await self?.loadClipSettings() }
     }
@@ -54,12 +57,13 @@ extension EngineBridge {
     func loadClipSettings() async {
         guard let settings = clipSettings else { return }
         if await !settings.load() {
-            clipSync?.report("Clipboard sync is off: your settings couldn't be read.")
+            clipSync?.report(Self.settingsOffMessage)
         }
     }
 
     private func startClipboard() {
-        clipSync?.dismissMessage()
+        guard !isQuitting else { return }
+        if clipSync?.message == Self.settingsOffMessage { clipSync?.dismissMessage() }
         clipSync?.start()
         if hotkey?.register() == false { clipSync?.report("The shortcut \(HotkeyManager.sendClipboardLabel) is used by another app.") }
         startInboxCleanup()
@@ -83,6 +87,9 @@ extension EngineBridge {
 
     /// The app is quitting: do not leave a pasteboard entry that nothing can serve any more.
     public func prepareToQuit() {
+        isQuitting = true
+        inboxCleanup?.cancel()
+        clipSync?.stop()
         clipSync?.prepareToQuit()
         hotkey?.unregister()
     }

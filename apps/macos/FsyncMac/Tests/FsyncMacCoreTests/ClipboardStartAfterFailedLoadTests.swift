@@ -11,23 +11,75 @@ final class ClipboardStartAfterFailedLoadTests: EngineTestCase {
         return bridge
     }
 
-    func testSyncAndHotkeyStartWhenALaterSettingsLoadSucceeds() async throws {
+    /// A ready bridge whose initial settings load failed (sync off, message shown).
+    private func readyBridgeWithFailedLoad() async throws -> (EngineBridge, ClipSettingsModel) {
         let bridge = try await signedOutBridge()
         let settings = try XCTUnwrap(bridge.clipSettings)
         settings.readSettings = { _ in throw FsyncError.Network(msg: "settings unavailable") }
-
         bridge.applyAccountState(.ready)
-        await eventually("failed load is reported") { bridge.clipSync?.message != nil }
+        await eventually("failed load is reported") { bridge.clipSync?.message == EngineBridge.settingsOffMessage }
         XCTAssertEqual(bridge.clipSync?.isRunning, false, "no sync on guessed settings")
         XCTAssertEqual(bridge.hotkey?.isRegistered, false)
-
         settings.readSettings = { try $0.settings() }
+        return (bridge, settings)
+    }
+
+    func testSyncAndHotkeyStartWhenALaterSettingsLoadSucceeds() async throws {
+        let (bridge, settings) = try await readyBridgeWithFailedLoad()
         let ok = await settings.load()
 
         XCTAssertTrue(ok)
         XCTAssertEqual(bridge.clipSync?.isRunning, true, "sync starts as soon as settings load")
         XCTAssertNotNil(bridge.inboxCleanup)
-        XCTAssertNotEqual(bridge.clipSync?.message, "Clipboard sync is off: your settings couldn't be read.")
+        XCTAssertNotEqual(bridge.clipSync?.message, EngineBridge.settingsOffMessage)
+        if bridge.hotkey?.isRegistered != true {
+            await bridge.shutdown()
+            throw XCTSkip("\(HotkeyManager.sendClipboardLabel) is owned by another app")
+        }
+        await bridge.shutdown()
+    }
+
+    func testOnlyTheSettingsOffMessageIsClearedOnStart() async throws {
+        let (bridge, settings) = try await readyBridgeWithFailedLoad()
+        bridge.clipSync?.report("Some other notice")
+        await settings.load()
+        XCTAssertEqual(bridge.clipSync?.isRunning, true)
+        XCTAssertTrue(bridge.clipSync?.message == "Some other notice"
+                      || bridge.clipSync?.message?.contains("used by another app") == true, "unrelated message kept")
+        await bridge.shutdown()
+    }
+
+    func testNothingStartsAfterPrepareToQuit() async throws {
+        let (bridge, settings) = try await readyBridgeWithFailedLoad()
+        bridge.prepareToQuit()
+        let ok = await settings.load()
+
+        XCTAssertTrue(ok)
+        XCTAssertEqual(bridge.clipSync?.isRunning, false, "a late load must not start sync while quitting")
+        XCTAssertEqual(bridge.hotkey?.isRegistered, false)
+        await bridge.shutdown()
+    }
+
+    func testPrepareToQuitStopsRunningSync() async throws {
+        let (bridge, settings) = try await readyBridgeWithFailedLoad()
+        await settings.load()
+        XCTAssertEqual(bridge.clipSync?.isRunning, true)
+        bridge.prepareToQuit()
+        XCTAssertEqual(bridge.clipSync?.isRunning, false)
+        XCTAssertEqual(bridge.hotkey?.isRegistered, false)
+        await bridge.shutdown()
+    }
+
+    func testNothingStartsAfterSignOut() async throws {
+        let (bridge, settings) = try await readyBridgeWithFailedLoad()
+        bridge.requireSignIn(banner: nil)
+        await bridge.sessionClear?.value
+        XCTAssertEqual(bridge.phase, .signedOut)
+
+        let ok = await settings.load()  // a stale in-flight load finishing after sign-out
+        XCTAssertTrue(ok)
+        XCTAssertEqual(bridge.clipSync?.isRunning, false)
+        XCTAssertEqual(bridge.hotkey?.isRegistered, false)
         await bridge.shutdown()
     }
 
