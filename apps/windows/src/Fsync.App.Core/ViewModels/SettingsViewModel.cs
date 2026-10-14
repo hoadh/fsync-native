@@ -1,8 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Fsync.App.Bridge;
-using Fsync.App.Services;
-using Fsync.Core;
 
 namespace Fsync.App.ViewModels;
 

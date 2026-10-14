@@ -28,7 +28,7 @@ public sealed partial class EngineBridge
 
     /// <summary>
     /// Backend half. Order matters: persist the pending revoke BEFORE <c>LogoutConfirmed</c>, so a quit
-    /// during the call still leaves a retry for the next launch. 
+    /// during the call still leaves a retry for the next launch.
     /// </summary>
     private async Task LogoutKeepingRevokeAsync()
     {

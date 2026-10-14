@@ -41,12 +41,14 @@ internal sealed class FakeEngine : IFsyncEngine
     public void PairingConfirm(ulong requestId, bool accept) { Log($"PairingConfirm {requestId} {accept}"); OnConfirm(requestId, accept); }
     public void PairingCancel() => Log("PairingCancel");
 
-    public void Cancel(ulong transferId) => throw new NotImplementedException();
+    public Func<string, uint, string, ulong> OnFetchFileTo = (_, _, _) => throw new NotImplementedException();
+    public readonly List<ulong> Cancelled = [];
+    public void Cancel(ulong transferId) { lock (Cancelled) Cancelled.Add(transferId); Log("Cancel"); }
     public void Clear(bool keepPinned) => throw new NotImplementedException();
     public AccountState ConfirmTrustReset(string resetId) => throw new NotImplementedException();
     public void DeclineTrustReset(string resetId) => throw new NotImplementedException();
     public void Delete(string itemId) => throw new NotImplementedException();
-    public ulong FetchFileTo(string itemId, uint fileId, string destDir) => throw new NotImplementedException();
+    public ulong FetchFileTo(string itemId, uint fileId, string destDir) => Log($"FetchFileTo {fileId}", () => OnFetchFileTo(itemId, fileId, destDir));
     public byte[] FetchRep(string itemId, uint idx) => throw new NotImplementedException();
     public HistoryPage History(string? query, string? cursor, uint limit) => throw new NotImplementedException();
     public TrustResetInfo[] PendingTrustResets() => [];

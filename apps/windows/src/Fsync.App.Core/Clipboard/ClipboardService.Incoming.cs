@@ -86,7 +86,9 @@ public sealed partial class ClipboardService
             List<VirtualFile> files;
             if (EagerFiles.Applies(_prefs.FileStrategy, item))
             {
-                entries = [IncomingClip.DropList(await DownloadAsync(item, ticket.Token))];
+                // Off the caller thread: the in-flight mark waits for a running inbox clean, and a UI-initiated write must not.
+                var token = ticket.Token;
+                entries = [IncomingClip.DropList(await Task.Run(() => DownloadAsync(item, token)))];
                 files = [];
             }
             else
