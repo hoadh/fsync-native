@@ -90,6 +90,7 @@ impl BlobStore for FsBlobStore {
             let mut f = OpenOptions::new().write(true).create_new(true).open(&tmp)?;
             f.write_all(data)?;
             f.sync_all()?;
+            drop(f); // close before renaming (Windows)
             Ok(fs::rename(&tmp, self.path(h))?)
         })();
         if res.is_err() {
@@ -129,12 +130,14 @@ impl BlobStore for FsBlobStore {
 
     fn finish(&self, h: &Hash, expected_size: u64) -> Result<()> {
         let _g = self.lock_parts()?;
-        // A missing partial is an error (NotFound), never an empty blob.
-        let f = File::open(self.part(h))?;
+        // A missing partial is an error (NotFound), never an empty blob. Opened for writing:
+        // on Windows sync_all (FlushFileBuffers) needs write access.
+        let f = OpenOptions::new().write(true).open(self.part(h))?;
         if f.metadata()?.len() != expected_size {
             return Err(CoreError::Invalid("partial blob length mismatch"));
         }
         f.sync_all()?;
+        drop(f); // close before renaming (Windows)
         Ok(fs::rename(self.part(h), self.path(h))?)
     }
 
