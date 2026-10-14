@@ -72,3 +72,11 @@ Then `sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload
 - Redeploy: release 89df2da43875, subnet 172.29.0.0/24, ~27 MiB total. Remote .env had its old TRUSTED_PROXIES line removed (was 172.16.0.0/12).
 - Local e2e re-run PASS (random /24, restore script, proxy-trust check).
 - Open: positive proxy-trust check only (negative case not exercised); QAD path with the host-dir mount untested on the VPS.
+
+## Review round 2 fixes (8.8/10)
+- N1 staging in a unique `mktemp -d /opt/fsync/.incoming.XXXXXX`, removed on exit; lock still guards the switch.
+- N2 ci.yml filters add gen-bindings.sh / gen-bindings-cs.ps1; push to main and dispatch always run all jobs.
+- N8 compose.yml, Caddyfile, scripts 644/755 (.env stays 600); README states host Caddy does not import /opt/fsync/Caddyfile, owner pastes into /etc/caddy/Caddyfile.
+- N5 max_connections=30 (verified on host). N6 stale `._*` files deleted on cms-node (verified), not recreated.
+- N4 smoke-check.sh warns on OOMKilled/restarts (`OOM_CHECK_DOCKER`, `FSYNC_PROJECT`); never fails.
+- Redeployed d9e5e9b7ef77; e2e PASS.
