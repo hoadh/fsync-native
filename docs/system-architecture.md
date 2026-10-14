@@ -1,6 +1,6 @@
 # System Architecture
 
-Last updated: 2026-10-14. Covers the P0 Rust track (phases 01, 02, 06, 07, 08, 09) plus the macOS FFI package. Phases 03 (Windows half), 04, 05, 10 (relay deploy), and 11-16 are not built yet; see [development-roadmap](./development-roadmap.md).
+Last updated: 2026-10-14. Covers the P0 Rust track (phases 01, 02, 06, 07, 08, 09), the macOS FFI package, and the macOS app shell (phase 11). Phases 03 (Windows half), 04, 05, 10 (relay deploy), and 12-16 are not built yet; see [development-roadmap](./development-roadmap.md).
 
 ## Overview
 
@@ -8,7 +8,7 @@ fsync syncs clipboard items and files between a user's own devices. Trust is roo
 
 - **Backend** (`backend/`): email-OTP auth, a signed device-list registry, pairing-code storage, and presence (which devices are online and where they can be reached). It never sees clipboard or file bytes.
 - **Core** (`core/`): the Rust engine. It verifies the device-list chain, pairs devices, moves clips and files over iroh QUIC, and keeps encrypted local history.
-- **Apps** (`apps/`): thin UI layers over the core through UniFFI. macOS (`apps/macos/Packages/FsyncCoreKit`, plus the `TrustResetPrompt` SwiftUI library for trust resets) is built; Windows is not started.
+- **Apps** (`apps/`): thin UI layers over the core through UniFFI. macOS (`apps/macos/Packages/FsyncCoreKit`, the `TrustResetPrompt` library, and the `apps/macos/FsyncMac` menubar app shell) is built; Windows is not started.
 
 ```
   Backend (axum + Postgres 17)           metadata only: accounts, device lists, pairing codes, presence
@@ -21,13 +21,28 @@ fsync syncs clipboard items and files between a user's own devices. Trust is roo
   Path: direct (LAN / hole punch) or iroh relay (sees ciphertext only)
 ```
 
+## macOS app shell
+
+`apps/macos/FsyncMac` is a SwiftPM menubar app (phase 11) over `FsyncCoreKit`. Targets: `FsyncMacCore` (logic) -> `FsyncMacUI` (SwiftUI) -> `FsyncMac` (`@main`).
+
+- **EngineBridge** (`@MainActor`) is the only door to the engine. Blocking FFI calls run off the main actor (`EngineCall`); engine callbacks hop to the main queue in FIFO order. `AppPhase` (booting, signedOut, needsPairing, ready, bootFailed) is derived from `AccountState`.
+- **Secrets** are in the Keychain only (device secret, history key, session). The data-protection Keychain needs `application-identifier` + `keychain-access-groups`, which only a Developer ID build with its provisioning profile carries; an ad-hoc build falls back to the file keychain (probed once). Writes tolerate a duplicate-item race between the login model and the engine's session callback. Details:
+  - **Probe**: `useDataProtection` adds a probe item once per process; `errSecDuplicateItem` (a probe left by a crashed run) counts as supported.
+  - **Upgrade path** (verified with a Developer ID build): if a later signed build can use the data-protection Keychain, a `get` miss there reads the file keychain and moves the item over (`readMigrating`), so `device_secret`, `history_key` and the session survive the switch. A failed copy still returns the secret and keeps the old item for the next read. `delete` removes both copies, so a signed-out session cannot come back from the old store.
+  - **Serialized**: every `KeychainStore` call takes one process-wide recursive lock. The file keychain can deadlock in `SecItemAdd` when two threads add the same item at once (hit by a concurrent-first-write test).
+  - **Keys are add-only**: `loadOrCreateKey` never overwrites; on a duplicate it reads back the winner.
+  - **Stale session callbacks**: `EngineDelegateAdapter` stores refreshed tokens only while a `SessionGate` is open (stored session at boot, or after sign-in); sign-out and `requireSignIn` close it, so a refresh queued in the core cannot restore a signed-out session.
+- **Flows**: email + OTP login; first device (`Created`); pairing in both roles with a SAS check bound to the displayed request id; device list with remove (confirmed); recovery via `reset_account_trust` behind a two-step confirm; trust-reset prompt wired from `AccountEvent.trustReset`; launch at login (`SMAppService.mainApp`, bundle only); pairing codes are copied with the `ConcealedType`/`TransientType` pasteboard markers.
+- **Status**: the core reports Lan/Relay only for a live QUIC connection. Until something syncs, a peer the backend sees online shows as "Online" (`Device.online`), not Lan.
+- **Packaging**: `build-fsync-mac-app.sh` assembles an `LSUIElement` bundle, with the hardened runtime: ad hoc with no entitlements by default, or Developer ID with an embedded profile and the Keychain entitlements (`--sign`/`--profile`), optionally notarized (`--notary-profile`).
+
 ## Repository crates
 
 | Crate / unit | Path | Role |
 |---|---|---|
 | `fsync-proto` | `core/fsync-proto` | Wire types only, no I/O: `DeviceList` and `SignedDeviceList` (postcard, domain-separated ed25519), chain verification, frames (`MAX_FRAME_LEN` = 1.25 MiB), clip/file/pair messages, presence DTOs, name and shape checks. |
 | `fsync-core` | `core/fsync-core` | Engine. Modules below. |
-| `fsync-ffi` | `core/fsync-ffi` | UniFFI 0.29.4 adapters over `FsyncService`. No business logic. Contract v1 in [ffi-contract](./ffi-contract.md). |
+| `fsync-ffi` | `core/fsync-ffi` | UniFFI 0.29.4 adapters over `FsyncService`. No business logic. Contract v2 (`contract_version()` returns 2) in [ffi-contract](./ffi-contract.md). |
 | `fsync-cli` | `core/fsync-cli` | Test and demo harness. JSON lines on stdout. Drives the same service facade as the apps. |
 | `fsync-backend` | `backend` | Lib + bin. Auth, device registry, pairing, presence. |
 | iroh spike | `spikes/iroh-discovery` | Standalone (not a workspace member). Provides the `relay` subcommand the e2e demo uses. |
@@ -191,7 +206,7 @@ Defaults (settings): history mode Auto, 30 days, 1 GiB size cap, 50 MiB max clip
 
 - [Protocol spec](./protocol-spec.md): wire frames, ALPNs, limits, measured numbers
 - [API](./api.md): backend HTTP and WebSocket contract
-- [FFI contract](./ffi-contract.md): UniFFI surface v1 and error mapping
+- [FFI contract](./ffi-contract.md): UniFFI surface (contract v2) and error mapping
 - [Code standards](./code-standards.md): conventions and quality gates
 - [ADRs](./adr/): decisions 001-012
 - [Codebase summary](./codebase-summary.md): map of the repository

@@ -3,8 +3,11 @@
 ## Context Links
 - Design §2, §4 flows 1-2; [phase-03](phase-03-spike-ffi-bindings.md) contract; [phase-04](phase-04-spike-macos-clipboard-lazy-paste.md); [phase-09](phase-09-backend-auth-registry-presence.md)
 
+## Plan
+- [macOS app shell + pairing](../261014-1235-macos-app-shell-pairing/plan.md) (sync 2026-10-14)
+
 ## Overview
-- Priority: P1 | Status: pending | Effort: 4-5 wk (C) — parallel with phase 13
+- Priority: P1 | Status: Done on Mac (manual visual checks open) | Effort: 4-5 wk (C) — parallel with phase 13
 - SwiftUI `MenuBarExtra` app (LSUIElement), FsyncCoreKit Swift package wrapping generated bindings, login (email OTP), pairing UI (show QR/code, scan/enter code, SAS confirm), devices with status, launch at login.
 
 ## Key Insights
@@ -46,13 +49,20 @@ Data flow: View → EngineBridge (async Task) → FsyncEngine (FFI) → core; co
 7. XCTest for bridge state mapping; UI smoke test.
 
 ## Todo List
-- [ ] Project + FsyncCoreKit
-- [ ] EngineBridge + Keychain
-- [ ] Login/OTP
-- [ ] Pairing offer/join/SAS
-- [ ] Device list + remove
-- [ ] Launch at login
-- [ ] Tests
+- [x] Project + FsyncCoreKit (SwiftPM, not xcodeproj)
+- [x] EngineBridge + Keychain
+- [x] Login/OTP
+- [x] Pairing offer/join/SAS
+- [x] Device list + remove
+- [x] Launch at login (toggle and approval still a manual check)
+- [x] Tests (FsyncMac 89 incl. 3 integration, skipped by default; FsyncCoreKit 8+14)
+
+## Deviations (as built)
+- SwiftPM package `apps/macos/FsyncMac/`, not `FsyncMac.xcodeproj`. The bundle comes from `apps/macos/scripts/build-fsync-mac-app.sh`.
+- Status shows "Online" (presence) until phase 12 connects peers. The core reports Lan/Relay only for a live QUIC connection. The integration test asserts `online` within 5 s, not `.lan`.
+- Keychain: the data-protection store needs a signed build (ad-hoc gives -34018), so it falls back to the file keychain with `AfterFirstUnlockThisDeviceOnly`. Migration to the data-protection store is untested until a signed build.
+- Added: "Lost your other devices?" recovery (`reset_account_trust`, two-step confirm), per validation S1.
+- Removed: "Recent items" popover placeholder (dead UI until phase 12).
 
 ## Success Criteria
 - Fresh Mac: login → first device; second Mac/Win (CLI ok) pairs via code with SAS match; status flips LAN/relay/offline within 5 s of change.

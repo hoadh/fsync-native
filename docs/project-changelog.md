@@ -22,6 +22,42 @@ Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-n
 - Known gap: core reports Lan/Relay only while a connection exists and does not dial idle peers, so a paired, online device shows "Online, not connected yet" until traffic flows (the app publishes clips in phase 14).
 - Not run: anything on ARM64 hardware (the ARM64 DLL and app build; clang 23 needed for `ring`) or Windows 10, pairing with a Mac.
 
+## 2026-10-14 - macOS Developer ID signing
+
+### Added
+- `build-fsync-mac-app.sh --sign IDENTITY --profile FILE [--notary-profile NAME]`: Developer ID signature with secure timestamp, embedded provisioning profile, and generated entitlements (`application-identifier`, `keychain-access-groups` = `TEAM.app.fsync.mac`). Checks that the profile matches the team and bundle id. `--notary-profile` notarizes, staples, and runs `spctl`.
+
+### Verified
+- Signed build (team VE5P5RS83W) launches with the profile accepted, uses the data-protection Keychain, and moves `history_key` + `device_secret` from the file keychain; the history DB opens with the moved key and a relaunch is stable. Notarized with `--notary-profile fsync-notary`: Accepted, stapled, `spctl` reports "Notarized Developer ID"; the notarized app launches.
+
+## 2026-10-14 - macOS app shell and pairing (phase 11)
+
+### Added
+- `apps/macos/FsyncMac` SwiftPM app: menubar popover, main window, EngineBridge, Keychain secrets, email/OTP login, first device, pairing (offer code/QR, join, SAS), device list with status and remove, "Lost your other devices?" recovery, trust-reset prompt wiring, Settings (launch at login, sign out).
+- `apps/macos/scripts/build-fsync-mac-app.sh`: release build into a signed (ad-hoc, hardened runtime) `FsyncMac.app`.
+- `apps/macos/scripts/run-fsync-mac-integration.sh`: own Postgres container, dev backend, relay and `fsync-cli`; 3 integration tests (OTP login, CLI offers / Mac joins with matching SAS, online status, remove, Mac offers / CLI joins, `resetAccountTrust` recovery). Tests skip without `FSYNC_IT_API`.
+
+### Fixed
+- Keychain `set` failed with `errSecDuplicateItem` when the login model and the engine's session callback saved the session at the same time (sign-in then reported a storage error). Found by the integration run; covered by a concurrency test.
+- Pairing code copy now marks the pasteboard `org.nspasteboard.ConcealedType` and `TransientType` so clipboard managers and future clipboard sync skip it.
+- Device status: a peer online per the backend but without a connection no longer shows as "Offline" (core reports Lan/Relay only for live connections).
+
+### Changed (review round 1 fixes)
+- Boot and account-check tasks drop their results once cancelled, so sign-out during an offline check can no longer show a banner or move the phase.
+- Keychain: duplicate probe counts as supported; data-protection `get` migrates items from the file keychain; `delete` clears both; calls are serialized (file-keychain add deadlock); `loadOrCreateKey` is add-only.
+- Pairing: switching Code/QR keeps `.offering` so a SAS request is not dropped; a late `failed` event no longer replaces `done`/`failed`.
+- One shared `SignOutButton` (confirmation, Cancel is default) in popover, main window and Settings.
+- Main window is closed at launch so a returning user sees only the menubar icon.
+- `selfRemoved` and the trust-reset outcome share `routeToPairing()` (dismisses pairing, clears devices).
+- Engine errors are logged with `privacy: .private`; temp-dir fallback is 0700 with a banner; existing data dir is tightened to 0700; failed `saveSession` logs the server session out; popover says "Connected" only for a live LAN/relay link ("Online" for presence); dead "Recent items" placeholder removed; integration script stops the xctest child.
+- `TrustResetPromptModel.outcome` is `internal(set)` so the app tests drive the real `$outcome` sink.
+- Refreshed tokens are ignored while signed out (`SessionGate`).
+
+### Known gaps
+- Lan/Relay status is not exercised by the integration run (needs a connection; phase 12 sync).
+- Manual checks (MenuBarExtra focus, confirmation dialogs, launch at login registration) are not recorded.
+- After an offline sign-out the core keeps the old refresh token in memory until the next login.
+
 ## 2026-10-14 - macOS trust-reset prompt (SwiftUI library)
 
 ### Changed (review round 1)
