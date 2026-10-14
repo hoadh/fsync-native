@@ -1,5 +1,6 @@
 using Fsync.App.Bridge;
 using Fsync.App.Clipboard;
+using Fsync.App.Files;
 using Fsync.App.Services;
 using Fsync.App.ViewModels;
 using Fsync.Core;
@@ -18,6 +19,7 @@ public partial class App : Application
 
     private readonly AppSettings _settings;
     private readonly bool _showWindowAtStart;
+    private readonly IReadOnlyList<string> _startArgs;
     private DispatcherQueue? _ui;
     private DispatcherQueueTimer? _retry;
     private TrayHost? _tray;
@@ -29,11 +31,16 @@ public partial class App : Application
     internal IRunAtLogin RunAtLogin { get; private set; } = null!;
     internal AppPreferences Preferences { get; private set; } = null!;
     internal ClipboardService Clipboard { get; private set; } = null!;
+    internal TransfersViewModel Transfers { get; private set; } = null!;
+    internal SendToShortcut SendTo { get; private set; } = null!;
+    /// <summary>Paths from Explorer "Send to", waiting for a device choice (Files page).</summary>
+    internal List<string> PendingSend { get; } = [];
 
-    public App(AppSettings settings, bool showWindowAtStart)
+    public App(AppSettings settings, bool showWindowAtStart, IReadOnlyList<string> startArgs)
     {
         _settings = settings;
         _showWindowAtStart = showWindowAtStart;
+        _startArgs = startArgs;
         InitializeComponent();
     }
 
@@ -49,6 +56,9 @@ public partial class App : Application
         RunAtLogin = new RunAtLogin("Fsync", Services.RunAtLogin.CommandFor(Environment.ProcessPath!));
         Preferences = AppPreferences.Load(_settings.PreferencesPath);
         Clipboard = new ClipboardService(Bridge, Preferences, new WinUiDispatcher(_ui), _settings.InboxDir);
+        Transfers = new TransfersViewModel(Bridge, () => Path.Combine(Interop.Shell.KnownFolders.DownloadsPath(), "fsync"),
+            () => Clipboard.CurrentSettings?.autoAcceptFiles ?? false);
+        SendTo = new SendToShortcut(Environment.ProcessPath!);
         _tray = new TrayHost(this, new TrayStatusViewModel(Bridge, Devices), Clipboard);
 
         // Self-check: the native DLL for this architecture loads and speaks our contract.
@@ -69,7 +79,8 @@ public partial class App : Application
             if (e.PropertyName == nameof(EngineBridge.Phase)) OnPhaseChanged();
         };
         await Bridge.InitializeAsync();
-        if (_showWindowAtStart || Bridge.Phase != AccountPhase.Ready) ShowWindow();
+        if (SendToArgs.Parse(_startArgs) is not null) HandleArgs(_startArgs);
+        else if (_showWindowAtStart || Bridge.Phase != AccountPhase.Ready) ShowWindow();
     }
 
     private void OnPhaseChanged()
@@ -104,7 +115,18 @@ public partial class App : Application
     }
 
     /// <summary>A second launch was redirected here (event arrives off the UI thread).</summary>
-    internal void ShowFromAnotherInstance() => _ui?.TryEnqueue(() => ShowWindow());
+    internal void ShowFromAnotherInstance(IReadOnlyList<string> args) => _ui?.TryEnqueue(() => HandleArgs(args));
+
+    /// <summary>"--send p1 p2": queue the paths and open the Files page to pick a device.</summary>
+    internal void HandleArgs(IReadOnlyList<string> args)
+    {
+        if (SendToArgs.Parse(args) is { Count: > 0 } paths)
+        {
+            foreach (var p in paths) if (!PendingSend.Contains(p, StringComparer.OrdinalIgnoreCase)) PendingSend.Add(p);
+            ShowWindow(MainWindow.FilesTag);
+        }
+        else ShowWindow();
+    }
 
     internal void Quit()
     {
@@ -112,6 +134,7 @@ public partial class App : Application
         _tray?.Dispose();
         Clipboard.Dispose(); // exit policy: flush small clips, clear lazy files (ADR 010)
         Devices.Dispose();
+        Transfers.Dispose();
         Pairing.Dispose();
         Bridge.Dispose(); // stop() first; blocks up to ~5 s
         Exit();

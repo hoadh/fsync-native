@@ -13,7 +13,7 @@ namespace Fsync.App;
 /// </summary>
 public sealed partial class MainWindow : Window
 {
-    public const string DevicesTag = "devices", PairingTag = "pairing", SettingsTag = "settings";
+    public const string DevicesTag = "devices", HistoryTag = "history", FilesTag = "files", PairingTag = "pairing", SettingsTag = "settings";
     private bool _fatal;
 
     public MainWindow()
@@ -42,7 +42,8 @@ public sealed partial class MainWindow : Window
             case AccountPhase.SignedOut: Navigate(typeof(OnboardingPage)); break;
             case AccountPhase.NeedsPairing: Navigate(typeof(PairingPage)); break;
             case AccountPhase.Ready or AccountPhase.Offline:
-                Select(page ?? (ContentFrame.Content is DevicesPage or PairingPage or SettingsPage ? null : DevicesTag));
+                Select(page ?? (ContentFrame.Content is DevicesPage or HistoryPage or TransfersPage or PairingPage or SettingsPage ? null : DevicesTag));
+                if (page == FilesTag && ContentFrame.Content is TransfersPage files) _ = files.ShowSendAsync(); // already open
                 break;
         }
     }
@@ -64,7 +65,14 @@ public sealed partial class MainWindow : Window
     private void OnNavSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         if (args.SelectedItem is NavigationViewItem { Tag: string tag })
-            Navigate(tag switch { PairingTag => typeof(PairingPage), SettingsTag => typeof(SettingsPage), _ => typeof(DevicesPage) });
+            Navigate(tag switch
+            {
+                HistoryTag => typeof(HistoryPage),
+                FilesTag => typeof(TransfersPage),
+                PairingTag => typeof(PairingPage),
+                SettingsTag => typeof(SettingsPage),
+                _ => typeof(DevicesPage),
+            });
     }
 
     private void Navigate(Type page)

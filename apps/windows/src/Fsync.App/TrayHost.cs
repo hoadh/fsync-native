@@ -30,6 +30,8 @@ internal sealed class TrayHost : IDisposable
         menu.Items.Add(_activity);
         menu.Items.Add(Item("Send clipboard now (Ctrl+Alt+C)", () => _ = clipboard.SendNowAsync()));
         menu.Items.Add(_pastePending);
+        menu.Items.Add(Item("Clipboard history", () => app.ShowWindow(MainWindow.HistoryTag)));
+        menu.Items.Add(Item("Files and transfers", () => app.ShowWindow(MainWindow.FilesTag)));
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(Item("Open fsync", () => app.ShowWindow()));
         menu.Items.Add(Item("Pair a device...", () => app.ShowWindow(MainWindow.PairingTag)));

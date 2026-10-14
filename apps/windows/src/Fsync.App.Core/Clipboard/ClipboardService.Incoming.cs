@@ -14,6 +14,9 @@ public sealed partial class ClipboardService
     private readonly ConcurrentDictionary<ulong, TaskCompletionSource<string>> _downloads = new();
     private readonly ConcurrentDictionary<ulong, TransferEvent> _finished = new();
     private ClipDataObject? _current;
+    /// <summary>Received clips of this session by item id (history "Copy"; core keeps their offers).</summary>
+    private readonly ConcurrentDictionary<string, ClipItem> _recent = new();
+    private const int RecentMax = 200;
 
     /// <summary>Raised on the clipboard thread when we put a received clip on the clipboard.</summary>
     public event Action<ClipDataObject>? Written;
@@ -21,6 +24,7 @@ public sealed partial class ClipboardService
     private void OnRemoteClip(ClipItem item)
     {
         if (item.push) return; // "Send to" offers arrive as IncomingFiles
+        Remember(item);
         if (IsManual)
         {
             Pending = item;
@@ -28,6 +32,24 @@ public sealed partial class ClipboardService
             return;
         }
         _ = WriteAsync(item);
+    }
+
+    private void Remember(ClipItem item)
+    {
+        _recent[item.itemId] = item;
+        if (_recent.Count <= RecentMax) return;
+        foreach (var old in _recent.Values.OrderBy(i => i.tsMs).Take(_recent.Count - RecentMax).ToList())
+            _recent.TryRemove(old.itemId, out _);
+    }
+
+    public bool CanCopyBack(string itemId) => _recent.ContainsKey(itemId);
+
+    /// <summary>Puts a clip received earlier in this session back on the clipboard.</summary>
+    public async Task<bool> CopyBackAsync(string itemId)
+    {
+        if (!_recent.TryGetValue(itemId, out var item)) return false;
+        await WriteAsync(item);
+        return true;
     }
 
     /// <summary>Manual mode: puts the pending clip on the clipboard.</summary>

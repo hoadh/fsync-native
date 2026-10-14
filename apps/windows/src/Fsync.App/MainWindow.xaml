@@ -8,6 +8,8 @@
                         IsSettingsVisible="False" SelectionChanged="OnNavSelectionChanged">
             <NavigationView.MenuItems>
                 <NavigationViewItem Content="Devices" Tag="devices" Icon="AllApps" />
+                <NavigationViewItem Content="History" Tag="history" Icon="Paste" />
+                <NavigationViewItem Content="Files" Tag="files" Icon="Download" />
                 <NavigationViewItem Content="Pair a device" Tag="pairing" Icon="Add" />
                 <NavigationViewItem Content="Settings" Tag="settings" Icon="Setting" />
             </NavigationView.MenuItems>

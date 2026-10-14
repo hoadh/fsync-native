@@ -37,9 +37,15 @@ public static class Program
         {
             var context = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());
             SynchronizationContext.SetSynchronizationContext(context);
-            var app = new App(settings, showWindowAtStart: !background);
-            instance.Activated += (_, _) => app.ShowFromAnotherInstance();
+            var app = new App(settings, showWindowAtStart: !background, args);
+            instance.Activated += (_, e) => app.ShowFromAnotherInstance(LaunchArgs(e));
         });
         return 0;
     }
+
+    /// <summary>Command line of a redirected launch (Explorer "Send to" passes the paths there).</summary>
+    private static string[] LaunchArgs(AppActivationArguments e) =>
+        e.Kind == ExtendedActivationKind.Launch && e.Data is Windows.ApplicationModel.Activation.ILaunchActivatedEventArgs l
+            ? Files.SendToArgs.Split(l.Arguments)
+            : [];
 }

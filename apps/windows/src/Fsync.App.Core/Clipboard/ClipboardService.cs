@@ -47,6 +47,8 @@ public sealed partial class ClipboardService : ObservableObject, IDisposable
     }
 
     public bool IsManual => _settings?.clipMode == ClipMode.Manual;
+    /// <summary>Core settings as last read (null before the engine answered).</summary>
+    public Settings? CurrentSettings => _settings;
 
     /// <summary>Starts listening (call once the engine exists). Safe to call again after settings change.</summary>
     public async Task StartAsync()
