@@ -76,6 +76,7 @@ final class EngineBridgeBootTests: EngineTestCase {
         bridge.applyAccountState(.ready)
         bridge.receive(.account(.sessionExpired))
         XCTAssertEqual(bridge.phase, .signedOut)
+        await bridge.sessionClear?.value  // the Keychain delete runs off the main actor
         XCTAssertNil(try secrets.session())
         bridge.receive(.account(.selfRemoved))
         XCTAssertEqual(bridge.phase, .needsPairing)
