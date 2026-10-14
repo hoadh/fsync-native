@@ -18,7 +18,8 @@ class IntegrationTestCase: EngineTestCase {
     }
 
     override func tearDown() async throws {
-        for p in procs { await p.terminateAndWait() }
+        procs.forEach { $0.terminate() }
+        for p in procs { await p.awaitExit() }
         procs = []
     }
 

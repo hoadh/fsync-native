@@ -95,12 +95,17 @@ final class CliProcess: @unchecked Sendable {
     private var errText = ""
     private var buffer = Data()
     private var exited: Int32?
+    private var exitedAt: Date?
+    private let readers: [FileHandle]   // stdout, stderr
+    /// After exit, how long open pipes (e.g. held by a grandchild) may delay reporting it.
+    private static let drainGrace: TimeInterval = 1
     private var eofStreams = 0   // stdout and stderr each reach EOF once
 
     init(executable: URL, arguments: [String]) throws {
         process.executableURL = executable
         process.arguments = arguments
         let out = Pipe(), err = Pipe()
+        readers = [out.fileHandleForReading, err.fileHandleForReading]
         process.standardOutput = out
         process.standardError = err
         process.standardInput = FileHandle.nullDevice
@@ -114,7 +119,7 @@ final class CliProcess: @unchecked Sendable {
             if d.isEmpty { h.readabilityHandler = nil; self?.sync { $0.eofStreams += 1 }; return }
             self?.sync { $0.errText += String(decoding: d, as: UTF8.self) }
         }
-        process.terminationHandler = { [weak self] p in self?.sync { $0.exited = p.terminationStatus } }
+        process.terminationHandler = { [weak self] p in self?.sync { $0.exited = p.terminationStatus; $0.exitedAt = Date() } }
         try process.run()
     }
 
@@ -163,12 +168,24 @@ final class CliProcess: @unchecked Sendable {
     }
 
     /// The exit status, reported only once both output streams are drained, so no printed event is still in flight.
-    var exitCode: Int32? { lock.lock(); defer { lock.unlock() }; return eofStreams >= 2 ? exited : nil }
+    /// If a grandchild still holds the pipes `drainGrace` after exit, the streams are force-closed so exit is not hidden.
+    var exitCode: Int32? {
+        lock.lock(); defer { lock.unlock() }
+        guard let code = exited else { return nil }
+        if eofStreams < 2 {
+            guard let at = exitedAt, Date().timeIntervalSince(at) >= Self.drainGrace else { return nil }
+            readers.forEach { $0.readabilityHandler = nil }
+            if !buffer.isEmpty { record(line: buffer); buffer = Data() }
+            eofStreams = 2
+        }
+        return code
+    }
 
     func expectExit(_ want: Int32, timeout: Double) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         while exitCode == nil, Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
-        guard exitCode == want else { throw HarnessError.exit(exitCode, diagnostics) }
+        guard let got = exitCode else { throw HarnessError.timeout("CLI exit within \(timeout) s\n\(diagnostics)") }
+        guard got == want else { throw HarnessError.exit(got, diagnostics) }
     }
 
     var diagnostics: String {
@@ -178,9 +195,9 @@ final class CliProcess: @unchecked Sendable {
 
     func terminate() { if process.isRunning { process.terminate() } }
 
-    /// Terminates the process and waits (bounded) until it has exited, so it can't outlive the test.
-    func terminateAndWait(timeout: Double = 5) async {
-        terminate()
+    /// Waits (bounded) until a terminated process has exited, so it can't outlive the test.
+    /// Call `terminate()` first; with several processes, terminate them all, then await each.
+    func awaitExit(timeout: Double = 5) async {
         let deadline = Date().addingTimeInterval(timeout)
         while exitCode == nil, !Task.isCancelled, Date() < deadline { try? await Task.sleep(nanoseconds: 20_000_000) }
         if process.isRunning { kill(process.processIdentifier, SIGKILL) }
