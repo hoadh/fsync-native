@@ -6,18 +6,22 @@ public struct MenuPopover: View {
     @ObservedObject private var bridge: EngineBridge
     private let openMain: () -> Void
     private let openSettings: () -> Void
+    private let openHistory: () -> Void
 
-    public init(bridge: EngineBridge, openMain: @escaping () -> Void, openSettings: @escaping () -> Void) {
+    public init(bridge: EngineBridge, openMain: @escaping () -> Void, openSettings: @escaping () -> Void,
+                openHistory: @escaping () -> Void = {}) {
         self.bridge = bridge
         self.openMain = openMain
         self.openSettings = openSettings
+        self.openHistory = openHistory
     }
 
     public var body: some View {
         Group {
             if bridge.phase == .ready, let devices = bridge.devicesModel, let trust = bridge.trustModel {
                 MenuBarContentView(
-                    devices: devices, trust: trust, banner: bridge.banner, openMain: openMain, openSettings: openSettings,
+                    devices: devices, trust: trust, sync: bridge.clipSync, banner: bridge.banner, openHistory: openHistory,
+                    openMain: openMain, openSettings: openSettings,
                     addDevice: { bridge.pairingModel?.openJoin(); openMain() },
                     signOut: { Task { await bridge.signOut() } })
             } else {

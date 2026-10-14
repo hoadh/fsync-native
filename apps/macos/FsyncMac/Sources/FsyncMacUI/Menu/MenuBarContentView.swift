@@ -6,7 +6,9 @@ import TrustResetPrompt
 struct MenuBarContentView: View {
     @ObservedObject var devices: DevicesModel
     @ObservedObject var trust: TrustResetPromptModel
+    let sync: ClipboardSync?
     let banner: String?
+    let openHistory: () -> Void
     let openMain: () -> Void
     let openSettings: () -> Void
     let addDevice: () -> Void
@@ -20,6 +22,10 @@ struct MenuBarContentView: View {
                 Button("Review device list change…", action: openMain).foregroundStyle(.orange)
             }
             Divider()
+            if let sync {
+                ClipboardMenuSection(sync: sync, openHistory: openHistory)
+                Divider()
+            }
             DeviceListView(devices: devices.devices, onRemove: nil)
             Divider()
             Button("Add device…", action: addDevice)
