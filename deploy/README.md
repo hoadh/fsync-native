@@ -126,6 +126,8 @@ ACME in the container, nothing is published beyond loopback, and nothing here ed
 internet --443--> host Caddy (ACME) --> 127.0.0.1:18081 relay      relay-sg-fsync.10z.one
 ```
 
+Hosts deployed before the `.mode` marker existed: run `echo relay-only > <dir>/.mode` once on a relay-only host (default `/opt/fsync/.mode`); otherwise a `--rollback` without `--relay-only` is not auto-detected.
+
 **1. Docker (once, run by the owner/lead; official docker-ce apt repo + compose plugin, Ubuntu 24.04)**
 ```bash
 ssh <ssh-target>

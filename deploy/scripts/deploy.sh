@@ -52,9 +52,14 @@ rsh "test -d '$dir' && test -w '$dir' || { sudo -n install -d -o \"\$(id -un)\" 
 # delete) a full stack, and a full deploy must not land on a relay-only host. The mode is recorded in
 # $dir/.mode on every deploy; hosts that predate it are inferred from compose.yml / running containers.
 host_mode="$(rsh "cd '$dir' && cat .mode 2>/dev/null; true")"
+# Compose project this deploy will use: COMPOSE_PROJECT_NAME from the target .env (the host's, else
+# the one being uploaded), default fsync (compose.yml `name:`). Containers are matched by it.
+proj="$(rsh "sed -n 's/^COMPOSE_PROJECT_NAME=//p' '$dir/.env' 2>/dev/null | tail -1; true")"
+[[ -n "$proj" || -z "$env_file" ]] || proj="$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$env_file" | tail -1)"
+proj="${proj:-fsync}"
 if [[ -z "$host_mode" ]]; then
   if rsh "grep -Eq '^  (backend|postgres):' '$dir/compose.yml' 2>/dev/null" \
-    || [[ -n "$(rsh "for s in backend postgres; do $D ps -aq --filter label=com.docker.compose.project=fsync --filter label=com.docker.compose.service=\$s; done")" ]]; then
+    || [[ -n "$(rsh "for s in backend postgres; do $D ps -aq --filter label=com.docker.compose.project=$proj --filter label=com.docker.compose.service=\$s; done")" ]]; then
     host_mode=full
   fi
 fi
@@ -62,7 +67,7 @@ if [[ "$host_mode" == "relay-only" && $relay_only -eq 0 ]]; then
   [[ $rollback -eq 1 ]] || die "$host runs the relay-only stack in $dir: pass --relay-only"
   relay_only=1; log "host is relay-only: rolling back in relay-only mode"
 elif [[ "$host_mode" == "full" && $relay_only -eq 1 ]]; then
-  die "$host already runs the full stack (backend/postgres) in $dir: --relay-only would remove it. Use a dedicated relay host or a separate --dir"
+  die "$host already runs the full stack (backend/postgres) in $dir: --relay-only would remove it. Use a dedicated relay host, or a separate --dir whose .env sets its own COMPOSE_PROJECT_NAME (both compose files default the project to fsync, so a second dir would otherwise replace this stack)"
 fi
 
 # --- release tag

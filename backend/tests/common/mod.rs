@@ -40,7 +40,7 @@ pub struct CaptureSender {
 impl EmailSender for CaptureSender {
     async fn send_otp(&self, to: &str, code: &str) -> Result<(), EmailError> {
         if self.fail.load(Ordering::SeqCst) {
-            return Err(EmailError("provider down".into()));
+            return Err(EmailError::failed("provider down"));
         }
         self.codes.lock().unwrap().insert(to.into(), code.into());
         Ok(())

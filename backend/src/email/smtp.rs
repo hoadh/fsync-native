@@ -19,8 +19,9 @@ use std::time::Duration;
 
 /// Per socket operation (connect, each SMTP command).
 const IO_TIMEOUT: Duration = Duration::from_secs(10);
-/// Hard cap on one whole delivery, so a stuck server cannot hold an API request open.
-const SEND_TIMEOUT: Duration = Duration::from_secs(30);
+/// Hard cap on one whole delivery, so a stuck server cannot hold an API request open. Below the 15 s HTTP request timeout
+/// (limits.rs), otherwise that would cancel the handler first and the outcome would go unclassified.
+const SEND_TIMEOUT: Duration = Duration::from_secs(12);
 
 pub struct SmtpSender {
     transport: AsyncSmtpTransport<Tokio1Executor>,
@@ -68,7 +69,7 @@ impl SmtpSender {
 }
 
 fn bad(what: &str) -> EmailError {
-    EmailError(format!("invalid smtp {what}"))
+    EmailError::failed(format!("invalid smtp {what}"))
 }
 
 /// Category and numeric status only: server texts can quote the account name or address.
@@ -87,7 +88,13 @@ fn classify(e: &lettre::transport::smtp::Error) -> EmailError {
     } else {
         "connection"
     };
-    EmailError(format!("smtp {kind} {status}").trim_end().to_string())
+    let msg = format!("smtp {kind} {status}").trim_end().to_string();
+    // Only a timeout leaves the outcome unknown (the server may have accepted the message).
+    if e.is_timeout() {
+        EmailError::ambiguous(msg)
+    } else {
+        EmailError::failed(msg)
+    }
 }
 
 fn build_message(from: &Mailbox, to: &str, code: &str) -> Result<Message, EmailError> {
@@ -119,7 +126,7 @@ impl EmailSender for SmtpSender {
         match tokio::time::timeout(SEND_TIMEOUT, self.transport.send(msg)).await {
             Ok(Ok(_)) => Ok(()),
             Ok(Err(e)) => Err(classify(&e)),
-            Err(_) => Err(EmailError("smtp timeout".into())),
+            Err(_) => Err(EmailError::ambiguous("smtp timeout")),
         }
     }
 }

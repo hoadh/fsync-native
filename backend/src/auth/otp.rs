@@ -68,30 +68,47 @@ pub async fn start(state: &AppState, email: &str, ip: &str) -> ApiResult<()> {
         // A fresh live code is pending; only its hash is stored so it cannot be re-sent.
         return Ok(());
     }
-    let result = deliver(state, &email, &code, hash).await;
-    match &result {
-        // Only a delivered code spends the per-email slot; the per-IP slot was taken by `check`.
-        Ok(()) => state.limiter.record(&email_key, HOUR),
-        // A failed send (provider outage, global cap) must not lock the user out for an hour.
-        Err(_) => state.limiter.unrecord(&format!("otp:ip:{ip}")),
+    // Counted up front so a cancelled request (HTTP timeout mid-send) still spends it; a definite
+    // failure takes it back below. The per-IP slot was taken by `check`.
+    state.limiter.record(&email_key, HOUR);
+    match deliver(state, &email, &code, hash).await {
+        Ok(()) => Ok(()),
+        // A definite failure (provider outage, global cap) must not lock the user out. An
+        // ambiguous one (timeout) keeps every count: the mail may have gone out.
+        Err((e, true)) => {
+            state.limiter.unrecord(&email_key);
+            state.limiter.unrecord(&format!("otp:ip:{ip}"));
+            Err(e)
+        }
+        Err((e, false)) => Err(e),
     }
-    result
 }
 
-/// Reserve a global send slot and send. On any failure the code row is removed (never leave a live
-/// code the user was not told about) and the slot is given back.
-async fn deliver(state: &AppState, email: &str, code: &str, hash: &[u8]) -> ApiResult<()> {
+/// Reserve a global send slot and send. On a definite failure the code row is removed (never leave
+/// a live code the user was not told about) and the slot is given back; the flag in `Err` says
+/// whether quotas were refunded. A timeout-class failure keeps the code and the slot: the mail may
+/// have been delivered, and refunding would let timeouts be used to exceed the send limits.
+async fn deliver(
+    state: &AppState,
+    email: &str,
+    code: &str,
+    hash: &[u8],
+) -> Result<(), (ApiError, bool)> {
     let slot = match otp_budget::reserve(&state.db, state.cfg.otp_daily_send_cap).await {
         Ok(id) => id,
         Err(e) => {
             discard_code(state, email, hash).await;
-            return Err(e);
+            return Err((e, true));
         }
     };
     if let Err(e) = state.email.send_otp(email, code).await {
+        if e.maybe_delivered {
+            tracing::warn!("otp send outcome unknown (timeout): code and send slot kept");
+            return Err((ApiError::internal(e), false));
+        }
         otp_budget::release(&state.db, slot).await;
         discard_code(state, email, hash).await;
-        return Err(ApiError::internal(e));
+        return Err((ApiError::internal(e), true));
     }
     Ok(())
 }

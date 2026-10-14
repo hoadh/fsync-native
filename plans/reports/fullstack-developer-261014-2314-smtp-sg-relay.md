@@ -35,3 +35,10 @@ Real Gmail delivery, real host Caddy + relay on the SG host, QAD on the new host
 - Docs: deploy/README.md OTP section, docs/deployment-guide.md stale "no email sender" line.
 - Gates: fmt, clippy -D warnings, `cargo test -p fsync-backend` all pass; shellcheck only the pre-existing SC2029 info; compose config -q OK for both files (with gen-env output / relay-only.env.example).
 - Not done: M2 (concurrent start sees 204 while send in flight) remains a documented low-probability edge. cms-node: its .env has EMAIL_SENDER=smtp so the legacy append is skipped; first deploy after this writes `.mode=full` (host has compose.yml with backend, so inference is full).
+
+## Review fixes round 2 (code-reviewer-261015-0045)
+- M-A: deploy.sh derives the compose project from `COMPOSE_PROJECT_NAME` (host .env, else the --env-file being uploaded, default fsync) for the container-label inference; die text now says a separate --dir needs its own COMPOSE_PROJECT_NAME. Rechecked with the ssh shim.
+- M-B: `EmailError` now `{msg, maybe_delivered}` (`failed()` / `ambiguous()`); the SMTP sender marks timeouts ambiguous. otp.rs keeps code row, global slot, per-IP and per-email counts on ambiguous errors; refunds all on definite failures. Generic 500 unchanged.
+- Found while testing: the 15 s HTTP request timeout (limits.rs) cancelled the handler before the 30 s SEND_TIMEOUT, so the outcome was never classified (client got 408). Fixes: SEND_TIMEOUT now 12 s (below 15 s), and the per-email slot is recorded before sending and unrecorded only on definite failure, so a cancelled request still spends it. Test is now ~13 s instead of 30 s and asserts code row, otp_send_log row and per-email quota are kept (app-level, real silent TCP listener). api.md timeout text updated.
+- L4: README one-liner `echo relay-only > <dir>/.mode` for pre-marker relay hosts. L3: deployment-guide line to alert on `global OTP send cap reached`.
+- Gates: fmt, clippy -D warnings, cargo test -p fsync-backend pass; shellcheck only SC2029 info; both compose config -q OK.
