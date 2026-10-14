@@ -22,6 +22,7 @@ public sealed partial class TransfersViewModel : ObservableObject, IDisposable
     private readonly TimeSpan _autoRetryDelay;
     /// <summary>Files of an offer whose pull already started (a second Accept skips them).</summary>
     private readonly Dictionary<string, HashSet<uint>> _started = [];
+    private readonly HashSet<string> _accepting = [];
 
     public ObservableCollection<TransferItem> Transfers { get; } = [];
     public ObservableCollection<IncomingOffer> Offers { get; } = [];
@@ -73,6 +74,7 @@ public sealed partial class TransfersViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public async Task AcceptAsync(IncomingOffer offer)
     {
+        if (!_accepting.Add(offer.Item.itemId)) return; // a second click while the first one runs
         var started = _started.TryGetValue(offer.Item.itemId, out var s) ? s : _started[offer.Item.itemId] = [];
         try
         {
@@ -88,6 +90,7 @@ public sealed partial class TransfersViewModel : ObservableObject, IDisposable
         }
         catch (FsyncException e) { Error = UserMessages.For(e); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Error = "Could not save files to the download folder."; }
+        finally { _accepting.Remove(offer.Item.itemId); }
     }
 
     [RelayCommand]

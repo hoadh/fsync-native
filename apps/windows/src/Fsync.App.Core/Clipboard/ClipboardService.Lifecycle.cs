@@ -12,17 +12,37 @@ public sealed partial class ClipboardService
     private readonly Timer _cleanup;
     private int _disposed;
 
-    /// <summary>Inbox follows the history retention (days, bytes), like macOS; the current clip is kept.</summary>
-    internal void CleanInbox()
+    private bool IsDisposed => Volatile.Read(ref _disposed) == 1;
+
+    /// <summary>Timer.Change that is a no-op once the service is disposed (wndproc, settings refresh).</summary>
+    private void Schedule(Timer timer, TimeSpan due, TimeSpan period)
     {
-        if (_settings is not { } s) return;
+        if (IsDisposed) return;
+        try { timer.Change(due, period); }
+        catch (ObjectDisposedException) { } // raced with Dispose
+    }
+
+    /// <summary>
+    /// Inbox follows the history retention (days, bytes), like macOS. Kept: the clip on the
+    /// clipboard and every folder a download is writing into (plus anything written in the last
+    /// few minutes, InboxDirectory.MinAge). Cleans are serialized by InboxDirectory.
+    /// </summary>
+    internal int CleanInbox()
+    {
+        if (_settings is not { } s) return 0;
         try
         {
-            var keep = _currentItemId is { } id ? new[] { id } : [];
+            var keep = new HashSet<string>(_inFlight.Keys, StringComparer.OrdinalIgnoreCase);
+            if (_currentItemId is { } id) keep.Add(id);
             var removed = _inbox.Clean(s.retentionDays, s.retentionBytes, keep);
             if (removed > 0) AppLog.Info($"clipboard: inbox cleanup removed {removed} folder(s)");
+            return removed;
         }
-        catch (Exception e) { AppLog.Warn($"clipboard: inbox cleanup failed: {e.GetType().Name}"); }
+        catch (Exception e)
+        {
+            AppLog.Warn($"clipboard: inbox cleanup failed: {e.GetType().Name}");
+            return 0;
+        }
     }
 
     /// <summary>
@@ -46,8 +66,9 @@ public sealed partial class ClipboardService
 
     /// <summary>
     /// Stops clipboard work within <see cref="QuitBudget"/>: newer engine calls are refused, running
-    /// downloads cancelled, the clipboard released, then running calls (Explorer reads, renders) are
-    /// waited for so the engine can be disposed after this returns.
+    /// downloads cancelled, the listener and our entry released, then running calls (Explorer
+    /// reads, renders) are waited for so the engine can be disposed after this returns. Call it off
+    /// the UI thread (App.Quit does).
     /// </summary>
     public void Dispose()
     {
@@ -55,15 +76,16 @@ public sealed partial class ClipboardService
         var deadline = DateTime.UtcNow + QuitBudget;
         _bridge.RemoteClip -= OnRemoteClip;
         _bridge.Transfer -= OnTransfer;
-        _settle.Dispose();
-        _cleanup.Dispose();
         _gate.Close();
-        _inCts.Cancel();
+        _inTicket.Cancel();
         try
         {
+            // Listener first: its wndproc must not touch the settle timer after it is disposed.
             if (!_sta.TryInvoke(ReleaseClipboard, Left(deadline))) AppLog.Warn("clipboard: release on exit timed out");
         }
         catch (Exception e) { AppLog.Warn($"clipboard: release on exit failed: {e.GetType().Name}"); }
+        _settle.Dispose();
+        _cleanup.Dispose();
         if (!_gate.WaitIdle(Left(deadline))) AppLog.Warn($"clipboard: {_gate.InFlight} engine call(s) still running at quit");
         _sta.Dispose(TimeSpan.FromMilliseconds(500));
     }

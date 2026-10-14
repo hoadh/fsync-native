@@ -15,7 +15,7 @@ public sealed partial class ClipboardService
     {
         try
         {
-            var gen = Interlocked.Increment(ref _outGen);
+            var gen = NextOutGeneration();
             var snap = await _sta.InvokeAsync(ReadSnapshot);
             if (snap.Skip != SkipReason.None)
             {
@@ -45,13 +45,19 @@ public sealed partial class ClipboardService
             AppLog.Info($"clipboard: change not published (manual {IsManual}, phase {_bridge.Phase}, settings {_settings is not null})");
             return;
         }
-        var gen = Interlocked.Increment(ref _outGen);
+        var gen = NextOutGeneration();
         var snap = ReadSnapshot();
         if (snap.Skip == SkipReason.None) Observe(PublishAsync(snap, gen), "publish");
         else AppLog.Info($"clipboard: change skipped: {snap.Describe()}");
     }
 
-    private async Task PublishAsync(ClipboardSnapshot snap, long gen)
+    /// <summary>What happened to one publish attempt (tests, logs).</summary>
+    internal enum PublishOutcome { Superseded, Nothing, Sent, Failed }
+
+    /// <summary>Next generation of local changes: a publish of an older one is dropped.</summary>
+    internal long NextOutGeneration() => Interlocked.Increment(ref _outGen);
+
+    internal async Task<PublishOutcome> PublishAsync(ClipboardSnapshot snap, long gen)
     {
         await _outLane.WaitAsync().ConfigureAwait(false);
         try
@@ -59,30 +65,33 @@ public sealed partial class ClipboardService
             if (gen != Volatile.Read(ref _outGen))
             {
                 AppLog.Info("clipboard: change superseded before publishing");
-                return;
+                return PublishOutcome.Superseded;
             }
             var clip = await RepresentationMapper.ToLocalClipAsync(snap);
-            if (clip is null) return;
+            if (clip is null) return PublishOutcome.Nothing;
             var r = await _gate.RunAsync(() => _bridge.RunAsync(e => e.PublishClip(clip)));
             AppLog.Info($"clipboard: published reps={clip.reps.Length} files={clip.files.Length} echo={r.echo} delivered={r.delivered.Length} failed={r.failed.Length}");
-            if (r.echo) return; // the clip we just received: core's echo guard
+            if (r.echo) return PublishOutcome.Nothing; // the clip we just received: core's echo guard
             Post(() =>
             {
                 LastActivity = r.delivered.Length == 0 ? "Copied, but no other device is connected"
                     : $"Sent to {r.delivered.Length} device{(r.delivered.Length == 1 ? "" : "s")}";
                 LastError = r.failed.Length > 0 ? $"{r.failed.Length} device(s) did not get it" : null;
             });
+            return PublishOutcome.Sent;
         }
-        catch (OperationCanceledException) { } // quitting
+        catch (OperationCanceledException) { return PublishOutcome.Nothing; } // quitting
         catch (Fsync.Core.FsyncException e)
         {
             AppLog.Warn($"clipboard: publish failed: {e.GetType().Name}");
             Post(() => LastError = UserMessages.For(e));
+            return PublishOutcome.Failed;
         }
         catch (Exception e)
         {
             AppLog.Warn($"clipboard: publish failed: {e.GetType().Name}");
             Post(() => LastError = "Could not send the clipboard.");
+            return PublishOutcome.Failed;
         }
         finally { _outLane.Release(); }
     }

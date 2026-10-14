@@ -68,7 +68,7 @@ public sealed partial class ClipboardService : ObservableObject, IDisposable
             {
                 if (_listener is not null) return;
                 _listener = new ClipboardListener();
-                _listener.Changed += _ => _settle.Change(Settle, Timeout.InfiniteTimeSpan);
+                _listener.Changed += _ => Schedule(_settle, Settle, Timeout.InfiniteTimeSpan);
                 _listener.HotKey += OnHotKey;
             });
         }
@@ -79,7 +79,7 @@ public sealed partial class ClipboardService : ObservableObject, IDisposable
             return;
         }
         await ApplyHotkeysAsync();
-        _cleanup.Change(TimeSpan.Zero, CleanupInterval);
+        Schedule(_cleanup, TimeSpan.Zero, CleanupInterval);
         AppLog.Info($"clipboard: listening, mode {_settings?.clipMode}, hotkeys {HotkeysRegistered}");
     }
 
@@ -89,11 +89,12 @@ public sealed partial class ClipboardService : ObservableObject, IDisposable
         try
         {
             _settings = await _bridge.RunAsync(e => e.Settings());
-            if (_listener is not null) _cleanup.Change(TimeSpan.Zero, CleanupInterval); // retention may have changed
+            if (_listener is not null) Schedule(_cleanup, TimeSpan.Zero, CleanupInterval); // retention may have changed
         }
-        catch (FsyncException e)
+        catch (Exception e) when (e is FsyncException or InvalidOperationException)
         {
-            LastError = UserMessages.For(e);
+            // InvalidOperationException: no engine yet (startup failed, history being reset).
+            LastError = e is FsyncException f ? UserMessages.For(f) : "fsync is not running yet.";
             AppLog.Warn($"clipboard: settings unavailable: {e.GetType().Name}");
         }
     }

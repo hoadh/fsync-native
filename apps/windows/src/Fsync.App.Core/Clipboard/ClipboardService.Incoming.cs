@@ -12,7 +12,7 @@ public sealed partial class ClipboardService
 {
     private readonly SemaphoreSlim _inLane = new(1, 1);
     private long _inGen;
-    private CancellationTokenSource _inCts = new();
+    private WriteTicket _inTicket = new();
     private ClipDataObject? _current;
     private volatile string? _currentItemId;
     /// <summary>Received clips of this session by item id (history "Copy"; core keeps their offers).</summary>
@@ -49,37 +49,44 @@ public sealed partial class ClipboardService
     /// <summary>Puts a clip received earlier in this session back on the clipboard.</summary>
     public async Task<bool> CopyBackAsync(string itemId)
     {
-        if (!_recent.TryGetValue(itemId, out var item)) return false;
-        await WriteAsync(item);
-        return true;
+        return _recent.TryGetValue(itemId, out var item) && await WriteAsync(item);
     }
 
-    /// <summary>Manual mode: puts the pending clip on the clipboard.</summary>
-    public async Task PastePendingAsync()
+    /// <summary>Manual mode: puts the pending clip on the clipboard; it stays pending if that fails.</summary>
+    public async Task<bool> PastePendingAsync()
     {
-        if (Pending is not { } item) return;
-        Pending = null;
-        await WriteAsync(item);
+        if (Pending is not { } item) return false;
+        var ok = await WriteAsync(item);
+        if (ok) Post(() => { if (ReferenceEquals(Pending, item)) Pending = null; });
+        return ok;
     }
+
+    /// <summary>Token of the newest write (tests: an older write's downloads see it cancelled).</summary>
+    internal CancellationToken LatestWriteToken => Volatile.Read(ref _inTicket).Token;
 
     /// <summary>Writes a received clip (also history "Copy"); returns false when superseded or failed.</summary>
     public async Task<bool> WriteAsync(ClipItem item)
     {
         var gen = Interlocked.Increment(ref _inGen);
-        var cts = new CancellationTokenSource();
-        Interlocked.Exchange(ref _inCts, cts).Cancel(); // a newer clip stops older downloads
+        var ticket = new WriteTicket();
+        Interlocked.Exchange(ref _inTicket, ticket).Replace(); // a newer clip stops older downloads
         try
         {
-            await _inLane.WaitAsync(cts.Token).ConfigureAwait(false);
+            await _inLane.WaitAsync(ticket.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) { return false; }
+        catch (OperationCanceledException)
+        {
+            ticket.Finish();
+            return false;
+        }
+
         try
         {
             List<ClipEntry> entries;
             List<VirtualFile> files;
             if (EagerFiles.Applies(_prefs.FileStrategy, item))
             {
-                entries = [IncomingClip.DropList(await DownloadAsync(item, cts.Token))];
+                entries = [IncomingClip.DropList(await DownloadAsync(item, ticket.Token))];
                 files = [];
             }
             else
@@ -113,7 +120,11 @@ public sealed partial class ClipboardService
             Post(() => LastError = e is TimeoutException ? "The files took too long to download." : "Could not write the clipboard.");
             return false;
         }
-        finally { _inLane.Release(); }
+        finally
+        {
+            _inLane.Release();
+            ticket.Finish();
+        }
     }
 
     /// <summary>On the clipboard thread: replaces our entry; the old one forgets its streams.</summary>

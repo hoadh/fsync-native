@@ -22,23 +22,41 @@ public sealed class InboxDirectory(string root)
         return dir;
     }
 
-    /// <summary>Applies retention; never removes <paramref name="keeping"/>. Returns removed folders.</summary>
+    /// <summary>Folders written more recently than this are never removed (a download may be starting).</summary>
+    public static readonly TimeSpan MinAge = TimeSpan.FromMinutes(5);
+    private readonly object _cleanLock = new();
+
+    /// <summary>
+    /// Applies retention; never removes <paramref name="keeping"/> (clip on the clipboard, downloads
+    /// in flight) nor folders younger than <see cref="MinAge"/>. One clean at a time. Returns removed folders.
+    /// </summary>
     public int Clean(uint retentionDays, ulong maxBytes, IReadOnlyCollection<string> keeping, DateTime? nowUtc = null)
     {
+        lock (_cleanLock) return CleanLocked(retentionDays, maxBytes, keeping, nowUtc ?? DateTime.UtcNow);
+    }
+
+    private int CleanLocked(uint retentionDays, ulong maxBytes, IReadOnlyCollection<string> keeping, DateTime now)
+    {
         if (!Directory.Exists(Root)) return 0;
-        var cutoff = (nowUtc ?? DateTime.UtcNow) - TimeSpan.FromDays(retentionDays);
+        var cutoff = now - TimeSpan.FromDays(retentionDays);
         var folders = new List<(string Path, DateTime Modified, long Size)>();
+        long protectedBytes = 0;
         foreach (var d in SafeDirs(Root))
         {
-            if (keeping.Contains(System.IO.Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)) continue;
-            folders.Add((d, Directory.GetLastWriteTimeUtc(d), SizeOf(d)));
+            var modified = Directory.GetLastWriteTimeUtc(d);
+            if (keeping.Contains(System.IO.Path.GetFileName(d), StringComparer.OrdinalIgnoreCase) || now - modified < MinAge)
+            {
+                protectedBytes += SizeOf(d);
+                continue;
+            }
+            folders.Add((d, modified, SizeOf(d)));
         }
         var removed = 0;
         foreach (var f in folders.Where(f => f.Modified < cutoff).ToList())
         {
             if (TryDelete(f.Path)) { removed++; folders.Remove(f); }
         }
-        var total = folders.Sum(f => f.Size) + keeping.Sum(k => SizeOf(System.IO.Path.Combine(Root, k)));
+        var total = folders.Sum(f => f.Size) + protectedBytes;
         foreach (var f in folders.OrderBy(f => f.Modified))
         {
             if ((ulong)Math.Max(0, total) <= maxBytes) break;

@@ -90,7 +90,8 @@ public partial class App : Application
     {
         if (Bridge.Phase == AccountPhase.Offline) StartRetry();
         else _retry?.Stop();
-        if (Bridge.Phase == AccountPhase.Ready) _ = Clipboard.StartAsync(); // idempotent; re-reads settings
+        if (Bridge.Phase == AccountPhase.Ready) // idempotent; re-reads settings
+            Clipboard.StartAsync().ContinueWith(t => AppLog.Warn($"clipboard start: {t.Exception?.InnerException?.GetType().Name}"), TaskContinuationOptions.OnlyOnFaulted);
         _window?.ShowPhase(Bridge.Phase);
     }
 
@@ -131,15 +132,30 @@ public partial class App : Application
         else ShowWindow();
     }
 
-    internal void Quit()
+    private bool _quitting;
+
+    /// <summary>
+    /// UI parts go on the UI thread; the clipboard (≤ ~3 s) and the engine (stop, ≤ ~5 s) are
+    /// torn down off it, so the message loop keeps running meanwhile; then the app exits.
+    /// </summary>
+    internal async void Quit()
     {
+        if (_quitting) return;
+        _quitting = true;
         _window?.Close();
         _tray?.Dispose();
-        Clipboard.Dispose(); // exit policy: flush small clips, clear lazy files (ADR 010)
         Devices.Dispose();
         Transfers.Dispose();
         Pairing.Dispose();
-        Bridge.Dispose(); // stop() first; blocks up to ~5 s
+        try
+        {
+            await Task.Run(() =>
+            {
+                Clipboard.Dispose(); // exit policy: flush rendered clips, clear lazy ones (ADR 013 §5)
+                Bridge.Dispose();    // stop() first
+            });
+        }
+        catch (Exception e) { AppLog.Warn($"quit: {e.GetType().Name}"); }
         Exit();
     }
 }
