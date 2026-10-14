@@ -122,8 +122,8 @@ Limits: at most 3 unauthenticated sessions per window, one attempt per source no
 
 ### 6. Trust reset
 
-1. A new seq-0 genesis for the account is `PUT` with the reset header (fresh auth required, 3 per day).
-2. Old devices see a different root and get `EngineEvent::TrustReset`. They never auto-accept it. Explicit confirmation is still deferred (M5, see roadmap). Until then, `logout` clears pinned trust.
+1. `reset_account_trust` signs a new seq-0 genesis (this device only) and `PUT`s it with the reset header (fresh auth required, 3 per day; stale login -> `ReauthRequired`). It then replaces the local pin.
+2. Old devices see a different root on their next sync and get `EngineEvent::TrustReset` (service: `AccountEvent::TrustReset { reset_id, devices, device_names }`, `reset_id` = hash of the offered head, so a grown offer is announced again and an old id is `NotFound`). They never auto-accept it: `confirm_trust_reset` pins it (a device that is not in the new list gets `SelfRemoved`, drops its pin and must re-pair), `decline_trust_reset` keeps the old pin. See ADR 012.
 
 ## Storage
 
@@ -172,7 +172,7 @@ Defaults (settings): history mode Auto, 30 days, 1 GiB size cap, 50 MiB max clip
 | Network MITM during pairing | SPAKE2 or HKDF with nonces, MAC confirm, 36-bit SAS on both devices, explicit consent. | 36-bit SAS. A first connector can burn a window (DoS only). |
 | Untrusted peer connects | Accept gate: only pinned node ids. Live connections for a removed device close with 403. | None known. |
 | Stolen auth tokens | 15 min access tokens, rotating refresh with reuse detection, family revoke on logout or reuse. | A stolen live access token works until it expires (about 15 min). |
-| Account takeover then device-list change | Trust reset and account delete need fresh auth (5 min). Resets are capped at 3 per day. Old devices get `TrustReset`. | An email takeover can still trigger a reset. The confirm API (M5) is deferred, so apps cannot yet show a confirm step. |
+| Account takeover then device-list change | Trust reset and account delete need fresh auth (5 min). Resets are capped at 3 per day. Old devices get `TrustReset`. | An email takeover can still trigger a reset; the user of each old device must confirm or decline it (`confirm_trust_reset` / `decline_trust_reset`). |
 | Disk theft or same-user read of history | SQLCipher with the Keychain/DPAPI key. Blobs encrypted. | Received files exported to user folders are plaintext by design. `.part` staging is plaintext until finish. |
 | Sensitive clip stored | Sender does not store it. `ClipOffer.sensitive` tells the receiver to record nothing; blobs it fetched for that item are removed after use. | Honouring the flag is the receiver's behaviour. A modified receiver can ignore it. |
 | Oversized or malicious input | Frame length checked before allocation, `ClipOffer::validate`, file size and CV caps, per-peer token bucket (20/s), receive log budget (32 MiB), shape and name checks. | Clip size limit is user-settable (`max_clip_bytes`, applied live). Other limits are fixed defaults. |
