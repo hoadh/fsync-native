@@ -10,8 +10,8 @@ public static void Chord(byte[] mods, byte key) {
 }
 '@
 
-# Ctrl+Alt+<letter> (global hotkeys of the app).
-function Send-CtrlAlt([char]$letter) { [FsyncE2e.Keys]::Chord([byte[]](0x11, 0x12), [byte][char]::ToUpper($letter)) }
+# Win+Alt+<letter> (global hotkeys of the app; Ctrl+Alt would be AltGr).
+function Send-WinAlt([char]$letter) { [FsyncE2e.Keys]::Chord([byte[]](0x5B, 0x12), [byte][char]::ToUpper($letter)) }
 
 # Text plus ExcludeClipboardContentFromMonitorProcessing, as a password manager writes it.
 function Set-SensitiveText([string]$text) {

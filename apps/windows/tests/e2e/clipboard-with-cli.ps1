@@ -7,7 +7,7 @@
 # W1 (auto mode, hotkeys off) pairs with CLI devA: text and HTML out, a sensitive copy is not
 # sent, text in (clipboard written), history copy-back, devA pushes a file (accepted in the UI),
 # Explorer "Send to" (second launch with --send) pushes to devA. W2 (manual mode, owns the
-# hotkeys) joins: a file copied on W1 arrives at W2 as virtual files (Ctrl+Alt+V) and is pasted
+# hotkeys) joins: a file copied on W1 arrives at W2 as virtual files (Win+Alt+V) and is pasted
 # by the shell's copy engine, bytes streaming from W1 (read_file_range).
 param(
     [string]$App = (Join-Path $PSScriptRoot '..\..\src\Fsync.App\bin\x64\Release\net8.0-windows10.0.19041.0\win-x64\Fsync.exe'),
@@ -58,6 +58,12 @@ try {
     Wait-Until -Seconds 60 -What 'clipboard written' { (Get-ClipText) -eq $inText } | Out-Null
     Add-Pass $c ("text from devA is on the Windows clipboard after {0:N1} s" -f ((Get-Date) - $t0).TotalSeconds)
     $put.P.WaitForExit(60000) | Out-Null
+    $log1 = Join-Path $c.Work 'W1\app.log'
+    $published = { @(Get-Content $log1 -ErrorAction SilentlyContinue | Select-String 'clipboard: published').Count }
+    Wait-Until -Seconds 10 -What 'own write skipped' { @(Get-Content $log1) -match 'skip=OwnEcho' } | Out-Null
+    $n = & $published; Start-Sleep 2
+    if ((& $published) -ne $n) { throw 'the received clip was published back' }
+    Add-Pass $c 'echo: the written clip was skipped as our own (FsyncOrigin first, private flags present), not sent back'
 
     Invoke-Name $w1 'History'
     Wait-Like $w1 "*$inText*" 30 | Out-Null
@@ -88,6 +94,12 @@ try {
     $fetched = Join-Path $outDir (Split-Path $outFile -Leaf)
     if ((Get-FileHashHex $fetched) -ne (Get-FileHashHex $outFile)) { throw 'Send to: hash differs' }
     Add-Pass $c 'Explorer Send to (second launch with --send) pushed the file to devA intact'
+    # devA's data dir is locked (engine.lock) while this CLI runs: let it exit before the next join.
+    if (-not $fetch.P.WaitForExit(30000)) { $fetch.P.Kill() }
+    $env:FSYNC_DATA_DIR = (Join-Path $c.Work 'W1').ToUpperInvariant() + '\' # same folder, other spelling
+    $dup = Start-Process $App -PassThru
+    if (-not $dup.WaitForExit(15000)) { $dup.Kill(); throw 'a second instance for the same data folder kept running' }
+    Add-Pass $c 'a second launch with another spelling of the data folder handed over to W1 and exited'
 
     Write-E2e 'virtual-file paste W1 -> W2'
     $p2 = Start-FsyncApp $c $App 'W2'
@@ -101,9 +113,11 @@ try {
     Wait-Like $w1 '*W2*' 60 | Out-Null
     Add-Pass $c 'W2 paired and in manual mode; W1 lists it'
     $lazy = Join-Path $c.Work "lazy-$tag.bin"; New-RandomFile $lazy (5MB)
-    Set-ClipRetry @{ Path = $lazy }
-    Wait-Until -Seconds 60 -What 'virtual files on the clipboard (Ctrl+Alt+V on W2)' {
-        Send-CtrlAlt 'V'; Start-Sleep -Milliseconds 1500
+    $folder = Join-Path $c.Work "folder-$tag"; New-Item -ItemType Directory (Join-Path $folder 'sub') | Out-Null
+    New-RandomFile (Join-Path $folder 'sub\nested.bin') (300KB)
+    Set-ClipRetry @{ Path = @($lazy, $folder) }
+    Wait-Until -Seconds 60 -What 'virtual files on the clipboard (Win+Alt+V on W2)' {
+        Send-WinAlt 'V'; Start-Sleep -Milliseconds 1500
         (Get-ClipFormats) -contains 'FileGroupDescriptorW'
     } | Out-Null
     $pasteDir = Join-Path $c.Work 'pasted'; New-Item -ItemType Directory $pasteDir | Out-Null
@@ -115,8 +129,24 @@ try {
     [void]$c.Procs.Add($helper)
     $pasted = Join-Path $pasteDir (Split-Path $lazy -Leaf)
     Wait-Until -Seconds 120 -What 'pasted file complete' { (Test-Path $pasted) -and (Get-FileHashHex $pasted) -eq (Get-FileHashHex $lazy) } | Out-Null
-    Add-Pass $c ("Explorer paste of a 5 MiB file copied on W1 streamed into W2's virtual entry in {0:N1} s, hash ok" -f ((Get-Date) - $t0).TotalSeconds)
+    $nested = Join-Path $pasteDir "folder-$tag\sub\nested.bin"
+    Wait-Until -Seconds 60 -What 'pasted folder' { (Test-Path $nested) -and (Get-FileHashHex $nested) -eq (Get-FileHashHex (Join-Path $folder 'sub\nested.bin')) } | Out-Null
+    Add-Pass $c ("Explorer paste of a 5 MiB file + a folder copied on W1 streamed into W2's virtual entry in {0:N1} s, hashes ok, folder kept" -f ((Get-Date) - $t0).TotalSeconds)
     $helper.StandardInput.WriteLine("done")
+
+    Write-E2e 'eager fallback on W2'
+    Invoke-Name $w2 'Download copied files before pasting (compatibility)'
+    $eager = Join-Path $c.Work "eager-$tag"; New-Item -ItemType Directory (Join-Path $eager 'deep') | Out-Null
+    New-RandomFile (Join-Path $eager 'deep\e.bin') (1MB)
+    Set-ClipRetry @{ Path = $eager }
+    $inbox = Join-Path $c.Work 'W2\inbox'
+    $drop = Wait-Until -Seconds 90 -What 'downloaded files on the clipboard (Win+Alt+V on W2)' {
+        Send-WinAlt 'V'; Start-Sleep -Milliseconds 1500
+        try { Get-Clipboard -Format FileDropList -ErrorAction Stop | Where-Object { $_.FullName.StartsWith($inbox) } | Select-Object -First 1 } catch { $null }
+    }
+    if ($drop.Name -ne "eager-$tag") { throw "CF_HDROP lists $($drop.FullName), not the folder" }
+    if ((Get-FileHashHex (Join-Path $drop.FullName 'deep\e.bin')) -ne (Get-FileHashHex (Join-Path $eager 'deep\e.bin'))) { throw 'eager: hash differs' }
+    Add-Pass $c 'eager strategy: the folder was downloaded into the inbox with its layout and offered as CF_HDROP'
 }
 catch {
     [void]$c.Results.Add("FAIL $_")
