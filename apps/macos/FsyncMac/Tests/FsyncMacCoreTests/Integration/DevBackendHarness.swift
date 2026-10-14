@@ -169,8 +169,10 @@ final class CliProcess: @unchecked Sendable {
 
     /// The exit status, reported only once both output streams are drained, so no printed event is still in flight.
     /// If a grandchild still holds the pipes `drainGrace` after exit, the streams are force-closed so exit is not hidden.
-    var exitCode: Int32? {
-        lock.lock(); defer { lock.unlock() }
+    var exitCode: Int32? { lock.lock(); defer { lock.unlock() }; return resolveExit() }
+
+    /// Call with the lock held. Force-drains the streams once the grace has passed.
+    private func resolveExit() -> Int32? {
         guard let code = exited else { return nil }
         if eofStreams < 2 {
             guard let at = exitedAt, Date().timeIntervalSince(at) >= Self.drainGrace else { return nil }
