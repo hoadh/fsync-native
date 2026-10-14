@@ -93,7 +93,7 @@ fi
 rsh "chmod 600 '$dir/.env'"
 
 # --- switch release
-rsh "bash -s" "$dir" "$tag" "$D" <<'REMOTE'
+rsh "bash -s '$dir' '$tag' '$D'" <<'REMOTE'
 set -euo pipefail
 dir="$1" tag="$2" D="$3 "; D="${D% }"; cd "$dir"
 cur="$(sed -n 's/^FSYNC_TAG=//p' .env | tail -1)"
