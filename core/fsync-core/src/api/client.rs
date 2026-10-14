@@ -1,26 +1,33 @@
 //! Backend HTTP client: bearer auth with refresh-on-401 and a token-persistence callback.
 
+mod authed;
+pub(crate) use super::check::check;
 use super::{
     limits::{capped_json, check_scheme},
     tls::client_config,
 };
-use crate::error::{ApiError, CoreError, Result};
-use fsync_proto::api_dto::{ApiErrorBody, Refresh, TokenPair};
-use reqwest::{Client, RequestBuilder, Response};
-use serde::de::DeserializeOwned;
+use crate::error::{CoreError, Result};
+use fsync_proto::api_dto::{Refresh, TokenPair};
+use reqwest::Client;
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Duration,
 };
 
-/// Called with every new token pair so the app can persist it (Keychain/DPAPI).
+/// Called with every new token pair so the app can persist it (Keychain/DPAPI). Runs while the
+/// client holds its token lock: it must be quick and must not call back into the client.
 pub type TokenCallback = Arc<dyn Fn(&TokenPair) + Send + Sync>;
 
 pub struct ApiClient {
     base: String,
     http: Client,
-    pub(super) tokens: Mutex<Option<TokenPair>>,
+    tokens: Mutex<Option<TokenPair>>,
     refresh_lock: tokio::sync::Mutex<()>,
+    /// Bumped by `take_refresh`: a refresh that started earlier must not store its result.
+    epoch: AtomicU64,
     on_tokens: Option<TokenCallback>,
 }
 
@@ -54,6 +61,7 @@ impl ApiClient {
             http,
             tokens: Mutex::new(tokens),
             refresh_lock: tokio::sync::Mutex::new(()),
+            epoch: AtomicU64::new(0),
             on_tokens,
         })
     }
@@ -98,31 +106,34 @@ impl ApiClient {
         }
     }
 
+    /// Store the result of a refresh that began at `epoch`, unless a logout happened since.
+    /// The check, the store and the app callback share one critical section, so a logout
+    /// either precedes all of it (nothing is stored or reported) or follows it.
+    fn set_tokens_at(&self, epoch: u64, t: TokenPair) -> Result<()> {
+        let mut g = self.tokens.lock().map_err(|_| CoreError::Closed)?;
+        if self.epoch.load(Ordering::SeqCst) != epoch {
+            return Err(CoreError::AuthExpired);
+        }
+        if let Some(cb) = &self.on_tokens {
+            cb(&t);
+        }
+        *g = Some(t);
+        Ok(())
+    }
+
+    /// Logout: forget the tokens, hand back the refresh token, and invalidate refreshes in
+    /// flight. A poisoned lock is recovered (the tokens must go regardless).
+    pub fn take_refresh(&self) -> Option<String> {
+        let mut g = self.tokens.lock().unwrap_or_else(|p| {
+            tracing::warn!("token lock poisoned during logout; clearing anyway");
+            p.into_inner()
+        });
+        self.epoch.fetch_add(1, Ordering::SeqCst);
+        g.take().map(|t| t.refresh)
+    }
+
     pub(crate) fn plain(&self) -> &Client {
         &self.http
-    }
-
-    /// Authenticated request; on 401 (not `reauth_required`) refresh once and retry.
-    pub(crate) async fn authed(
-        &self,
-        build: impl Fn(&Client, &str) -> RequestBuilder,
-    ) -> Result<Response> {
-        let access = self.access_token()?;
-        match check(build(&self.http, &access).send().await).await {
-            Err(CoreError::Api(e)) if e.status == 401 && !e.is("reauth_required") => {
-                self.refresh_after(&access).await?;
-                let access = self.access_token()?;
-                check(build(&self.http, &access).send().await).await
-            }
-            other => other,
-        }
-    }
-
-    pub(crate) async fn authed_json<T: DeserializeOwned>(
-        &self,
-        build: impl Fn(&Client, &str) -> RequestBuilder,
-    ) -> Result<T> {
-        capped_json(self.authed(build).await?).await
     }
 
     /// Refresh unless another task already replaced `rejected`.
@@ -141,6 +152,7 @@ impl ApiClient {
     }
 
     async fn refresh_locked(&self) -> Result<()> {
+        let epoch = self.epoch.load(Ordering::SeqCst);
         for attempt in 0..4u64 {
             let refresh = self.tokens().ok_or(CoreError::AuthExpired)?.refresh;
             let resp = self
@@ -152,15 +164,16 @@ impl ApiClient {
             match check(resp).await {
                 Ok(r) => {
                     let t: TokenPair = capped_json(r).await?;
-                    self.set_tokens(t);
-                    return Ok(());
+                    return self.set_tokens_at(epoch, t);
                 }
                 // Rotated < 10 s ago elsewhere: wait for the newer token, then retry.
                 Err(CoreError::Api(e)) if e.is("refresh_in_progress") => {
                     tokio::time::sleep(Duration::from_millis(500 * (attempt + 1))).await;
                 }
                 Err(CoreError::Api(e)) if e.status == 401 => {
-                    self.clear_tokens();
+                    if self.epoch.load(Ordering::SeqCst) == epoch {
+                        self.clear_tokens();
+                    }
                     return Err(CoreError::AuthExpired);
                 }
                 Err(e) => return Err(e),
@@ -168,21 +181,4 @@ impl ApiClient {
         }
         Err(CoreError::Http("refresh kept conflicting".into()))
     }
-}
-
-/// Map transport errors and non-2xx bodies to `CoreError`.
-pub(crate) async fn check(r: reqwest::Result<Response>) -> Result<Response> {
-    let resp = r.map_err(|e| CoreError::Http(e.without_url().to_string()))?;
-    if resp.status().is_success() {
-        return Ok(resp);
-    }
-    let status = resp.status().as_u16();
-    let body = capped_json::<ApiErrorBody>(resp).await.ok();
-    Err(CoreError::Api(ApiError {
-        status,
-        code: body
-            .as_ref()
-            .map_or_else(|| "unknown".into(), |b| b.code.clone()),
-        message: body.map(|b| b.message).unwrap_or_default(),
-    }))
 }

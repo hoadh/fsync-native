@@ -66,19 +66,6 @@ impl ApiClient {
         }
     }
 
-    /// Revoke the current session and forget the tokens; they are kept if the server is unreachable.
-    pub async fn logout(&self) -> Result<()> {
-        let refresh = self.tokens().ok_or(CoreError::AuthExpired)?.refresh;
-        self.revoke(&refresh).await?;
-        self.clear_tokens();
-        Ok(())
-    }
-
-    /// Forget the tokens and hand back the refresh token (for a revocation that can be retried).
-    pub(crate) fn take_refresh(&self) -> Option<String> {
-        self.tokens.lock().ok()?.take().map(|t| t.refresh)
-    }
-
     /// `None` if the account has no list yet (404).
     pub async fn get_device_list(&self) -> Result<Option<SignedDeviceList>> {
         match self
