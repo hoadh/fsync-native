@@ -19,7 +19,7 @@ services:
     <<: *hardening
     image: postgres:17
     # Small host (shared, ~2 GiB RAM): keep Postgres lean.
-    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=25",
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=30",
               "-c", "work_mem=2MB", "-c", "maintenance_work_mem=32MB", "-c", "effective_cache_size=128MB"]
     mem_limit: 192m
     memswap_limit: 192m   # no swap use: an overload restarts the container instead of thrashing the host

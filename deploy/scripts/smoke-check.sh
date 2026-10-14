@@ -50,4 +50,18 @@ sys.exit(0 if ok == n else 1)
 PY
   ok "backend trusts the proxy peer (X-Forwarded-For honored)"
 fi
+# Memory is tight on the shared host (container limits are hard): warn, never fail, when a stack
+# container was OOM-killed or restarted. OOM_CHECK_DOCKER = docker command (e.g. "sudo -n docker"),
+# FSYNC_PROJECT = compose project (default fsync).
+if [[ -n "${OOM_CHECK_DOCKER:-}" ]]; then
+  # shellcheck disable=SC2086
+  ids="$($OOM_CHECK_DOCKER ps -aq --filter "label=com.docker.compose.project=${FSYNC_PROJECT:-fsync}" 2>/dev/null || true)"
+  # shellcheck disable=SC2086
+  [[ -z "$ids" ]] || $OOM_CHECK_DOCKER inspect -f '{{.Name}} {{.State.OOMKilled}} {{.RestartCount}}' $ids 2>/dev/null \
+    | while read -r name oom restarts; do
+        if [[ "$oom" == "true" ]]; then echo "warn $name was OOM-killed: raise its mem_limit or free host memory"
+        elif [[ "${restarts:-0}" -gt 0 ]]; then echo "warn $name restarted $restarts time(s): check docker logs (OOM?)"; fi
+      done
+  ok "oom/restart check"
+fi
 echo "smoke ok"

@@ -23,7 +23,8 @@ internet --7842/udp--> relay (QUIC address discovery; optional, off by default)
 | `backend/compose.yml` | older backend + Postgres only compose for development |
 
 ## Host Caddy snippet (owner applies; the deploy never edits or reloads Caddy)
-Append to `/etc/caddy/Caddyfile`, then `sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy`:
+The host Caddy does **not** read `/opt/fsync/Caddyfile` (that copy is only for reference and the local test);
+the owner pastes the blocks below into `/etc/caddy/Caddyfile`, then `sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy`:
 ```
 api-fsync.10z.one {
 	reverse_proxy 127.0.0.1:18080

@@ -63,7 +63,7 @@ dc up -d "$BUILD_FLAG" --wait --wait-timeout 900 || fail "compose up"
 dc ps
 
 log "smoke: loopback HTTP (what deploy.sh checks on the host), incl. proxy-peer trust"
-CHECK_PROXY_TRUST=1 "$DEPLOY/scripts/smoke-check.sh" "http://127.0.0.1:$BACKEND_PORT" "http://127.0.0.1:$RELAY_HTTP_PORT"
+CHECK_PROXY_TRUST=1 OOM_CHECK_DOCKER=docker FSYNC_PROJECT="$PROJECT" "$DEPLOY/scripts/smoke-check.sh" "http://127.0.0.1:$BACKEND_PORT" "http://127.0.0.1:$RELAY_HTTP_PORT"
 log "smoke: HTTPS through Caddy (local CA)"
 dc cp caddy:/data/caddy/pki/authorities/local/root.crt "$WORK/ca.pem" >/dev/null
 CURL_EXTRA="--cacert $WORK/ca.pem --resolve api.localhost:$LOCAL_HTTPS_PORT:127.0.0.1 --resolve relay.localhost:$LOCAL_HTTPS_PORT:127.0.0.1" \

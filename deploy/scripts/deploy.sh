@@ -76,10 +76,13 @@ else
 fi
 
 # --- files, env
+stage=""
 if [[ $rollback -eq 0 ]]; then
   log "copying compose files"
-  rsh "rm -rf '$dir/.incoming' && mkdir -p '$dir/.incoming'"
-  COPYFILE_DISABLE=1 tar -C "$HERE" -cf - compose.yml Caddyfile scripts | rsh "tar -C '$dir/.incoming' -xf -"
+  # Unique staging dir: a concurrent deploy cannot clobber it before it takes the lock below.
+  stage="$(rsh "mktemp -d '$dir/.incoming.XXXXXX'")"
+  trap 'rsh "rm -rf \"$stage\"" >/dev/null 2>&1 || true' EXIT
+  COPYFILE_DISABLE=1 tar -C "$HERE" -cf - compose.yml Caddyfile scripts | rsh "tar -C '$stage' -xf -"
 fi
 if ! rsh "test -s '$dir/.env'"; then
   [[ -n "$env_file" ]] || die "no $dir/.env on the host: pass --env-file (see deploy/scripts/gen-env.sh)"
@@ -89,20 +92,24 @@ fi
 rsh "chmod 600 '$dir/.env'"
 
 # --- switch release (one deploy at a time; .env edited atomically; compose.yml.prev kept for rollback)
-rsh "bash -s '$dir' '$tag' '$D' '$rollback'" <<'REMOTE'
+rsh "bash -s '$dir' '$tag' '$D' '$rollback' '$stage'" <<'REMOTE'
 set -euo pipefail
-dir="$1" tag="$2" D="$3 "; D="${D% }"; rollback="$4"; cd "$dir"
+dir="$1" tag="$2" D="$3 "; D="${D% }"; rollback="$4" stage="$5"; cd "$dir"
 exec 9>.deploy.lock
 flock -n 9 || { echo "another deploy is running on this host" >&2; exit 1; }
-umask 077
+umask 022   # compose.yml, Caddyfile snippet and scripts are not secret; only .env is (below)
+# stale macOS AppleDouble files from earlier tar uploads (only directly in these two dirs)
+find "$dir" "$dir/scripts" -maxdepth 1 -type f -name '._*' -delete 2>/dev/null || true
 cur="$(sed -n 's/^FSYNC_TAG=//p' .env | tail -1)"
 if [ "$rollback" = 1 ]; then
   if [ -f compose.yml.prev ]; then mv compose.yml compose.yml.tmp; mv compose.yml.prev compose.yml; mv compose.yml.tmp compose.yml.prev; fi
 else
   [ "$cur" = "$tag" ] || { [ ! -f compose.yml ] || cp compose.yml compose.yml.prev; }
-  cp .incoming/compose.yml compose.yml.new && mv compose.yml.new compose.yml
-  cp .incoming/Caddyfile Caddyfile; mkdir -p scripts; cp -r .incoming/scripts/. scripts/; rm -rf .incoming
+  cp "$stage/compose.yml" compose.yml.new && mv compose.yml.new compose.yml
+  cp "$stage/Caddyfile" Caddyfile; mkdir -p scripts; cp -r "$stage/scripts/." scripts/; rm -rf "$stage"
+  chmod 644 compose.yml Caddyfile; chmod 755 scripts; chmod 755 scripts/*.sh
 fi
+umask 077
 {
   grep -v -e '^FSYNC_TAG=' -e '^FSYNC_TAG_PREV=' .env || true
   prev="$cur"; [ "$cur" != "$tag" ] || prev="$(sed -n 's/^FSYNC_TAG_PREV=//p' .env | tail -1)"
@@ -145,7 +152,7 @@ fi
 if [[ $smoke -eq 1 ]]; then
   bp="$(rsh "sed -n 's/^BACKEND_PORT=//p' '$dir/.env'")"; rp="$(rsh "sed -n 's/^RELAY_HTTP_PORT=//p' '$dir/.env'")"
   log "on-host smoke check (127.0.0.1:${bp:-18080} / ${rp:-18081})"
-  rsh "CHECK_PROXY_TRUST=1 bash -s -- http://127.0.0.1:${bp:-18080} http://127.0.0.1:${rp:-18081}" < "$HERE/scripts/smoke-check.sh" \
+  rsh "CHECK_PROXY_TRUST=1 OOM_CHECK_DOCKER='$D' bash -s -- http://127.0.0.1:${bp:-18080} http://127.0.0.1:${rp:-18081}" < "$HERE/scripts/smoke-check.sh" \
     || die "smoke check failed (release $tag is running; inspect: ssh $host 'cd $dir && $D compose logs')"
 fi
 if [[ $public -eq 1 ]]; then

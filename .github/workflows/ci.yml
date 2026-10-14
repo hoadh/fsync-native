@@ -18,7 +18,7 @@ env:
 
 jobs:
   # Cost control: macos-15 bills 10x and windows 2x, so those jobs only run when their inputs change
-  # (always on workflow_dispatch). The rust job always runs.
+  # (always on workflow_dispatch and on every push to main). The rust job always runs.
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -34,12 +34,12 @@ jobs:
         run: |
           common='^(core/|Cargo\.(toml|lock)$|rust-toolchain\.toml$|\.github/workflows/ci\.yml$)'
           files="$(git diff --name-only "$BASE" HEAD 2>/dev/null || echo ALL)"
-          [ "$EVENT" = workflow_dispatch ] && files=ALL
+          { [ "$EVENT" = workflow_dispatch ] || [ "$EVENT" = push ]; } && files=ALL
           hit() {
             if [ "$files" = ALL ] || printf '%s\n' "$files" | grep -Eq "$1"; then echo true; else echo false; fi
           }
-          echo "macos=$(hit "$common|^(apps/macos/|scripts/build-xcframework\.sh$)")" >> "$GITHUB_OUTPUT"
-          echo "windows=$(hit "$common|^(apps/windows/|scripts/build-windows-dll\.ps1$)")" >> "$GITHUB_OUTPUT"
+          echo "macos=$(hit "$common|^(apps/macos/|scripts/(gen-bindings|build-xcframework)\.sh$)")" >> "$GITHUB_OUTPUT"
+          echo "windows=$(hit "$common|^(apps/windows/|scripts/(gen-bindings-cs|build-windows-dll)\.ps1$)")" >> "$GITHUB_OUTPUT"
 
   rust:
     name: rust (fmt, clippy, tests)
