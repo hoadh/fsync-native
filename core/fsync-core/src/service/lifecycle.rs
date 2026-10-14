@@ -2,11 +2,15 @@
 
 use super::{
     FsyncService,
+    engine_release::{
+        INLINE_RELEASE_WAIT, LINGERING_LOCK_MAX_HOLD, POLL_INLINE, POLL_LINGERING,
+        hold_lock_until_released, wait_unique,
+    },
     error::{FsyncError, SvcResult},
     inner::{Inner, lock},
 };
 use crate::{config::EngineConfig, engine::Engine, net::Node};
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 impl Inner {
     pub(super) async fn start(self: &Arc<Self>) -> SvcResult<()> {
@@ -78,36 +82,27 @@ impl Inner {
             x.abort_all();
         }
         drop(_presence);
-        let Some(mut engine) = engine else { return };
+        let Some(engine) = engine else { return };
         // Aborted tasks release their engine handles shortly after.
-        for _ in 0..50 {
-            match Arc::try_unwrap(engine) {
-                Ok(e) => {
-                    e.shutdown().await;
-                    drop(data_lock);
-                    return;
-                }
-                Err(still_shared) => {
-                    engine = still_shared;
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-                }
+        let engine = match wait_unique(engine, POLL_INLINE, INLINE_RELEASE_WAIT).await {
+            Ok(e) => {
+                e.shutdown().await;
+                drop(data_lock);
+                return;
             }
-        }
+            Err(still_shared) => still_shared,
+        };
         // Something still holds the engine. Keep the data-dir lock until it is really gone (then
-        // shut down cleanly), so a new engine never overlaps with a lingering one.
+        // shut down cleanly), so a new engine never overlaps with a lingering one, but only for
+        // a bounded time: a leaked handle must not block restart forever.
         tracing::warn!("engine still referenced at stop; shutting down once released");
-        tokio::spawn(async move {
-            let (_data_lock, mut engine) = (data_lock, engine);
-            loop {
-                match Arc::try_unwrap(engine) {
-                    Ok(e) => return e.shutdown().await,
-                    Err(shared) => {
-                        engine = shared;
-                        tokio::time::sleep(Duration::from_millis(250)).await;
-                    }
-                }
-            }
-        });
+        tokio::spawn(hold_lock_until_released(
+            engine,
+            data_lock,
+            POLL_LINGERING,
+            LINGERING_LOCK_MAX_HOLD,
+            |e: Engine| e.shutdown(),
+        ));
     }
 }
 
