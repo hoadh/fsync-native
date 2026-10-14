@@ -187,9 +187,9 @@ REMOTE
 
 # --- backups: dumps are scheduled by a cron.d file scoped to this stack (the only host file we write)
 if [[ $cron -eq 1 ]]; then
-  rsh "printf '15 3 * * * %s cd %s && ./scripts/backup-postgres.sh >> %s/backup.log 2>&1\n' \"\$(id -un)\" '$dir' '$dir' \
+  rsh "printf '15 3 * * * %s cd %s && ./scripts/backup-offsite.sh >> %s/backup.log 2>&1\n' \"\$(id -un)\" '$dir' '$dir' \
     | sudo -n tee /etc/cron.d/fsync-backup >/dev/null && sudo -n chmod 644 /etc/cron.d/fsync-backup"
-  log "backup cron installed: /etc/cron.d/fsync-backup (daily 03:15, 14 days kept)"
+  log "backup cron installed: /etc/cron.d/fsync-backup (daily 03:15, 14 days kept; off-box copy when .backup/offsite.env exists)"
 elif [[ $relay_only -eq 0 ]] && ! rsh "test -f /etc/cron.d/fsync-backup"; then
   log "WARNING: backups are NOT scheduled on this host (rerun with --install-backup-cron)"
 fi
