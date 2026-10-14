@@ -12,10 +12,10 @@ impl FsyncService {
     /// Every representation of a history item, in the order it was published, with its full
     /// bytes (`history()` only carries previews). Works without `start()` for reps that are
     /// stored; a received rep that was never fetched is pulled from the sender when the engine
-    /// runs, and skipped when the sender is unreachable (offline, offer forgotten; later pulls are
-    /// then not attempted): an item that yields
-    /// nothing because of that is `NotFound`. A files-only item has no reps and returns an empty
-    /// list. Unknown ids are `NotFound`, malformed ones `Invalid`.
+    /// runs, and skipped when the sender is unreachable (offline, offer forgotten; later pulls
+    /// are then not attempted). An item that yields nothing because of that is `NotFound`.
+    /// A files-only item has no reps and returns an empty list. Unknown ids are `NotFound`,
+    /// malformed ones `Invalid`.
     pub fn history_item_reps(&self, item_id: &str) -> SvcResult<Vec<ClipRep>> {
         let id = parse_uuid(item_id)?;
         let h = &self.inner.history;

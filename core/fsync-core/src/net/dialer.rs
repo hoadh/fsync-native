@@ -69,7 +69,7 @@ impl Dialer {
             return Ok(c);
         }
         let conn = self.dial_with_recovery(peer, alpn).await?;
-        self.gate.track(&conn);
+        self.gate.track_outbound(&conn);
         if let Ok(mut g) = self.conns.lock() {
             g.insert((*peer, alpn), conn.clone());
         }

@@ -23,7 +23,7 @@ pub struct Gate {
     pub(crate) trust: Arc<TrustManager>,
     pub(crate) windows: Arc<PairingWindows>,
     pub(crate) paths: Arc<PathTracker>,
-    live: Mutex<HashMap<(NodeId, usize), (Instant, Connection)>>,
+    live: Mutex<HashMap<(NodeId, usize), (Instant, bool, Connection)>>,
 }
 
 impl std::fmt::Debug for Gate {
@@ -51,11 +51,20 @@ impl Gate {
         self.trust.is_trusted(remote) || (alpn == ALPN_PAIR && self.windows.is_open())
     }
 
-    /// Track a trusted connection: path state + closable on device removal.
+    /// Track a trusted inbound connection: path state + closable on device removal.
     pub fn track(self: &Arc<Self>, conn: &Connection) {
+        self.track_dir(conn, false);
+    }
+
+    /// Track a connection we dialed (the only kind `close_stale` may close).
+    pub fn track_outbound(self: &Arc<Self>, conn: &Connection) {
+        self.track_dir(conn, true);
+    }
+
+    fn track_dir(self: &Arc<Self>, conn: &Connection, outbound: bool) {
         let key = (node_id_of(conn), conn.stable_id());
         if let Ok(mut g) = self.live.lock() {
-            g.insert(key, (Instant::now(), conn.clone()));
+            g.insert(key, (Instant::now(), outbound, conn.clone()));
         }
         self.paths.watch(conn.clone());
         let (me, conn) = (Arc::clone(self), conn.clone());
@@ -67,14 +76,14 @@ impl Gate {
         });
     }
 
-    /// Close the live `alpn` connections to `peer` opened before `before`. Used when a fresh
+    /// Close the outbound `alpn` connections to `peer` opened before `before`. Used when a fresh
     /// dial for that same ALPN stalls: connections that predate it are presumed dead (peer
     /// crashed/moved) and their stale path state would keep blocking new handshakes. Other
     /// ALPNs and newer connections (possibly mid-transfer) are left alone.
     pub fn close_stale(&self, peer: &NodeId, alpn: &[u8], before: Instant) {
         let Ok(g) = self.live.lock() else { return };
-        for ((p, _), (opened, conn)) in g.iter() {
-            if p == peer && *opened < before && conn.alpn() == alpn {
+        for ((p, _), (opened, outbound, conn)) in g.iter() {
+            if *outbound && p == peer && *opened < before && conn.alpn() == alpn {
                 conn.close(CLOSE_STALE.into(), b"stale");
             }
         }
@@ -83,7 +92,7 @@ impl Gate {
     /// Close live connections of devices no longer in the pinned list.
     pub fn enforce(&self) {
         let Ok(g) = self.live.lock() else { return };
-        for ((peer, _), (_, conn)) in g.iter() {
+        for ((peer, _), (_, _, conn)) in g.iter() {
             if !self.trust.is_trusted(peer) {
                 conn.close(CLOSE_UNTRUSTED.into(), b"removed");
             }

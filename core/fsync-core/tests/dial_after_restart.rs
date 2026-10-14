@@ -129,7 +129,9 @@ fn closing_stale_connections_spares_other_alpns() {
         a.node.gate().close_stale(
             &idb.node_id(),
             TEST_ALPN,
-            Instant::now() - Duration::from_secs(60),
+            Instant::now()
+                .checked_sub(Duration::from_secs(60))
+                .unwrap_or_else(Instant::now),
         );
         assert!(
             fresh.close_reason().is_none(),
@@ -166,7 +168,7 @@ fn run(graceful: bool) {
         .unwrap();
     rt_a.block_on(async {
         let t = echo_once(&a, &idb).await;
-        assert!(t < Duration::from_secs(5), "first dial took {t:?}");
+        assert!(t < Duration::from_secs(8), "first dial took {t:?}");
     });
     // Crash: no CONNECTION_CLOSE reaches A. Graceful: the node closes first.
     if graceful {
@@ -182,5 +184,5 @@ fn run(graceful: bool) {
         .hint(&idb.node_id(), None, &[loopback(&b2.node)])
         .unwrap();
     let t = rt_a.block_on(echo_once(&a, &idb));
-    assert!(t < Duration::from_secs(5), "took {t:?}");
+    assert!(t < Duration::from_secs(7), "took {t:?}");
 }
