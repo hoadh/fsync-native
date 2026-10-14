@@ -71,3 +71,8 @@ Data flow: View → EngineBridge (async Task) → FsyncEngine (FFI) → core; co
 
 ## Next Steps
 - Phase 12 adds clipboard/files/history on this shell.
+
+## Note: trust-reset prompt (library ready)
+- `TrustResetPrompt` library exists in `apps/macos/Packages/FsyncCoreKit` (see `plans/261014-1206-macos-trust-reset-prompt/plan.md`).
+- Wire: `EngineDelegateAdapter` → `model.handle(event)` on the main actor; route `.removedNeedsPairing` to the pairing flow.
+- Unverified: `confirmationDialog` rendering. Check manually in the app.
