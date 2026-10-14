@@ -31,9 +31,10 @@ class IntegrationTestCase: EngineTestCase {
     func uniqueEmail(_ tag: String) -> String { "mac-it-\(tag)-\(UUID().uuidString.prefix(8).lowercased())@example.test".lowercased() }
 
     /// A booted bridge on a throwaway Keychain service and data dir, stopped at teardown.
-    func bootMac(pasteboard: NSPasteboard = .general) async throws -> EngineBridge {
+    func bootMac(pasteboard: NSPasteboard = .general, downloads: URL = FilesSync.defaultDownloads()) async throws -> EngineBridge {
         let config = AppConfig(apiBase: backend.api, relayUrl: backend.relay, deviceName: "mac-it")
-        let bridge = EngineBridge(config: config, secrets: AppSecrets(store: makeStore()), dataDir: try tempDir(), pasteboard: pasteboard)
+        let bridge = EngineBridge(config: config, secrets: AppSecrets(store: makeStore()), dataDir: try tempDir(), pasteboard: pasteboard,
+                              inbox: InboxDirectory(root: try tempDir()), downloads: downloads)
         addTeardownBlock { await bridge.shutdown() }
         bridge.boot()
         let ok = await waitUntil(timeout: 30) { bridge.phase == .signedOut }
@@ -62,9 +63,9 @@ class IntegrationTestCase: EngineTestCase {
 
     /// A Mac that is `.ready` and paired with a CLI device `name` (the CLI offers, the Mac joins).
     /// The CLI is not running afterwards; start `clip watch` / `clip send` as needed.
-    func pairedMac(cli name: String, pasteboard: NSPasteboard) async throws -> EngineBridge {
+    func pairedMac(cli name: String, pasteboard: NSPasteboard, downloads: URL = FilesSync.defaultDownloads()) async throws -> EngineBridge {
         let email = uniqueEmail(name)
-        let bridge = try await bootMac(pasteboard: pasteboard)
+        let bridge = try await bootMac(pasteboard: pasteboard, downloads: downloads)
         try await signIn(bridge, email: email)
         XCTAssertEqual(bridge.phase, .ready)
         _ = try await backend.cliLogin(name, email: email)

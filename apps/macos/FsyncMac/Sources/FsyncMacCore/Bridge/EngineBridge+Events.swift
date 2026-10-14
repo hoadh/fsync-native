@@ -12,8 +12,8 @@ extension EngineBridge {
                 banner = text
             }
         case .remoteClip(let item): clipSync?.enqueue(item)
-        case .transfer, .incomingFiles:
-            break
+        case .transfer(let event): transfers?.handle(event)
+        case .incomingFiles(let offer): Task { await filesSync?.receive(offer: offer) }
         }
     }
 

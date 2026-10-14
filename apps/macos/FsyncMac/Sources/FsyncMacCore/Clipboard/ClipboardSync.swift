@@ -24,6 +24,7 @@ public final class ClipboardSync: ObservableObject {
     private let engine: FsyncEngineProtocol
     private let pasteboard: NSPasteboard
     private let writer: ClipboardWriter
+    private let fileWriter: FileClipWriter?
     private var watcher: PasteboardWatcher!
     private(set) var settings: Settings
     private var filter: SensitiveFilter
@@ -32,11 +33,12 @@ public final class ClipboardSync: ObservableObject {
 
     /// `fetchRep` defaults to the engine's `fetch_rep`.
     public init(engine: FsyncEngineProtocol, pasteboard: NSPasteboard = .general, settings: Settings,
-                fetchRep: RepFetcher? = nil,
+                fetchRep: RepFetcher? = nil, fileWriter: FileClipWriter? = nil,
                 frontmost: @escaping () -> String? = { NSWorkspace.shared.frontmostApplication?.bundleIdentifier }) {
         self.engine = engine
         self.pasteboard = pasteboard
         self.settings = settings
+        self.fileWriter = fileWriter
         filter = SensitiveFilter(userDenylist: settings.denylist)
         writer = ClipboardWriter(pasteboard: pasteboard, fetch: fetchRep ?? { [engine] id, idx in try engine.fetchRep(itemId: id, idx: idx) })
         watcher = PasteboardWatcher(pasteboard: pasteboard, filter: filter, frontmost: frontmost) { [weak self] change in
@@ -75,12 +77,16 @@ public final class ClipboardSync: ObservableObject {
     }
 
     /// App is quitting: do not leave an entry we can no longer serve.
-    public func prepareToQuit() { writer.clearIfOurs() }
+    public func prepareToQuit() {
+        writer.clearIfOurs()
+        fileWriter?.clearIfOurs()
+    }
 
     // MARK: Outgoing
 
     private func changed(_ change: PasteboardChange) {
-        guard settings.clipMode == .auto, change.changeCount != writer.lastWriteCount else { return }
+        guard settings.clipMode == .auto, change.changeCount != writer.lastWriteCount,
+              change.changeCount != fileWriter?.lastWriteCount else { return }
         switch change.decision {
         case .sync: Task { await publishCurrent(explicit: false) }
         case .skip(let reason): Self.log.debug("skipped change: \(reason.description, privacy: .public)")
@@ -132,7 +138,7 @@ public final class ClipboardSync: ObservableObject {
 
     /// A clip from another device. Auto mode writes it; manual mode keeps the newest for "Paste from…".
     public func receive(_ item: ClipItem) async {
-        guard running, item.kind != .files else { return }
+        guard running, item.kind != .files || fileWriter != nil else { return }
         if settings.clipMode == .auto { await apply(item) } else { pendingIncoming = item }
     }
 
@@ -144,7 +150,8 @@ public final class ClipboardSync: ObservableObject {
     }
 
     private func apply(_ item: ClipItem) async {
-        switch await writer.apply(item) {
+        let result = if item.kind == .files, let fileWriter { await fileWriter.apply(item) } else { await writer.apply(item) }
+        switch result {
         case .success: activity = SyncActivity(direction: .received, summary: item.preview ?? "Clip", at: Date())
         case .failure(.nothingUsable): Self.log.info("received clip has no usable representation")
         case .failure(.fetchFailed): message = "Couldn't receive the clip from \(PeerText.sanitize(item.fromName))."

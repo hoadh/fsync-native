@@ -27,6 +27,9 @@ public final class EngineBridge: ObservableObject {
     public internal(set) var clipSync: ClipboardSync?
     public internal(set) var clipSettings: ClipSettingsModel?
     public internal(set) var historyModel: HistoryModel?
+    public internal(set) var filesSync: FilesSync?
+    public internal(set) var transfers: TransfersModel?
+    var fileWriter: FileClipWriter?
     var hotkey: HotkeyManager?
     /// True while at least one other device is on LAN or relay (drives the menubar icon).
     @Combine.Published public internal(set) var anyPeerOnline = false
@@ -39,6 +42,10 @@ public final class EngineBridge: ObservableObject {
     let dataDir: URL
     /// The pasteboard to sync; tests use a private one.
     let pasteboard: NSPasteboard
+    /// Where files of received clips are downloaded.
+    let inbox: InboxDirectory
+    /// Where accepted "Send to…" files land.
+    let downloads: URL
     /// Seconds between `ensureAccount` retries while offline; the last value repeats.
     let retryDelays: [Double]
     var started = false
@@ -53,12 +60,15 @@ public final class EngineBridge: ObservableObject {
     var bootTask: Task<Void, Never>?
     nonisolated static let log = Logger(subsystem: AppConfig.bundleId, category: "bridge")
 
-    public init(config: AppConfig, secrets: AppSecrets, dataDir: URL, pasteboard: NSPasteboard = .general,
+    public init(config: AppConfig, secrets: AppSecrets, dataDir: URL, pasteboard: NSPasteboard = .general, inbox: InboxDirectory = .standard(),
+                downloads: URL = FilesSync.defaultDownloads(),
                 retryDelays: [Double] = [5, 15, 60]) {
         self.config = config
         self.secrets = secrets
         self.dataDir = dataDir
         self.pasteboard = pasteboard
+        self.inbox = inbox
+        self.downloads = downloads
         self.retryDelays = retryDelays.isEmpty ? [60] : retryDelays
     }
 

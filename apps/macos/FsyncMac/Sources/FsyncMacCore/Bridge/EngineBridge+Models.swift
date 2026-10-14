@@ -37,6 +37,8 @@ extension EngineBridge {
     func resetAccountModels() {
         devicesModel?.clear()
         clipSync?.stop()
+        filesSync?.stop()
+        transfers?.reset()
         historyModel?.reset()
         trustModel?.dismissOutcome()
         Task { [pairingModel] in await pairingModel?.cancel() }
