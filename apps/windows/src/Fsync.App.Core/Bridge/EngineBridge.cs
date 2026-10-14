@@ -53,6 +53,7 @@ public sealed partial class EngineBridge : ObservableObject, IDisposable
     /// <summary>Creates the engine, restores the session, starts the node, asks for the account state.</summary>
     public async Task InitializeAsync()
     {
+        DisposeEngine(); // ResetHistoryAsync: the old engine must release its files and engine.lock first
         Directory.CreateDirectory(_settings.CoreDir);
         var cfg = new EngineConfig(_settings.CoreDir, _settings.ApiBase, _settings.RelayUrl, _settings.DeviceName,
             Platform.Win, _secrets.DeviceSecret, _secrets.HistoryKey, forceRelay: false,
@@ -69,7 +70,7 @@ public sealed partial class EngineBridge : ObservableObject, IDisposable
         }
         catch (FsyncException e)
         {
-            Fail($"Could not start: {e.Message}");
+            Fail($"Could not start: {UserMessages.For(e)}");
             return;
         }
         if (_secrets.Session is { } session)
@@ -94,6 +95,12 @@ public sealed partial class EngineBridge : ObservableObject, IDisposable
         {
             _secrets.ClearSession();
             Phase = AccountPhase.SignedOut;
+        }
+        catch (FsyncException.Invalid e) when (IsDataDirLocked(e))
+        {
+            // Not transient: no retry loop, one clear message.
+            AlreadyRunning = true;
+            Fail(AlreadyRunningMessage);
         }
         catch (FsyncException e)
         {
@@ -167,7 +174,9 @@ public sealed partial class EngineBridge : ObservableObject, IDisposable
         StatusMessage = message;
     }
 
-    public void Dispose()
+    public void Dispose() => DisposeEngine();
+
+    private void DisposeEngine()
     {
         if (_engine is null) return;
         try { _engine.Stop(); } catch (FsyncException) { }

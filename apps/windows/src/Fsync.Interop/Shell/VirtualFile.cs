@@ -34,15 +34,32 @@ public sealed record VirtualFile(string RelativePath, long Length, DateTime Modi
         return result;
     }
 
-    /// <summary>Safe relative path or null (absolute, "..", empty or invalid names).</summary>
+    /// <summary>Safe relative path or null (absolute, "..", empty, invalid or reserved names).</summary>
     public static string? Normalize(string rel)
     {
         var parts = rel.Replace('/', '\\').Split('\\', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0) return null;
         var invalid = Path.GetInvalidFileNameChars();
         foreach (var p in parts)
+        {
             if (p is "." or ".." || p.IndexOfAny(invalid) >= 0 || p.EndsWith('.') || p.EndsWith(' ')) return null;
+            if (IsReservedName(p)) return null;
+        }
         var path = string.Join('\\', parts);
         return path.Length <= 259 ? path : null; // FILEDESCRIPTORW.cFileName is MAX_PATH
+    }
+
+    private static readonly HashSet<string> Reserved = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "COM¹", "COM²", "COM³",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9", "LPT¹", "LPT²", "LPT³",
+    };
+
+    /// <summary>DOS device names, also with an extension ("nul.txt", "COM1.log"): Windows opens the device.</summary>
+    public static bool IsReservedName(string name)
+    {
+        var stem = name.Split('.')[0].TrimEnd(' ');
+        return Reserved.Contains(stem);
     }
 }

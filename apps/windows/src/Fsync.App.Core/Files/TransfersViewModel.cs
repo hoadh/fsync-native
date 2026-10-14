@@ -2,26 +2,26 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Fsync.App.Bridge;
+using Fsync.App.Services;
 using Fsync.Core;
 
 namespace Fsync.App.Files;
 
 /// <summary>
 /// Pushes ("Send to", drag-drop) and pulls (accepted offers) with progress and cancel, plus
-/// offers waiting for an answer. Pushed files go to Downloads\fsync, auto-accepted when the
-/// setting is on. Lives as long as the app; UI thread only.
+/// offers waiting for an answer. Pushed files go to Downloads\fsync, accepted automatically when
+/// the setting is on and the offer is at most <see cref="AutoAcceptLimit"/>. UI thread only.
 /// </summary>
 public sealed partial class TransfersViewModel : ObservableObject, IDisposable
 {
+    /// <summary>Bigger offers always ask, even with auto-accept on (macOS: 1 GiB).</summary>
+    public const ulong AutoAcceptLimit = 1UL << 30;
     private readonly EngineBridge _bridge;
     private readonly Func<string> _downloadDir;
     private readonly Func<bool> _autoAccept;
     private readonly TimeSpan _autoRetryDelay;
-    private readonly Dictionary<ulong, Pull> _pulls = [];
-    private readonly Dictionary<TransferItem, Pull> _failed = [];
-
-    /// <summary>What a pull needs to start again.</summary>
-    private sealed record Pull(string ItemId, uint FileId, string Name, int Attempt);
+    /// <summary>Files of an offer whose pull already started (a second Accept skips them).</summary>
+    private readonly Dictionary<string, HashSet<uint>> _started = [];
 
     public ObservableCollection<TransferItem> Transfers { get; } = [];
     public ObservableCollection<IncomingOffer> Offers { get; } = [];
@@ -53,89 +53,58 @@ public sealed partial class TransfersViewModel : ObservableObject, IDisposable
         }
         item.Apply(ev);
         if (ev.state is TransferState.Failed or TransferState.Done or TransferState.Cancelled)
-            Services.AppLog.Info($"transfer {ev.transferId} {ev.direction} {ev.state} bytes={ev.bytesDone}{(ev.state == TransferState.Failed ? $" ({ev.message})" : "")}");
+            AppLog.Info($"transfer {ev.transferId} {ev.direction} {ev.state} bytes={ev.bytesDone}");
         if (ev.state == TransferState.Failed && _pulls.Remove(ev.transferId, out var pull)) OnPullFailed(item, pull, ev.message);
         else if (ev.state is TransferState.Done or TransferState.Cancelled) _pulls.Remove(ev.transferId);
         OnPropertyChanged(nameof(ActiveCount));
     }
 
-    private void OnIncomingFiles(ClipItem offer)
+    internal void OnIncomingFiles(ClipItem offer)
     {
         var o = new IncomingOffer(offer);
-        if (_autoAccept()) _ = AcceptAsync(o);
-        else Offers.Insert(0, o);
-    }
-
-    /// <summary>Pulls every file of the offer into the download folder.</summary>
-    [RelayCommand]
-    public async Task AcceptAsync(IncomingOffer offer)
-    {
-        Offers.Remove(offer);
-        var dir = _downloadDir();
-        try
-        {
-            Directory.CreateDirectory(dir);
-            foreach (var f in offer.Item.files) await StartPullAsync(new Pull(offer.Item.itemId, f.fileId, f.name, 0));
-            Error = null;
-        }
-        catch (FsyncException e) { Error = UserMessages.For(e); }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Error = $"Could not save files: {e.Message}"; }
-    }
-
-    private async Task StartPullAsync(Pull p)
-    {
-        var id = await _bridge.RunAsync(e => e.FetchFileTo(p.ItemId, p.FileId, _downloadDir()));
-        _pulls[id] = p;
-        Services.AppLog.Info($"transfer {id}: pull started (attempt {p.Attempt}), rows={Transfers.Count}");
-        Track(id, p.Name, TransferDirection.Receive);
-        // fetch_file_to may return only after the dial: the outcome can already be here.
-        if (Transfers.FirstOrDefault(t => t.Id == id) is { IsActive: false } row && _pulls.Remove(id) && row.State == TransferState.Failed)
-            OnPullFailed(row, p, row.FailureMessage);
+        Offers.Insert(0, o);
+        if (_autoAccept() && offer.totalSize <= AutoAcceptLimit) _ = AcceptAsync(o);
     }
 
     /// <summary>
-    /// A failed pull gets a Retry button. A network failure is retried once by itself: right after
-    /// the sender restarted, dials can time out for ~30 s (stale path to the same node id).
+    /// Pulls every file of the offer into the download folder. The offer stays listed until every
+    /// pull has started, so a failure can be retried with Accept (started files are not pulled twice).
     /// </summary>
-    private void OnPullFailed(TransferItem row, Pull p, string? message)
-    {
-        Services.AppLog.Info($"transfer {row.Id}: pull failed (attempt {p.Attempt}): {message}");
-        _failed[row] = p;
-        row.CanRetry = true;
-        if (p.Attempt == 0 && message?.StartsWith("network", StringComparison.OrdinalIgnoreCase) == true)
-        {
-            row.Detail += $" (trying again in {_autoRetryDelay.TotalSeconds:0} s)";
-            _ = RetryLaterAsync(row);
-        }
-    }
-
-    private async Task RetryLaterAsync(TransferItem row)
-    {
-        await Task.Delay(_autoRetryDelay);
-        if (_failed.ContainsKey(row)) await RetryAsync(row);
-    }
-
-    /// <summary>Starts a failed pull again (the old row is replaced by the new transfer).</summary>
     [RelayCommand]
-    public async Task RetryAsync(TransferItem row)
+    public async Task AcceptAsync(IncomingOffer offer)
     {
-        if (!_failed.Remove(row, out var p)) return;
-        Transfers.Remove(row);
+        var started = _started.TryGetValue(offer.Item.itemId, out var s) ? s : _started[offer.Item.itemId] = [];
         try
         {
-            await StartPullAsync(p with { Attempt = p.Attempt + 1 });
+            Directory.CreateDirectory(_downloadDir());
+            foreach (var f in offer.Item.files.Where(f => !started.Contains(f.fileId)))
+            {
+                await StartPullAsync(new Pull(offer.Item.itemId, f.fileId, f.name, 0));
+                started.Add(f.fileId);
+            }
+            Offers.Remove(offer);
+            _started.Remove(offer.Item.itemId);
             Error = null;
         }
         catch (FsyncException e) { Error = UserMessages.For(e); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Error = "Could not save files to the download folder."; }
     }
 
     [RelayCommand]
-    public void Decline(IncomingOffer offer) => Offers.Remove(offer);
+    public void Decline(IncomingOffer offer)
+    {
+        Offers.Remove(offer);
+        _started.Remove(offer.Item.itemId);
+    }
 
     /// <summary>Pushes files/folders to one device. Returns false (and sets Error) on failure.</summary>
     public async Task<bool> SendAsync(string nodeId, string deviceName, IReadOnlyList<string> paths)
     {
-        if (paths.Count == 0) return false;
+        if (paths.Count == 0)
+        {
+            Error = "Nothing to send: drop files or folders.";
+            return false;
+        }
         try
         {
             var id = await _bridge.RunAsync(e => e.SendFiles(nodeId, [.. paths]));

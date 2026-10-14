@@ -39,7 +39,11 @@ public sealed partial class HistoryRow(HistoryItem item, string peerName, bool c
 public sealed partial class HistoryViewModel(EngineBridge bridge, ClipboardService clipboard) : ObservableObject
 {
     public const uint PageSize = 50;
+    /// <summary>Typing pause before a search runs.</summary>
+    public static readonly TimeSpan SearchDelay = TimeSpan.FromMilliseconds(300);
     private string? _cursor;
+    private int _version; // a newer refresh makes older results stale
+    private CancellationTokenSource? _typing;
     private Dictionary<string, string> _names = [];
 
     public ObservableCollection<HistoryRow> Items { get; } = [];
@@ -51,23 +55,33 @@ public sealed partial class HistoryViewModel(EngineBridge bridge, ClipboardServi
     [RelayCommand]
     public async Task RefreshAsync()
     {
+        var v = ++_version;
+        RefreshCount++;
         try
         {
             _names = (await bridge.RunAsync(e => e.Devices())).ToDictionary(d => d.nodeId, d => d.name);
         }
         catch (FsyncException) { } // names are cosmetic; offline is fine
+        if (v != _version) return;
         _cursor = null;
         Items.Clear();
-        await LoadMoreAsync();
+        await LoadPageAsync(v);
     }
 
+    /// <summary>Refreshes started (tests: the search debounce).</summary>
+    internal int RefreshCount { get; private set; }
+
     [RelayCommand]
-    public async Task LoadMoreAsync()
+    public Task LoadMoreAsync() => LoadPageAsync(_version);
+
+    private async Task LoadPageAsync(int v)
     {
         var q = string.IsNullOrWhiteSpace(Query) ? null : Query.Trim();
         try
         {
-            var page = await bridge.RunAsync(e => e.History(q, _cursor, PageSize));
+            var cursor = _cursor;
+            var page = await bridge.RunAsync(e => e.History(q, cursor, PageSize));
+            if (v != _version) return; // the query changed while this page loaded
             foreach (var i in page.items)
                 Items.Add(new HistoryRow(i, i.peer is { } p && _names.TryGetValue(p, out var n) ? n : "another device", clipboard.CanCopyBack(i.id)));
             _cursor = page.nextCursor;
@@ -78,7 +92,23 @@ public sealed partial class HistoryViewModel(EngineBridge bridge, ClipboardServi
         catch (FsyncException e) { Error = UserMessages.For(e); }
     }
 
-    partial void OnQueryChanged(string value) => _ = RefreshAsync();
+    partial void OnQueryChanged(string value)
+    {
+        _typing?.Cancel();
+        var cts = _typing = new CancellationTokenSource();
+        _ = SearchLaterAsync(cts.Token);
+    }
+
+    private async Task SearchLaterAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(SearchDelay, ct);
+            await RefreshAsync();
+        }
+        catch (OperationCanceledException) { } // more typing
+        catch (Exception e) { Error = e is FsyncException f ? UserMessages.For(f) : "Search failed."; }
+    }
 
     [RelayCommand]
     public async Task TogglePinAsync(HistoryRow row)

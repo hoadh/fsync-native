@@ -29,6 +29,17 @@ public sealed class ClipEntry
     public static ClipEntry Lazy(uint format, long size, Func<byte[]> render) => new(format, size, null, render);
     public static ClipEntry Lazy(string format, long size, Func<byte[]> render) => Lazy(ClipboardFormats.Register(format), size, render);
 
+    /// <summary>
+    /// Flags for content from another device: not for clipboard monitors, Win+V history or the
+    /// cloud clipboard. Our own listener still sees FsyncOrigin first (OwnEcho).
+    /// </summary>
+    public static ClipEntry[] PrivacyFlags() =>
+    [
+        Eager(ClipboardFormats.ExcludeFromMonitor, BitConverter.GetBytes(1u)),
+        Eager(ClipboardFormats.CanIncludeInHistory, BitConverter.GetBytes(0u)),
+        Eager(ClipboardFormats.CanUploadToCloud, BitConverter.GetBytes(0u)),
+    ];
+
     /// <summary>The bytes, rendering once; a failed render is retried on the next request.</summary>
     public byte[] Render()
     {

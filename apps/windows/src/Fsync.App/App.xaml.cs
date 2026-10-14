@@ -42,8 +42,8 @@ public partial class App : Application
         _showWindowAtStart = showWindowAtStart;
         _startArgs = startArgs;
         InitializeComponent();
-        // Type and stack only reach the log; the process still ends (state may be inconsistent).
-        UnhandledException += (_, e) => AppLog.Warn($"unhandled {e.Exception.GetType().FullName}: {e.Message}\n{e.Exception.StackTrace}");
+        // Type, HRESULT and stack only (messages may name files); the process still ends.
+        UnhandledException += (_, e) => AppLog.Warn($"unhandled {e.Exception.GetType().FullName} 0x{e.Exception.HResult:X8}\n{e.Exception.StackTrace}");
     }
 
     internal static new App Current => (App)Application.Current;

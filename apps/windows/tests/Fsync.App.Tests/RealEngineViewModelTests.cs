@@ -38,7 +38,7 @@ public sealed class RealEngineViewModelTests
         Assert.Equal(10, again.MaxClipMb);
         Assert.Equal("KeePass" + Environment.NewLine + "Bitwarden", again.Denylist);
         var stored = await r.Bridge.RunAsync(e => e.Settings());
-        Assert.Equal(10_000_000UL, stored.maxClipBytes);
+        Assert.Equal(10UL * 1024 * 1024, stored.maxClipBytes);
     }
 
     [Fact]

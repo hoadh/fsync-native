@@ -13,7 +13,7 @@ public sealed class AppPreferences
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, Converters = { new JsonStringEnumConverter() } };
 
     public FileClipStrategy FileStrategy { get; set; } = FileClipStrategy.Lazy;
-    /// <summary>Ctrl+Alt+C "send clipboard now" and Ctrl+Alt+V "paste latest from another device".</summary>
+    /// <summary>Win+Alt+C "send clipboard now" and Win+Alt+V "paste latest from another device".</summary>
     public bool HotkeysEnabled { get; set; } = true;
     /// <summary>Show a tray notification when a clip arrives in manual mode or files are offered.</summary>
     public bool Notifications { get; set; } = true;

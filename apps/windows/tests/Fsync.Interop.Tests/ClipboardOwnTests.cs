@@ -29,13 +29,13 @@ public sealed class ClipboardOwnTests : IDisposable
         var snap = Read();
         Assert.Equal(SkipReason.OwnEcho, snap.Skip); // FsyncOrigin: never re-published
         Assert.Equal(0, renders);
-        Assert.Equal(100, obj.PendingLazyBytes);
+        Assert.True(obj.HasPendingLazy);
 
         byte[]? got = null;
         Assert.True(Win32Clipboard.TryWithOpen(() => got = Win32Clipboard.Read(ClipboardFormats.Register(ClipboardFormats.Html))));
         Assert.Equal("<b>late</b>", CfHtmlCodec.Decode(got!));
         Assert.Equal(1, renders);
-        Assert.Equal(0, obj.PendingLazyBytes);
+        Assert.False(obj.HasPendingLazy);
         Assert.True(Win32Clipboard.TryWithOpen(() => got = Win32Clipboard.Read(ClipboardFormats.CF_UNICODETEXT)));
         Assert.Equal("now", Encoding.Unicode.GetString(got!).TrimEnd('\0'));
     }

@@ -12,8 +12,8 @@
             <TextBlock Text="General" Style="{StaticResource SubtitleTextBlockStyle}" />
             <ToggleSwitch Header="Send my clipboard only when I ask (manual mode)" IsOn="{x:Bind ClipSettings.ManualMode, Mode=TwoWay}" />
             <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       Text="Manual mode: Ctrl+Alt+C sends the clipboard, Ctrl+Alt+V pastes the latest clip from another device." />
-            <ToggleSwitch Header="Keyboard shortcuts (Ctrl+Alt+C, Ctrl+Alt+V)" IsOn="{x:Bind ClipSettings.Hotkeys, Mode=TwoWay}" />
+                       Text="Manual mode: Win+Alt+C sends the clipboard, Win+Alt+V pastes the latest clip from another device. (Not Ctrl+Alt: that is AltGr on many keyboards.)" />
+            <ToggleSwitch Header="Keyboard shortcuts (Win+Alt+C, Win+Alt+V)" IsOn="{x:Bind ClipSettings.Hotkeys, Mode=TwoWay}" />
             <ToggleSwitch Header="Add fsync to Explorer's Send to menu" IsOn="{x:Bind ClipSettings.SendToMenu, Mode=TwoWay}" />
             <ToggleSwitch Header="Download copied files before pasting (compatibility)" IsOn="{x:Bind ClipSettings.EagerFiles, Mode=TwoWay}" />
             <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -30,9 +30,9 @@
             <TextBlock Text="Storage" Style="{StaticResource SubtitleTextBlockStyle}" />
             <NumberBox Header="Keep history for (days)" Minimum="1" Maximum="3650" SpinButtonPlacementMode="Compact"
                        Value="{x:Bind ClipSettings.RetentionDays, Mode=TwoWay}" />
-            <NumberBox Header="History size limit (GB)" Minimum="0.01" Maximum="1000" SmallChange="0.5" SpinButtonPlacementMode="Compact"
+            <NumberBox Header="History size limit (GiB)" Minimum="0.01" Maximum="1000" SmallChange="0.5" SpinButtonPlacementMode="Compact"
                        Value="{x:Bind ClipSettings.RetentionGb, Mode=TwoWay}" />
-            <NumberBox Header="Largest clip to sync (MB)" Minimum="1" Maximum="4096" SpinButtonPlacementMode="Compact"
+            <NumberBox Header="Largest clip to sync (MiB)" Minimum="1" Maximum="4096" SpinButtonPlacementMode="Compact"
                        Value="{x:Bind ClipSettings.MaxClipMb, Mode=TwoWay}" />
             <ToggleSwitch Header="Save files sent to this PC without asking" IsOn="{x:Bind ClipSettings.AutoAcceptFiles, Mode=TwoWay}" />
             <StackPanel Orientation="Horizontal" Spacing="8">

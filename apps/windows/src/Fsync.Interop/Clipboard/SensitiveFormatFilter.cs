@@ -25,6 +25,8 @@ public static class SensitiveFormatFilter
     /// <summary>Pure decision over a format list; <paramref name="readDword"/> reads a flag format.</summary>
     public static SkipReason Classify(IReadOnlyList<ClipFormat> formats, Func<uint, uint?> readDword)
     {
+        // Our own write first: received clips also carry the private flags below.
+        if (formats.Any(f => f.Name == ClipboardFormats.FsyncOrigin)) return SkipReason.OwnEcho;
         foreach (var f in formats)
         {
             switch (f.Name)
@@ -52,6 +54,10 @@ public static class SensitiveFormatFilter
 
     private static string StripExe(string s) => s.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? s[..^4] : s;
 
-    /// <summary>Password managers skipped by default (exe names). The user can edit the list.</summary>
+    /// <summary>Password managers, always skipped (exe names); the user's list is added on top.</summary>
     public static readonly string[] DefaultDenylist = ["1Password", "KeePass", "KeePassXC", "Bitwarden", "Dashlane", "LastPass", "Enpass", "NordPass", "ProtonPass"];
+
+    /// <summary>Built-in list ∪ the user's list (core settings), as macOS applies it.</summary>
+    public static string[] EffectiveDenylist(IEnumerable<string>? user) =>
+        [.. DefaultDenylist.Concat(user ?? []).Where(d => !string.IsNullOrWhiteSpace(d)).Select(d => d.Trim()).Distinct(StringComparer.OrdinalIgnoreCase)];
 }

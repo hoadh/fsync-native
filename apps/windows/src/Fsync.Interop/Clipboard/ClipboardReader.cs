@@ -32,14 +32,21 @@ public static class ClipboardReader
     /// <param name="denylist">Exe names whose clipboard writes are never synced.</param>
     public static ClipboardSnapshot Read(long maxBytes, IReadOnlyCollection<string> denylist)
     {
-        var owner = ClipboardOwner.ProcessName();
         ClipboardSnapshot? snap = null;
-        var opened = Win32Clipboard.TryWithOpen(() => snap = ReadOpen(maxBytes, owner, denylist));
-        return opened && snap is not null ? snap : new ClipboardSnapshot { Formats = [], Skip = SkipReason.Unreadable, OwnerProcess = owner };
+        var opened = Win32Clipboard.TryWithOpen(() => snap = ReadOpen(maxBytes, denylist));
+        return opened && snap is not null ? snap : new ClipboardSnapshot { Formats = [], Skip = SkipReason.Unreadable };
     }
 
-    private static ClipboardSnapshot ReadOpen(long maxBytes, string? owner, IReadOnlyCollection<string> denylist)
+    /// <summary>
+    /// Who wrote this content: the clipboard owner, read while the clipboard is open (no race with
+    /// a newer write). A NULL-owner write falls back to the foreground app, so it cannot slip past
+    /// the denylist.
+    /// </summary>
+    internal static string? Writer() => ClipboardOwner.ProcessName() ?? ClipboardOwner.ForegroundProcessName();
+
+    private static ClipboardSnapshot ReadOpen(long maxBytes, IReadOnlyCollection<string> denylist)
     {
+        var owner = Writer();
         // Skip checks first, on names and DWORD flags only: GetClipboardData forces a delayed
         // render, so sizes are taken afterwards and only for the formats we may read.
         var names = Win32Clipboard.Formats().Select(f => new ClipFormat(f, ClipboardFormats.Name(f), -1)).ToList();

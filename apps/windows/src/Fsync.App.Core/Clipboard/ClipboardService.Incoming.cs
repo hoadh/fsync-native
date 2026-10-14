@@ -3,18 +3,18 @@ using Fsync.App.Bridge;
 using Fsync.App.Services;
 using Fsync.Core;
 using Fsync.Interop.Clipboard;
+using Fsync.Interop.Shell;
 
 namespace Fsync.App.Clipboard;
 
-/// <summary>Received clips → clipboard; eager file downloads; exit policy.</summary>
+/// <summary>Received clips → clipboard: one write at a time, a newer clip cancels an older one.</summary>
 public sealed partial class ClipboardService
 {
-    /// <summary>On exit, unrendered lazy formats up to this size are fetched and flushed; more is cleared.</summary>
-    public const long FlushOnExitBytes = 20 * 1024 * 1024;
-
-    private readonly ConcurrentDictionary<ulong, TaskCompletionSource<string>> _downloads = new();
-    private readonly ConcurrentDictionary<ulong, TransferEvent> _finished = new();
+    private readonly SemaphoreSlim _inLane = new(1, 1);
+    private long _inGen;
+    private CancellationTokenSource _inCts = new();
     private ClipDataObject? _current;
+    private volatile string? _currentItemId;
     /// <summary>Received clips of this session by item id (history "Copy"; core keeps their offers).</summary>
     private readonly ConcurrentDictionary<string, ClipItem> _recent = new();
     private const int RecentMax = 200;
@@ -30,10 +30,10 @@ public sealed partial class ClipboardService
         if (IsManual)
         {
             Pending = item;
-            LastActivity = $"{Kind(item)} from {item.fromName}: press Ctrl+Alt+V to paste";
+            LastActivity = $"{Kind(item)} from {item.fromName}: press {PasteHotKeyText} to paste";
             return;
         }
-        _ = WriteAsync(item);
+        Observe(WriteAsync(item), "write");
     }
 
     private void Remember(ClipItem item)
@@ -62,93 +62,70 @@ public sealed partial class ClipboardService
         await WriteAsync(item);
     }
 
-    /// <summary>Writes a received clip (also used by history "Copy").</summary>
-    public async Task WriteAsync(ClipItem item)
+    /// <summary>Writes a received clip (also history "Copy"); returns false when superseded or failed.</summary>
+    public async Task<bool> WriteAsync(ClipItem item)
     {
+        var gen = Interlocked.Increment(ref _inGen);
+        var cts = new CancellationTokenSource();
+        Interlocked.Exchange(ref _inCts, cts).Cancel(); // a newer clip stops older downloads
         try
         {
-            var (entries, files) = item.files.Length > 0 && _prefs.FileStrategy == FileClipStrategy.Eager
-                ? ([IncomingClip.DropList(await DownloadAsync(item))], [])
-                : await Task.Run(() => IncomingClip.Build(item,
-                    idx => _bridge.Call(e => e.FetchRep(item.itemId, idx)),
-                    (fileId, offset, len) => _bridge.Call(e => e.ReadFileRange(item.itemId, fileId, (ulong)offset, (uint)len))));
+            await _inLane.WaitAsync(cts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { return false; }
+        try
+        {
+            List<ClipEntry> entries;
+            List<VirtualFile> files;
+            if (EagerFiles.Applies(_prefs.FileStrategy, item))
+            {
+                entries = [IncomingClip.DropList(await DownloadAsync(item, cts.Token))];
+                files = [];
+            }
+            else
+            {
+                (entries, files) = await Task.Run(() => IncomingClip.Build(item,
+                    idx => _gate.Run(() => _bridge.Call(e => e.FetchRep(item.itemId, idx))),
+                    (fileId, offset, len) => _gate.Run(() => _bridge.Call(e => e.ReadFileRange(item.itemId, fileId, (ulong)offset, (uint)len)))));
+            }
             if (entries.Count == 0 && files.Count == 0)
             {
                 Post(() => LastError = "Received a format this PC cannot paste");
-                return;
+                return false;
             }
-            await _sta.InvokeAsync(() =>
-            {
-                var obj = new ClipDataObject(entries, files);
-                obj.RenderFailed += (_, e) => AppLog.Warn($"clipboard: delayed render failed: {e.GetType().Name}");
-                obj.RenderFailed += (_, e) => Post(() => LastError = e is FsyncException f ? UserMessages.For(f) : "Could not fetch the clip");
-                OleClipboard.Set(obj);
-                _current = obj;
-                Written?.Invoke(obj);
-                AppLog.Info($"clipboard: wrote formats={entries.Count} virtual files={files.Count}");
-            });
+            entries.AddRange(ClipEntry.PrivacyFlags());
+            if (gen != Volatile.Read(ref _inGen)) return false; // a newer clip arrived meanwhile
+            await _sta.InvokeAsync(() => SetCurrent(new ClipDataObject(entries, files), item.itemId));
+            AppLog.Info($"clipboard: wrote formats={entries.Count} virtual files={files.Count}");
             Post(() => { LastActivity = $"{Kind(item)} from {item.fromName}"; LastError = null; });
+            return true;
         }
+        catch (OperationCanceledException) { return false; }
         catch (FsyncException e)
         {
             AppLog.Warn($"clipboard: write failed: {e.GetType().Name}");
             Post(() => LastError = UserMessages.For(e));
+            return false;
         }
-        catch (Exception e) when (e is System.Runtime.InteropServices.COMException or IOException or InvalidOperationException)
+        catch (Exception e)
         {
             AppLog.Warn($"clipboard: write failed: {e.GetType().Name}");
-            Post(() => LastError = $"Could not write the clipboard: {e.Message}");
+            Post(() => LastError = e is TimeoutException ? "The files took too long to download." : "Could not write the clipboard.");
+            return false;
         }
+        finally { _inLane.Release(); }
     }
 
-    /// <summary>Eager strategy: downloads every file into inbox\&lt;item&gt; and returns the final paths.</summary>
-    private async Task<List<string>> DownloadAsync(ClipItem item)
+    /// <summary>On the clipboard thread: replaces our entry; the old one forgets its streams.</summary>
+    private void SetCurrent(ClipDataObject obj, string itemId)
     {
-        var dir = Path.Combine(_inboxDir, item.itemId);
-        Directory.CreateDirectory(dir);
-        var waits = new List<Task<string>>();
-        foreach (var f in item.files)
-        {
-            var id = await _bridge.RunAsync(e => e.FetchFileTo(item.itemId, f.fileId, dir));
-            var tcs = _downloads.GetOrAdd(id, _ => new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously));
-            if (_finished.TryRemove(id, out var early)) Complete(early); // finished before we registered
-            waits.Add(tcs.Task);
-        }
-        Post(() => LastActivity = $"Downloading {item.files.Length} file(s) from {item.fromName}");
-        return [.. await Task.WhenAll(waits)];
-    }
-
-    private void OnTransfer(TransferEvent ev)
-    {
-        if (ev.direction != TransferDirection.Receive || ev.state is TransferState.Started or TransferState.Progress) return;
-        if (!_downloads.ContainsKey(ev.transferId)) _finished[ev.transferId] = ev;
-        Complete(ev);
-    }
-
-    private void Complete(TransferEvent ev)
-    {
-        if (!_downloads.TryRemove(ev.transferId, out var tcs)) return;
-        if (ev.state == TransferState.Done && ev.path is { } p) tcs.TrySetResult(p);
-        else tcs.TrySetException(new IOException(ev.message ?? $"download {ev.state.ToString().ToLowerInvariant()}"));
-        _finished.TryRemove(ev.transferId, out _);
-    }
-
-    /// <summary>
-    /// Exit policy (ADR 010 decision 4): never flush virtual files (FileContents would be lost);
-    /// small lazy formats are rendered and flushed so the clip survives; anything bigger is cleared.
-    /// </summary>
-    private void ReleaseClipboard()
-    {
-        _listener?.Dispose();
-        _listener = null;
-        if (_current is not { } obj || !OleClipboard.IsCurrent(obj)) return;
-        if (obj.HasVirtualFiles || obj.PendingLazyBytes > FlushOnExitBytes)
-        {
-            obj.Abort();
-            OleClipboard.ClearIfCurrent(obj);
-        }
-        else OleClipboard.Flush();
-        _current = null;
+        obj.RenderFailed += (_, e) => AppLog.Warn($"clipboard: delayed render failed: {e.GetType().Name}");
+        obj.RenderFailed += (_, e) => Post(() => LastError = e is FsyncException f ? UserMessages.For(f) : "Could not fetch the clip");
+        OleClipboard.Set(obj);
+        _current?.ReleaseStreams();
+        _current = obj;
+        _currentItemId = itemId;
+        Written?.Invoke(obj);
     }
 
     private static string Kind(ClipItem i) => i.kind switch

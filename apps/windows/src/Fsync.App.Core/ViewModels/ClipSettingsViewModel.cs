@@ -19,6 +19,7 @@ public sealed partial class ClipSettingsViewModel : ObservableObject
     private readonly ClipboardService _clipboard;
     private readonly AppPreferences _prefs;
     private readonly SendToShortcut _sendTo;
+    private const double MiB = 1024 * 1024, GiB = 1024.0 * 1024 * 1024;
     private Settings? _loaded;
 
     [ObservableProperty] private bool _manualMode;
@@ -55,8 +56,8 @@ public sealed partial class ClipSettingsViewModel : ObservableObject
             ManualMode = s.clipMode == ClipMode.Manual;
             AutoAcceptFiles = s.autoAcceptFiles;
             RetentionDays = s.retentionDays;
-            RetentionGb = Math.Round(s.retentionBytes / 1e9, 2);
-            MaxClipMb = Math.Round(s.maxClipBytes / 1e6);
+            RetentionGb = Math.Round(s.retentionBytes / GiB, 2);
+            MaxClipMb = Math.Round(s.maxClipBytes / MiB, 2); // binary units, like core (64 MiB shows 64)
             Denylist = string.Join(Environment.NewLine, s.denylist);
             Error = null;
         }
@@ -69,8 +70,8 @@ public sealed partial class ClipSettingsViewModel : ObservableObject
         clipMode = ManualMode ? ClipMode.Manual : ClipMode.Auto,
         autoAcceptFiles = AutoAcceptFiles,
         retentionDays = (uint)Math.Clamp(RetentionDays, 1, 3650),
-        retentionBytes = (ulong)(Math.Clamp(RetentionGb, 0.01, 1000) * 1e9),
-        maxClipBytes = (ulong)(Math.Clamp(MaxClipMb, 1, 4096) * 1e6),
+        retentionBytes = (ulong)Math.Round(Math.Clamp(RetentionGb, 0.01, 1000) * GiB),
+        maxClipBytes = (ulong)Math.Round(Math.Clamp(MaxClipMb, 1, 4096) * MiB),
         denylist = [.. Denylist.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase)],
     };
 

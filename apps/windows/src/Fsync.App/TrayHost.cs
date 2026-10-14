@@ -29,7 +29,7 @@ internal sealed class TrayHost : IDisposable
         _pastePending = Item("Paste from another device", () => _ = clipboard.PastePendingAsync());
         var menu = new MenuFlyout();
         menu.Items.Add(_activity);
-        menu.Items.Add(Item("Send clipboard now (Ctrl+Alt+C)", () => _ = clipboard.SendNowAsync()));
+        menu.Items.Add(Item($"Send clipboard now ({ClipboardService.SendHotKeyText})", () => _ = clipboard.SendNowAsync()));
         menu.Items.Add(_pastePending);
         menu.Items.Add(Item("Clipboard history", () => app.ShowWindow(MainWindow.HistoryTag)));
         menu.Items.Add(Item("Files and transfers", () => app.ShowWindow(MainWindow.FilesTag)));
@@ -69,7 +69,7 @@ internal sealed class TrayHost : IDisposable
         _activity.Text = activity ?? "";
         _activity.Visibility = activity is null ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
         _pastePending.IsEnabled = _clipboard.Pending is not null;
-        _pastePending.Text = _clipboard.Pending is { } p ? $"Paste from {p.fromName} (Ctrl+Alt+V)" : "Paste from another device (Ctrl+Alt+V)";
+        _pastePending.Text = _clipboard.Pending is { } p ? $"Paste from {p.fromName} ({ClipboardService.PasteHotKeyText})" : $"Paste from another device ({ClipboardService.PasteHotKeyText})";
         // Regenerate the icon only when the badge changes: clipboard activity calls this often
         // and each GeneratedIconSource renders a new bitmap.
         if (_badge == _status.Kind) return;

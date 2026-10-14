@@ -21,15 +21,29 @@ public sealed record AppSettings(string DataDir, string ApiBase, string? RelayUr
     public bool AllowInsecureHttp =>
         Uri.TryCreate(ApiBase, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttp && u.IsLoopback;
 
-    /// <summary>Single-instance key: one app per data directory.</summary>
+    /// <summary>Single-instance key: one app per data directory (any spelling of the same path).</summary>
     public string InstanceKey => "fsync-" + Convert.ToHexString(
-        System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(DataDir.ToLowerInvariant())))[..16];
+        System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(NormalizeDir(DataDir).ToLowerInvariant())))[..16];
+
+    /// <summary>Full path, no trailing separator, 8.3 short names expanded when the folder exists.</summary>
+    public static string NormalizeDir(string dir)
+    {
+        var full = Path.GetFullPath(dir);
+        var root = Path.GetPathRoot(full) ?? "";
+        full = full.Length > root.Length ? full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) : full;
+        if (!Directory.Exists(full)) return full;
+        var buf = new System.Text.StringBuilder(1024);
+        return GetLongPathName(full, buf, buf.Capacity) is > 0 and < 1024 ? buf.ToString() : full;
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int GetLongPathName(string path, System.Text.StringBuilder buffer, int size);
 
     public static AppSettings FromEnvironment(Func<string, string?>? env = null)
     {
         env ??= Environment.GetEnvironmentVariable;
         var dataDir = env("FSYNC_DATA_DIR") is { Length: > 0 } d
-            ? Path.GetFullPath(d)
+            ? NormalizeDir(d)
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "fsync");
         var api = env("FSYNC_API") is { Length: > 0 } a ? a : DefaultApi;
         var relay = env("FSYNC_RELAY") is { Length: > 0 } r ? r : null;

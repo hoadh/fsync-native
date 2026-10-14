@@ -33,7 +33,8 @@ public static class SendToArgs
         var i = args.ToList().FindIndex(a => string.Equals(a, SendToShortcut.Flag, StringComparison.OrdinalIgnoreCase));
         if (i < 0) return null;
         return args.Skip(i + 1)
-            .Where(p => Path.IsPathFullyQualified(p) && (File.Exists(p) || Directory.Exists(p)))
+            // Local paths only: a UNC or \\?\ path could make us touch the network or a device.
+            .Where(p => Path.IsPathFullyQualified(p) && !p.StartsWith(@"\\", StringComparison.Ordinal) && (File.Exists(p) || Directory.Exists(p)))
             .Select(Path.GetFullPath)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();

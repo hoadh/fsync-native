@@ -42,8 +42,8 @@ public sealed partial class ClipDataObject : IDataObject
 
     public bool HasVirtualFiles => _files.Count > 0;
     public IReadOnlyList<ClipEntry> Entries => _entries;
-    /// <summary>Bytes of lazy formats nobody asked for yet (exit policy).</summary>
-    public long PendingLazyBytes => _entries.Where(e => !e.IsRendered).Sum(e => e.Size);
+    /// <summary>Some delayed format was never rendered (exit policy: clear, never fetch at exit).</summary>
+    public bool HasPendingLazy => _entries.Any(e => !e.IsRendered);
     /// <summary>A delayed render failed (format id, exception); the target sees an error.</summary>
     public event Action<uint, Exception>? RenderFailed;
     /// <summary>A target opened a file stream (lindex, stream): progress / cancel hooks.</summary>
@@ -55,6 +55,12 @@ public sealed partial class ClipDataObject : IDataObject
     public void Abort()
     {
         lock (_streams) foreach (var s in _streams) s.Aborted = true;
+    }
+
+    /// <summary>Forgets handed-out streams (replaced entry): COM keeps the ones still in use alive.</summary>
+    public void ReleaseStreams()
+    {
+        lock (_streams) _streams.Clear();
     }
 
     private ClipEntry? Entry(short cf) => _entries.FirstOrDefault(e => unchecked((short)e.Format) == cf);

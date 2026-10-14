@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Fsync.App.Bridge;
+using Fsync.App.Files;
 using Fsync.App.Services;
 using Fsync.Core;
 using Fsync.Interop.Clipboard;
@@ -8,22 +9,27 @@ namespace Fsync.App.Clipboard;
 
 /// <summary>
 /// Clipboard sync. Out: WM_CLIPBOARDUPDATE → (150 ms settle) → skip rules + denylist → mapper →
-/// publish_clip (auto mode; manual mode only on <see cref="SendNowAsync"/> / Ctrl+Alt+C).
-/// In: on_remote_clip → write (auto) or keep as <see cref="Pending"/> (manual; Ctrl+Alt+V).
-/// The listener and our clipboard entries live on a dedicated STA thread, so delayed renders
-/// (network fetches) never block the UI. Observable members change on the UI thread.
+/// publish_clip, one at a time, newest wins (auto mode; manual mode only on <see cref="SendNowAsync"/>
+/// / Win+Alt+C). In: on_remote_clip → write, one at a time, newest wins (auto) or keep as
+/// <see cref="Pending"/> (manual; Win+Alt+V). The listener and our clipboard entries live on a
+/// dedicated STA thread, so delayed renders never block the UI. Observable members change on the
+/// UI thread. Every engine call made for the clipboard goes through <see cref="_gate"/> (quit).
 /// </summary>
 public sealed partial class ClipboardService : ObservableObject, IDisposable
 {
     public const int SendHotKeyId = 1, PasteHotKeyId = 2;
+    /// <summary>Win+Alt: Ctrl+Alt is AltGr on many layouts (AltGr+C types "ć" in Polish).</summary>
+    public const HotKeyModifiers HotKeyMods = HotKeyModifiers.Win | HotKeyModifiers.Alt;
+    public const string SendHotKeyText = "Win+Alt+C", PasteHotKeyText = "Win+Alt+V";
     private const uint VK_C = 0x43, VK_V = 0x56;
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(150);
 
     private readonly EngineBridge _bridge;
     private readonly AppPreferences _prefs;
     private readonly IUiDispatcher _ui;
-    private readonly string _inboxDir;
+    private readonly InboxDirectory _inbox;
     private readonly StaThread _sta = new("fsync-clipboard");
+    private readonly EngineCallGate _gate = new();
     private readonly Timer _settle;
     private ClipboardListener? _listener;
     private volatile Settings? _settings;
@@ -40,8 +46,9 @@ public sealed partial class ClipboardService : ObservableObject, IDisposable
         _bridge = bridge;
         _prefs = prefs;
         _ui = ui;
-        _inboxDir = inboxDir;
+        _inbox = new InboxDirectory(inboxDir);
         _settle = new Timer(_ => _sta.Post(ReadAndPublishIfAuto));
+        _cleanup = new Timer(_ => CleanInbox());
         _bridge.RemoteClip += OnRemoteClip;
         _bridge.Transfer += OnTransfer;
     }
@@ -49,26 +56,41 @@ public sealed partial class ClipboardService : ObservableObject, IDisposable
     public bool IsManual => _settings?.clipMode == ClipMode.Manual;
     /// <summary>Core settings as last read (null before the engine answered).</summary>
     public Settings? CurrentSettings => _settings;
+    public InboxDirectory Inbox => _inbox;
 
     /// <summary>Starts listening (call once the engine exists). Safe to call again after settings change.</summary>
     public async Task StartAsync()
     {
         await RefreshSettingsAsync();
-        await _sta.InvokeAsync(() =>
+        try
         {
-            if (_listener is not null) return;
-            _listener = new ClipboardListener();
-            _listener.Changed += _ => _settle.Change(Settle, Timeout.InfiniteTimeSpan);
-            _listener.HotKey += OnHotKey;
-        });
+            await _sta.InvokeAsync(() =>
+            {
+                if (_listener is not null) return;
+                _listener = new ClipboardListener();
+                _listener.Changed += _ => _settle.Change(Settle, Timeout.InfiniteTimeSpan);
+                _listener.HotKey += OnHotKey;
+            });
+        }
+        catch (Exception e) when (e is InvalidOperationException or ObjectDisposedException)
+        {
+            AppLog.Warn($"clipboard: listener not started: {e.GetType().Name}");
+            LastError = "The clipboard cannot be watched right now.";
+            return;
+        }
         await ApplyHotkeysAsync();
+        _cleanup.Change(TimeSpan.Zero, CleanupInterval);
         AppLog.Info($"clipboard: listening, mode {_settings?.clipMode}, hotkeys {HotkeysRegistered}");
     }
 
-    /// <summary>Re-reads core settings (mode, size limit, denylist) after they changed.</summary>
+    /// <summary>Re-reads core settings (mode, size limit, denylist, retention) after they changed.</summary>
     public async Task RefreshSettingsAsync()
     {
-        try { _settings = await _bridge.RunAsync(e => e.Settings()); }
+        try
+        {
+            _settings = await _bridge.RunAsync(e => e.Settings());
+            if (_listener is not null) _cleanup.Change(TimeSpan.Zero, CleanupInterval); // retention may have changed
+        }
         catch (FsyncException e)
         {
             LastError = UserMessages.For(e);
@@ -78,81 +100,27 @@ public sealed partial class ClipboardService : ObservableObject, IDisposable
 
     public async Task ApplyHotkeysAsync()
     {
-        var ok = await _sta.InvokeAsync(() =>
+        bool ok;
+        try
         {
-            if (_listener is null) return false;
-            _listener.UnregisterHotKey(SendHotKeyId);
-            _listener.UnregisterHotKey(PasteHotKeyId);
-            if (!_prefs.HotkeysEnabled) return false;
-            var mods = HotKeyModifiers.Control | HotKeyModifiers.Alt;
-            return _listener.RegisterHotKey(SendHotKeyId, mods, VK_C) & _listener.RegisterHotKey(PasteHotKeyId, mods, VK_V);
-        });
+            ok = await _sta.InvokeAsync(() =>
+            {
+                if (_listener is null) return false;
+                _listener.UnregisterHotKey(SendHotKeyId);
+                _listener.UnregisterHotKey(PasteHotKeyId);
+                if (!_prefs.HotkeysEnabled) return false;
+                return _listener.RegisterHotKey(SendHotKeyId, HotKeyMods, VK_C) & _listener.RegisterHotKey(PasteHotKeyId, HotKeyMods, VK_V);
+            });
+        }
+        catch (ObjectDisposedException) { return; }
         HotkeysRegistered = ok;
-        if (_prefs.HotkeysEnabled && !ok) LastError = "Ctrl+Alt+C / Ctrl+Alt+V are used by another app.";
+        if (_prefs.HotkeysEnabled && !ok) LastError = $"{SendHotKeyText} / {PasteHotKeyText} are used by another app.";
     }
 
     private void OnHotKey(int id)
     {
-        if (id == SendHotKeyId) _ui.Post(() => _ = SendNowAsync());
-        else if (id == PasteHotKeyId) _ui.Post(() => _ = PastePendingAsync());
-    }
-
-    /// <summary>Publishes what is on the clipboard now, in any mode (menu, hotkey).</summary>
-    public async Task SendNowAsync()
-    {
-        var snap = await _sta.InvokeAsync(ReadSnapshot);
-        if (snap.Skip != SkipReason.None)
-        {
-            Post(() => LastActivity = snap.Skip is SkipReason.NoContent ? "Nothing to send" : $"Not sent ({Describe(snap.Skip)})");
-            return;
-        }
-        await PublishAsync(snap);
-    }
-
-    private ClipboardSnapshot ReadSnapshot()
-    {
-        var s = _settings;
-        return ClipboardReader.Read((long)(s?.maxClipBytes ?? 64 * 1024 * 1024), s?.denylist ?? SensitiveFormatFilter.DefaultDenylist);
-    }
-
-    private void ReadAndPublishIfAuto()
-    {
-        if (IsManual || _bridge.Phase != AccountPhase.Ready || _settings is null)
-        {
-            AppLog.Info($"clipboard: change not published (manual {IsManual}, phase {_bridge.Phase}, settings {_settings is not null})");
-            return;
-        }
-        var snap = ReadSnapshot();
-        if (snap.Skip == SkipReason.None) _ = PublishAsync(snap);
-        else AppLog.Info($"clipboard: change skipped: {snap.Describe()}");
-    }
-
-    private async Task PublishAsync(ClipboardSnapshot snap)
-    {
-        try
-        {
-            var clip = await RepresentationMapper.ToLocalClipAsync(snap);
-            if (clip is null) return;
-            var r = await _bridge.RunAsync(e => e.PublishClip(clip));
-            AppLog.Info($"clipboard: published reps={clip.reps.Length} files={clip.files.Length} echo={r.echo} delivered={r.delivered.Length} failed={r.failed.Length}");
-            if (r.echo) return; // the clip we just received: core's echo guard
-            Post(() =>
-            {
-                LastActivity = r.delivered.Length == 0 ? "Copied, but no other device is connected"
-                    : $"Sent to {r.delivered.Length} device{(r.delivered.Length == 1 ? "" : "s")}";
-                LastError = r.failed.Length > 0 ? $"{r.failed.Length} device(s) did not get it" : null;
-            });
-        }
-        catch (FsyncException e)
-        {
-            AppLog.Warn($"clipboard: publish failed: {e.GetType().Name}");
-            Post(() => LastError = UserMessages.For(e));
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException)
-        {
-            AppLog.Warn($"clipboard: publish failed: {e.GetType().Name}");
-            Post(() => LastError = $"Could not send: {e.Message}");
-        }
+        if (id == SendHotKeyId) _ui.Post(() => Observe(SendNowAsync(), "send now"));
+        else if (id == PasteHotKeyId) _ui.Post(() => Observe(PastePendingAsync(), "paste pending"));
     }
 
     internal static string Describe(SkipReason r) => r switch
@@ -166,16 +134,8 @@ public sealed partial class ClipboardService : ObservableObject, IDisposable
 
     private void Post(Action a) => _ui.Post(a);
 
-    public void Dispose()
-    {
-        _bridge.RemoteClip -= OnRemoteClip;
-        _bridge.Transfer -= OnTransfer;
-        _settle.Dispose();
-        try { _sta.Invoke(ReleaseClipboard); }
-        catch (Exception e) when (e is System.Runtime.InteropServices.COMException or InvalidOperationException)
-        {
-            AppLog.Warn($"clipboard: release on exit failed: {e.GetType().Name}");
-        }
-        _sta.Dispose();
-    }
+    /// <summary>Fire-and-forget with every failure logged (no unobserved task exceptions).</summary>
+    private static void Observe(Task t, string what) =>
+        t.ContinueWith(x => AppLog.Warn($"clipboard: {what} failed: {x.Exception?.InnerException?.GetType().Name}"),
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
 }
