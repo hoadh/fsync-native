@@ -47,6 +47,7 @@ jobs:
           shellcheck -S warning deploy/scripts/*.sh deploy/relay/entrypoint.sh tests/e2e/compose-stack-sync.sh
           deploy/scripts/gen-env.sh > "$RUNNER_TEMP/deploy.env"
           docker compose --env-file "$RUNNER_TEMP/deploy.env" -f deploy/compose.yml config -q
+          RELAY_HOST=relay.example.test docker compose -f deploy/compose.relay-only.yml config -q
       - name: Compose stack end to end
         env: { SKIP_BUILD: "1" }
         run: tests/e2e/compose-stack-sync.sh
