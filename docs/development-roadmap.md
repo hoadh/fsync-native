@@ -29,7 +29,7 @@ Phase names and dependencies follow the MVP plan. Its own status column still re
 
 1. ~~**Green gate on the final tree.**~~ Green 2026-10-14 11:48: fmt, clippy `-D warnings`, `cargo test --workspace` 253 pass / 0 fail, `swift test` 8/8, xcframework, e2e PASS. Open: the earlier `devices_reset` `PortNotExposed` failure did not recur, but its root cause is unverified (`backend/tests/common/pg.rs` retry is not selective).
 2. **E2E repeat runs and relay-only stability.** The final tree has one e2e PASS. Target is 3 runs. An interim run once timed out on the relay-only round. Run the demo 2 more times and record the results.
-3. ~~**Trust reset confirmation API (M5).**~~ Done 2026-10-14: `reset_account_trust`, `confirm_trust_reset`, `decline_trust_reset`, `pending_trust_resets` in core, FFI and CLI (ADR 012). Open: pending state is in memory only; the macOS app still has to show the warning.
+3. ~~**Trust reset confirmation API (M5).**~~ Done 2026-10-14: `reset_account_trust`, `confirm_trust_reset`, `decline_trust_reset`, `pending_trust_resets` in core, FFI and CLI (ADR 012). The macOS `TrustResetPrompt` library shows the warning (2026-10-14); wiring it into the app is open (phase 11). Pending state is in memory only.
 4. **Denylist decision.** Setting is stored and validated but not enforced in core. Enforce in the clip path or drop the setting from the UI plan.
 5. **Two-machine measurements.** mDNS median (~2.7 s on one spike run), hole-punch ratio, real LAN results. Feeds ADR 007.
 6. **Windows phase 03 half.** `uniffi-bindgen-cs`, DLL packaging, callback stress test (10k).

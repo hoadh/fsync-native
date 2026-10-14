@@ -128,6 +128,9 @@ FsyncError { NotPaired, PeerOffline, Network{msg}, Integrity, TooLarge, Auth, Re
   the new list emits `SelfRemoved`, stops presence and serving, drops the old pin and returns
   `NeedsPairing`: pair it with the new device (`pairing_offer` here, `pairing_join` there).
   Declining keeps the old pin and the root is not offered again in this run (not persisted).
+- App guidance: the `TrustResetPrompt` SwiftPM library (apps/macos/Packages/FsyncCoreKit) implements this
+  prompt. Create `TrustResetPromptModel(engine:)`, call `refresh()` at launch (answers take the `resetId` that was on screen), and forward
+  `AccountEvent` to `handle(_:)` after hopping to the main actor (delegate callbacks arrive on a Rust thread).
 - `reset_account_trust` is for a user with no device to pair with. It replaces the account's
   device list with one that holds only this device, so every other device gets a `TrustReset`
   (at most 3 resets a day per account). `FsyncError::ReauthRequired`: the login is older than 5

@@ -2,6 +2,15 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-10-14 - macOS trust-reset prompt (SwiftUI library)
+
+### Changed (review round 1)
+- Consent binding: `confirm(resetId:)` / `decline(resetId:)` act on the id the user saw; the confirm dialog is bound to that id, closes when the shown reset changes, and lists the device names. Messages clear when the shown reset changes; a replaced reset shows "The device list changed. Review it again." `TrustResetOutcome.none` is now `.unanswered`. Long lists scroll; names wrap to 2 lines.
+
+### Added
+- `TrustResetPrompt` SwiftPM library (next to `FsyncCoreKit`, macOS 13): `TrustResetPromptModel` (refresh / handle event / confirm / decline off the main actor, `isBusy` double-tap guard, `NotFound` -> refresh + message), `TrustResetPromptView` over a stateless `TrustResetPromptContent`, outcome view. Device names render with `Text(verbatim:)` and are what the user checks (no reset code: the resetting device cannot show a matching one); trusting needs a second confirmation.
+- `TrustResetPromptTests`: model against a real engine, `ImageRenderer` PNGs (`TRUST_RESET_SNAPSHOT_DIR`).
+
 ## 2026-10-14 - Trust reset review fixes (M5, round 3)
 
 ### Changed

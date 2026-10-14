@@ -8,7 +8,7 @@ fsync syncs clipboard items and files between a user's own devices. Trust is roo
 
 - **Backend** (`backend/`): email-OTP auth, a signed device-list registry, pairing-code storage, and presence (which devices are online and where they can be reached). It never sees clipboard or file bytes.
 - **Core** (`core/`): the Rust engine. It verifies the device-list chain, pairs devices, moves clips and files over iroh QUIC, and keeps encrypted local history.
-- **Apps** (`apps/`): thin UI layers over the core through UniFFI. macOS (`apps/macos/Packages/FsyncCoreKit`) is built; Windows is not started.
+- **Apps** (`apps/`): thin UI layers over the core through UniFFI. macOS (`apps/macos/Packages/FsyncCoreKit`, plus the `TrustResetPrompt` SwiftUI library for trust resets) is built; Windows is not started.
 
 ```
   Backend (axum + Postgres 17)           metadata only: accounts, device lists, pairing codes, presence

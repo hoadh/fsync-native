@@ -8,12 +8,12 @@ Last updated: 2026-10-14. Repo map for the P0 Rust track. Architecture is in [sy
 |------|---------|
 | `core/fsync-proto` | Wire types and validation: device list, pairing frames, clip/file frames, API DTOs, presence, names, caps |
 | `core/fsync-core` | Client engine: identity, trust, transport (iroh), pairing, clip and file sync, encrypted history, `FsyncService` facade |
-| `core/fsync-ffi` | UniFFI 0.29.4 bindings over the facade (`FsyncEngine`, contract v1) |
+| `core/fsync-ffi` | UniFFI 0.29.4 bindings over the facade (`FsyncEngine`, contract v2) |
 | `core/fsync-cli` | `fsync-cli` binary: login, pair, devices, clip, send, fetch, history, bench |
 | `backend` | `fsync-backend` (axum 0.8, sqlx 0.8 Postgres): OTP auth, device-list registry, pairing codes, presence WebSocket |
 | `backend/migrations` | `0001_init`, `0002_refresh_session` |
 | `backend/tests` | Integration tests against Postgres via testcontainers |
-| `apps/macos/Packages/FsyncCoreKit` | SwiftPM package: `FsyncCoreKit` Swift wrapper and XCTests over the xcframework |
+| `apps/macos/Packages/FsyncCoreKit` | SwiftPM package: `FsyncCoreKit` Swift wrapper and XCTests over the xcframework; `TrustResetPrompt` SwiftUI library (trust-reset prompt) with its tests |
 | `apps/windows` | Empty. Windows app not started (phase 13-14) |
 | `scripts` | `gen-bindings.sh` (Swift bindings + headers), `build-xcframework.sh` (universal static lib, xcframework) |
 | `tests/e2e` | `p0-exit-demo.sh`: end-to-end demo (backend, CLI, relay in Docker Postgres) |
