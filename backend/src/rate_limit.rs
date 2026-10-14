@@ -143,6 +143,13 @@ impl RateLimiter {
         self.lock().peek(key, limit, window, Instant::now())
     }
 
+    /// Take back the most recent hit for `key` (refund after the guarded action failed).
+    pub fn unrecord(&self, key: &str) {
+        if let Some(b) = self.lock().map.get_mut(key) {
+            b.hits.pop_back();
+        }
+    }
+
     /// Count a hit without checking the limit.
     pub fn record(&self, key: &str, window: Duration) {
         self.lock().record(key, window, Instant::now());

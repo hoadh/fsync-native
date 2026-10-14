@@ -54,7 +54,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       # Backend and core tests start their own throwaway Postgres through testcontainers
       # (tests/common/pg.rs), so no `services:` block: the runner's Docker is all they need.
-      - run: docker pull postgres:17
+      - run: docker pull postgres:17 && docker pull axllent/mailpit:v1.31.5
       - run: cargo test --workspace
 
   macos:

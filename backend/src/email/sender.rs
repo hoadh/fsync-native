@@ -1,11 +1,32 @@
-//! Email sender abstraction. No real provider is wired yet (provider choice unresolved);
-//! `LogSender` is the dev sink.
+//! Email sender abstraction: `SmtpSender` (smtp.rs) delivers; `LogSender` is the dev sink.
 
 use async_trait::async_trait;
 
 #[derive(Debug, thiserror::Error)]
-#[error("email delivery failed: {0}")]
-pub struct EmailError(pub String);
+#[error("email delivery failed: {msg}")]
+pub struct EmailError {
+    pub msg: String,
+    /// The provider may have accepted the mail despite the error (a timeout after the message
+    /// was handed over). Callers must then treat the send as spent and the code as live.
+    pub maybe_delivered: bool,
+}
+
+impl EmailError {
+    /// A failure that certainly delivered nothing (refused, TLS/auth failure, rejected reply).
+    pub fn failed(msg: impl Into<String>) -> Self {
+        Self {
+            msg: msg.into(),
+            maybe_delivered: false,
+        }
+    }
+
+    pub fn ambiguous(msg: impl Into<String>) -> Self {
+        Self {
+            msg: msg.into(),
+            maybe_delivered: true,
+        }
+    }
+}
 
 #[async_trait]
 pub trait EmailSender: Send + Sync {

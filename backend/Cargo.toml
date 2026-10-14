@@ -36,6 +36,7 @@ hyper = { version = "1", features = ["server", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["server-auto", "server-graceful", "tokio", "http1", "http2"] }
 tower = { version = "0.5", features = ["util"] }
 getrandom = "0.4"
+lettre = { version = "0.11.23", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
@@ -44,3 +45,4 @@ tokio-tungstenite = "0.28"
 futures-util = "0.3"
 testcontainers = "0.25"
 libc = "0.2"
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring", "pem"] }

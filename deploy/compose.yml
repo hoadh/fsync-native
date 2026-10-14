@@ -60,6 +60,15 @@ services:
       MAX_UNAUTH_WS_PER_IP: ${MAX_UNAUTH_WS_PER_IP:-10}
       MAX_IN_FLIGHT: ${MAX_IN_FLIGHT:-512}
       PRESENCE_TIMEOUT_SECS: ${PRESENCE_TIMEOUT_SECS:-60}
+      # OTP email. production refuses the log sender unless ALLOW_LOG_EMAIL=1 (see .env.example).
+      EMAIL_SENDER: ${EMAIL_SENDER:-log}
+      ALLOW_LOG_EMAIL: ${ALLOW_LOG_EMAIL:-}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      OTP_DAILY_SEND_CAP: ${OTP_DAILY_SEND_CAP:-450}
       RUST_LOG: ${RUST_LOG:-info}
     read_only: true
     cap_drop: [ALL]

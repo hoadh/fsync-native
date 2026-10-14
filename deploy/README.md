@@ -14,12 +14,13 @@ internet --7842/udp--> relay (QUIC address discovery; optional, off by default)
 | File | What |
 |---|---|
 | `compose.yml` | the stack (project `fsync`); memory limits sized for a ~2 GiB shared host |
+| `compose.relay-only.yml`, `relay-only.env.example` | relay alone (no backend, no Postgres) for the Singapore host, see "Relay-only host" |
 | `compose.local.yml` | local-test overlay: adds a Caddy with a local CA running `Caddyfile`; never on a server |
 | `Caddyfile` | the two site blocks for the host Caddy (also run verbatim by the local test) |
 | `backend/Dockerfile`, `relay/Dockerfile` | images (relay = `iroh-relay` 1.3.0 from crates.io, pinned to Cargo.lock) |
 | `relay/entrypoint.sh` | renders the relay config; with QAD waits for the Caddy certificate |
 | `.env.example` | all settings, no secrets; `scripts/gen-env.sh` fills secrets |
-| `scripts/` | `deploy.sh`, `smoke-check.sh`, `backup-postgres.sh`, `gen-env.sh`, `restore-postgres.sh`, `bootstrap-vps.sh` (fresh dedicated VPS only, needs `--dedicated`) |
+| `scripts/` | `deploy.sh`, `smoke-check.sh`, `backup-postgres.sh`, `gen-env.sh`, `restore-postgres.sh`, `bootstrap-vps.sh` (fresh dedicated VPS only, needs `--dedicated`), `test-relay-only-local.sh` |
 | `backend/compose.yml` | older backend + Postgres only compose for development |
 
 ## Host Caddy snippet (owner applies; the deploy never edits or reloads Caddy)
@@ -93,10 +94,85 @@ ssh <ssh-target> 'cd /opt/fsync && sudo docker compose -p fsync down -v'   # sto
 Rollback restores the previous images **and** the previous `compose.yml`. Migrations are forward-only (never
 rolled back): keep them backward compatible (expand/contract) so the old release still runs on the new schema.
 
-## Staging until an email provider exists
-No email sender is wired, so a `production` deployment cannot deliver OTPs. For a private pre-launch
-set `FSYNC_ENV=staging`, `FSYNC_DEV_MODE=1`, `RUST_LOG=fsync_backend=debug,info` and read the code with
-`docker compose logs backend | grep "dev otp"`. Never do this with real users.
+## OTP email (Gmail SMTP)
+The backend sends sign-in codes with `EMAIL_SENDER=smtp` (STARTTLS on `smtp.gmail.com:587`, certificate
+verified, no plaintext fallback). Variables, all in `/opt/fsync/.env` (mode 600, **never in the repo**):
+`EMAIL_SENDER=smtp`, `SMTP_USERNAME=<gmail address>`, `SMTP_PASSWORD=<app password>`,
+`SMTP_FROM="fsync <gmail address>"`; `SMTP_HOST`/`SMTP_PORT` default to Gmail and 587.
+
+Create the App Password (Google refuses the normal password for SMTP):
+1. Sign in to the sender Google account and turn on **2-Step Verification** (Security > How you sign in to Google). App Passwords are not offered without it.
+2. Open <https://myaccount.google.com/apppasswords>, name it `fsync`, click Create and copy the 16 characters (shown in groups of four; the spaces are ignored).
+3. On the host: `sudoedit /opt/fsync/.env`, set the four variables above and delete any `ALLOW_LOG_EMAIL=1` line.
+4. `cd /opt/fsync && docker compose up -d backend`, then request a code from the app. Failures are logged as a category only (`smtp timeout`, `smtp rejected (permanent) 535`, ...), never the password or the code.
+
+Rules: with `FSYNC_ENV=production` the backend **refuses to start** unless `EMAIL_SENDER=smtp` or
+`ALLOW_LOG_EMAIL=1` (explicit: codes are not delivered). `gen-env.sh` writes `EMAIL_SENDER=smtp` with empty
+`SMTP_*` values, so a new host refuses to start until they are filled. `deploy.sh` appends `ALLOW_LOG_EMAIL=1` (with a warning) to an existing host `.env` that has neither setting, so the current
+staging host keeps running; removing it after configuring SMTP is the switch-over. To rotate, revoke the App
+Password in the Google account. Consumer Gmail allows about **500 recipients per day** (and throttles bursts):
+`OTP_DAILY_SEND_CAP` (default 450 per rolling 24 h, kept in Postgres) makes `start` return 429 before that
+limit is hit. A failed send (provider outage) does not spend the per-email/per-IP quota or a global slot.
+Fine for a pre-launch, use a transactional provider before real traffic (only the `SMTP_*` values change).
+For private testing without any mail, `FSYNC_ENV=staging`, `FSYNC_DEV_MODE=1`,
+`RUST_LOG=fsync_backend=debug,info` and `docker compose logs backend | grep "dev otp"` still work; never with real users.
+
+## Relay-only host (Singapore)
+A second relay region on a host with **no backend and no Postgres**: only the relay container
+(`compose.relay-only.yml`), on loopback behind that host's own Caddy, the same pattern as the main host.
+The host is shared (its Caddy already serves another site), so: do **not** run `bootstrap-vps.sh`, there is no
+ACME in the container, nothing is published beyond loopback, and nothing here edits or reloads Caddy.
+```
+internet --443--> host Caddy (ACME) --> 127.0.0.1:18081 relay      relay-sg-fsync.10z.one
+```
+
+Hosts deployed before the `.mode` marker existed: run `echo relay-only > <dir>/.mode` once on a relay-only host (default `/opt/fsync/.mode`); otherwise a `--rollback` without `--relay-only` is not auto-detected.
+
+**1. Docker (once, run by the owner/lead; official docker-ce apt repo + compose plugin, Ubuntu 24.04)**
+```bash
+ssh <ssh-target>
+sudo apt-get update && sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo docker run --rm hello-world && sudo docker compose version
+```
+This only adds an apt source and Docker's own iptables chains; Caddy and its sockets are unaffected. Check
+`ip route` first that Docker's default bridge (172.17.0.0/16) does not overlap the VPC. The ssh user need not
+join the `docker` group: `deploy.sh` falls back to `sudo -n docker`, and stops with a pointer here when Docker is
+missing. The host has 1.9 GiB RAM: the relay is capped at 128 MB, and Docker itself needs ~100 MB.
+
+**2. Deploy**
+```bash
+cp deploy/relay-only.env.example /tmp/relay-sg.env      # RELAY_HOST=relay-sg-fsync.10z.one, no secrets
+deploy/scripts/deploy.sh <ssh-target> --relay-only --env-file /tmp/relay-sg.env
+```
+Builds only the relay image (`linux/amd64`, locally), ships it, installs `compose.relay-only.yml` as
+`/opt/fsync/compose.yml`, starts it and smoke-checks `127.0.0.1:18081` over SSH (`smoke-check.sh --relay-only`).
+Releases and `--skip-smoke` work as on the main host; pass `--relay-only` to `--rollback` too.
+
+**3. Host Caddy snippet** (owner pastes into `/etc/caddy/Caddyfile`, then `sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy`)
+```
+relay-sg-fsync.10z.one {
+	reverse_proxy 127.0.0.1:18081 {
+		flush_interval -1
+	}
+}
+```
+DNS: A record to the instance IP, **DNS-only (grey cloud)**. Then verify publicly:
+`deploy/scripts/deploy.sh <ssh-target> --relay-only --env-file /tmp/relay-sg.env --public-smoke`
+or `deploy/scripts/smoke-check.sh --relay-only https://relay-sg-fsync.10z.one`.
+
+**Firewall (Lightsail > Networking):** nothing new by default; 80/tcp, 443/tcp and 22/tcp are already open.
+QUIC address discovery stays **off**, as on the main host (nothing listens publicly on udp/7842; clients just use
+the relay). To enable it, follow "Enabling QUIC address discovery" below with this host's certificate directory
+(`.../certificates/acme-v02.api.letsencrypt.org-directory/relay-sg-fsync.10z.one`), `RELAY_QUIC_BIND=0.0.0.0`,
+and add the Lightsail rule **UDP 7842 from anywhere**. udp/443 is Caddy's HTTP/3 and unrelated.
+
+Local check: `deploy/scripts/test-relay-only-local.sh` (builds the image, runs the file on loopback ports,
+runs `smoke-check.sh --relay-only`, asserts only the relay runs and nothing is published beyond 127.0.0.1).
 
 ## Operations
 ```bash

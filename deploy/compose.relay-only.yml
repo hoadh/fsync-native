@@ -1,0 +1,44 @@
+# Relay-only stack for a host that has no backend or database (the Singapore Lightsail instance):
+# just the iroh relay, on loopback behind the host Caddy, exactly like the relay in compose.yml.
+# TLS and ports 80/443 stay with the host Caddy; this file never publishes them.
+# `deploy/scripts/deploy.sh <ssh-target> --relay-only` copies it to the host as compose.yml.
+#
+#   cd deploy && cp relay-only.env.example .env     # set RELAY_HOST
+#   docker compose -f compose.relay-only.yml up -d --build
+# Local test: scripts/test-relay-only-local.sh
+name: ${COMPOSE_PROJECT_NAME:-fsync}
+
+services:
+  relay:
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+    image: fsync-relay:${FSYNC_TAG:-local}
+    pull_policy: never
+    build:
+      context: ./relay
+    environment:
+      RELAY_HOSTNAME: ${RELAY_HOST:?set RELAY_HOST (the public relay hostname)}
+      # 1 = QUIC address discovery on udp/7842 (needs the Caddy-managed cert, see RELAY_CERT_DIR).
+      RELAY_QAD: ${RELAY_QAD:-0}
+      RELAY_RX_BYTES_PER_SEC: ${RELAY_RX_BYTES_PER_SEC:-}
+      RUST_LOG: ${RELAY_RUST_LOG:-info}
+    volumes:
+      # Only used when RELAY_QAD=1: ONLY this hostname's certificate directory that Caddy manages,
+      # never Caddy's whole data dir. Caddy's key is root-owned 0600, so QAD also needs RELAY_USER=0.
+      - ${RELAY_CERT_DIR:-relay_nocert}:/relay-cert:ro
+    user: "${RELAY_USER:-10001:10001}"
+    mem_limit: 128m
+    memswap_limit: 128m
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: [ALL]
+    ports:
+      - "127.0.0.1:${RELAY_HTTP_PORT:-18081}:3340"
+      # Loopback unless QAD is on: then set RELAY_QUIC_BIND=0.0.0.0 and open udp/7842 in the firewall.
+      - "${RELAY_QUIC_BIND:-127.0.0.1}:${RELAY_QUIC_PORT:-7842}:7842/udp"
+
+volumes:
+  relay_nocert:

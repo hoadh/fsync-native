@@ -1,8 +1,9 @@
 //! OTP issue/verify. Codes are keyed-hashed, expire in 10 min, allow 5 attempts.
 //! A repeated `start` does not replace a live code younger than `RESEND_AFTER_MS` (a third party
 //! cannot keep invalidating a victim's code); an older live code may be replaced so a lost
-//! email can be re-requested. Only starts that issue a code count toward the per-email limit.
+//! email can be re-requested. Only starts that deliver a code count toward the per-email limit; a failed send is refunded.
 
+use super::otp_budget;
 use crate::{
     error::{ApiError, ApiResult},
     state::AppState,
@@ -67,20 +68,60 @@ pub async fn start(state: &AppState, email: &str, ip: &str) -> ApiResult<()> {
         // A fresh live code is pending; only its hash is stored so it cannot be re-sent.
         return Ok(());
     }
+    // Counted up front so a cancelled request (HTTP timeout mid-send) still spends it; a definite
+    // failure takes it back below. The per-IP slot was taken by `check`.
     state.limiter.record(&email_key, HOUR);
-    if let Err(e) = state.email.send_otp(&email, &code).await {
-        // Never leave a live code the user was not told about.
-        if let Err(db) = sqlx::query("DELETE FROM otp_codes WHERE email = $1 AND code_hash = $2")
-            .bind(&email)
-            .bind(hash)
-            .execute(&state.db)
-            .await
-        {
-            tracing::warn!(kind = %crate::error::sqlx_kind(&db), "otp cleanup after send failure failed");
+    match deliver(state, &email, &code, hash).await {
+        Ok(()) => Ok(()),
+        // A definite failure (provider outage, global cap) must not lock the user out. An
+        // ambiguous one (timeout) keeps every count: the mail may have gone out.
+        Err((e, true)) => {
+            state.limiter.unrecord(&email_key);
+            state.limiter.unrecord(&format!("otp:ip:{ip}"));
+            Err(e)
         }
-        return Err(ApiError::internal(e));
+        Err((e, false)) => Err(e),
+    }
+}
+
+/// Reserve a global send slot and send. On a definite failure the code row is removed (never leave
+/// a live code the user was not told about) and the slot is given back; the flag in `Err` says
+/// whether quotas were refunded. A timeout-class failure keeps the code and the slot: the mail may
+/// have been delivered, and refunding would let timeouts be used to exceed the send limits.
+async fn deliver(
+    state: &AppState,
+    email: &str,
+    code: &str,
+    hash: &[u8],
+) -> Result<(), (ApiError, bool)> {
+    let slot = match otp_budget::reserve(&state.db, state.cfg.otp_daily_send_cap).await {
+        Ok(id) => id,
+        Err(e) => {
+            discard_code(state, email, hash).await;
+            return Err((e, true));
+        }
+    };
+    if let Err(e) = state.email.send_otp(email, code).await {
+        if e.maybe_delivered {
+            tracing::warn!("otp send outcome unknown (timeout): code and send slot kept");
+            return Err((ApiError::internal(e), false));
+        }
+        otp_budget::release(&state.db, slot).await;
+        discard_code(state, email, hash).await;
+        return Err((ApiError::internal(e), true));
     }
     Ok(())
+}
+
+async fn discard_code(state: &AppState, email: &str, hash: &[u8]) {
+    if let Err(db) = sqlx::query("DELETE FROM otp_codes WHERE email = $1 AND code_hash = $2")
+        .bind(email)
+        .bind(hash)
+        .execute(&state.db)
+        .await
+    {
+        tracing::warn!(kind = %crate::error::sqlx_kind(&db), "otp cleanup after send failure failed");
+    }
 }
 
 /// Returns the account id (created on first successful login).
