@@ -12,6 +12,9 @@ public sealed record AppSettings(string DataDir, string ApiBase, string? RelayUr
     public string CoreDir => Path.Combine(DataDir, "core");
     public string SecretsPath => Path.Combine(DataDir, "secrets.dat");
     public string LogPath => Path.Combine(DataDir, "app.log");
+    public string PreferencesPath => Path.Combine(DataDir, "preferences.json");
+    /// <summary>Eager file pastes land here, one folder per clip (user-only ACL, inherited from LocalAppData).</summary>
+    public string InboxDir => Path.Combine(DataDir, "inbox");
 
     public bool AllowInsecureHttp =>
         Uri.TryCreate(ApiBase, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttp && u.IsLoopback;

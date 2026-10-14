@@ -1,4 +1,5 @@
 using Fsync.App.Bridge;
+using Fsync.App.Clipboard;
 using Fsync.App.Services;
 using Fsync.App.ViewModels;
 using Fsync.Core;
@@ -26,6 +27,8 @@ public partial class App : Application
     internal DevicesViewModel Devices { get; private set; } = null!;
     internal PairingViewModel Pairing { get; private set; } = null!;
     internal IRunAtLogin RunAtLogin { get; private set; } = null!;
+    internal AppPreferences Preferences { get; private set; } = null!;
+    internal ClipboardService Clipboard { get; private set; } = null!;
 
     public App(AppSettings settings, bool showWindowAtStart)
     {
@@ -44,7 +47,9 @@ public partial class App : Application
         Devices = new DevicesViewModel(Bridge);
         Pairing = new PairingViewModel(Bridge);
         RunAtLogin = new RunAtLogin("Fsync", Services.RunAtLogin.CommandFor(Environment.ProcessPath!));
-        _tray = new TrayHost(this, new TrayStatusViewModel(Bridge, Devices));
+        Preferences = AppPreferences.Load(_settings.PreferencesPath);
+        Clipboard = new ClipboardService(Bridge, Preferences, new WinUiDispatcher(_ui), _settings.InboxDir);
+        _tray = new TrayHost(this, new TrayStatusViewModel(Bridge, Devices), Clipboard);
 
         // Self-check: the native DLL for this architecture loads and speaks our contract.
         try
@@ -71,6 +76,7 @@ public partial class App : Application
     {
         if (Bridge.Phase == AccountPhase.Offline) StartRetry();
         else _retry?.Stop();
+        if (Bridge.Phase == AccountPhase.Ready) _ = Clipboard.StartAsync(); // idempotent; re-reads settings
         _window?.ShowPhase(Bridge.Phase);
     }
 
@@ -104,6 +110,7 @@ public partial class App : Application
     {
         _window?.Close();
         _tray?.Dispose();
+        Clipboard.Dispose(); // exit policy: flush small clips, clear lazy files (ADR 010)
         Devices.Dispose();
         Pairing.Dispose();
         Bridge.Dispose(); // stop() first; blocks up to ~5 s

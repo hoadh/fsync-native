@@ -5,7 +5,7 @@ namespace Fsync.Interop.Tests;
 
 /// <summary>Tests that use the real system clipboard run one at a time.</summary>
 [CollectionDefinition("clipboard", DisableParallelization = true)]
-public sealed class ClipboardCollection;
+public sealed class ClipboardCollection : ICollectionFixture<ClipboardLock>;
 
 internal static class ClipboardTestSupport
 {

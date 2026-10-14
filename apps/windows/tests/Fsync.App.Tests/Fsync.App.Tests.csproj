@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- View model / bridge mapping tests against a fake IFsyncEngine (no native DLL needed). -->
+  <!-- View models, bridge mapping (phase 13 fake engine) and clipboard mapping on the real clipboard. -->
   <PropertyGroup>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
