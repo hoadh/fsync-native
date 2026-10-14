@@ -82,17 +82,25 @@ public final class ClipboardWriter {
         return .success(())
     }
 
-    /// Puts plain text on the pasteboard (history copy-back); marked like any write of ours.
-    @discardableResult
-    public func writeText(_ text: String) -> Bool {
+    /// Puts full-content representations on the pasteboard (history copy-back); marked like any write of ours.
+    /// Representations we cannot apply are skipped; none usable is `.nothingUsable`.
+    public func writeReps(_ reps: [Rep]) -> Result<Void, WriteError> {
         let item = NSPasteboardItem()
-        item.setString(text, forType: .string)
+        var any = false
+        for rep in reps {
+            guard let type = RepresentationMapper.pasteboardType(forMime: rep.mime),
+                let data = RepresentationMapper.payload(rep.data, for: type) else { continue }
+            item.setData(data, forType: type)
+            any = true
+        }
+        guard any else { return .failure(.nothingUsable) }
         item.setData(Data(), forType: NSPasteboard.PasteboardType(SensitiveFilter.originType))
         pasteboard.clearContents()
         provider = nil
-        let ok = pasteboard.writeObjects([item])
+        // NSPasteboard cannot write without clearing first, so a refused write leaves it empty (as in `apply`).
+        guard pasteboard.writeObjects([item]) else { return .failure(.fetchFailed) }
         lastWriteCount = pasteboard.changeCount
-        return ok
+        return .success(())
     }
 
     /// On quit: a lazy entry cannot be served after we exit, so remove it if it is still current.

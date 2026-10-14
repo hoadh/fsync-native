@@ -56,7 +56,7 @@ final class FilesIntegrationTests: IntegrationTestCase {
         await files.send([try file("from-mac.txt", "hello from the mac")], to: cli.nodeId)
         XCTAssertNil(mac.filesSync?.message)
         let fetched = try await fetch.waitEvent("fetched", timeout: 60)
-        let path = try XCTUnwrap(fetched["path"] as? String)
+        let path = try XCTUnwrap(fetched.string("path"))
         XCTAssertEqual(try String(contentsOfFile: path, encoding: .utf8), "hello from the mac")
     }
 }

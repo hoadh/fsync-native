@@ -35,11 +35,45 @@ final class ClipboardSyncTests: EngineTestCase {
         XCTAssertEqual(r.sync.activity?.direction, .received)
     }
 
-    func testCopyBackWritesPreview() async throws {
+    func testCopyBackWritesTheFullContent() async throws {
         let r = try rig()
-        let copied = await r.sync.copyBack(text: "from history")
+        r.sync.message = "old problem"
+        let long = String(repeating: "long text ", count: 100)
+        let png = Data([0x89, 0x50, 0x4E, 0x47])
+        r.sync.historyReps = { _, _ in
+            [Rep(mime: "text/plain", data: Data(long.utf8)), Rep(mime: "text/html", data: Data("<b>x</b>".utf8)),
+             Rep(mime: "application/x-unknown", data: Data("?".utf8)), Rep(mime: "image/png", data: png)]
+        }
+        let copied = await r.sync.copyBack(itemId: "item-1")
         XCTAssertTrue(copied)
-        XCTAssertEqual(r.pb.string(forType: .string), "from history")
+        XCTAssertEqual(r.pb.string(forType: .string), long)
+        XCTAssertEqual(r.pb.string(forType: .html), "<b>x</b>")
+        XCTAssertEqual(r.pb.data(forType: .png), png)
+        XCTAssertTrue(r.sync.writer.isCurrent, "the write is ours, so the watcher will not send it back")
+        XCTAssertNil(r.sync.message, "success clears an older message")
+    }
+
+    func testCopyBackWithNothingUsableOrAnEngineErrorKeepsThePasteboard() async throws {
+        let r = try rig()
+        r.pb.clearContents()
+        r.pb.setString("before", forType: .string)
+        r.sync.historyReps = { _, _ in [] }
+        var copied = await r.sync.copyBack(itemId: "files-only")
+        XCTAssertFalse(copied)
+        XCTAssertNotNil(r.sync.message)
+        r.sync.message = nil
+        r.sync.historyReps = { _, _ in throw FsyncError.NotFound }
+        copied = await r.sync.copyBack(itemId: "gone")
+        XCTAssertFalse(copied)
+        XCTAssertNotNil(r.sync.message)
+        XCTAssertEqual(r.pb.string(forType: .string), "before")
+    }
+
+    func testCopyBackOfAnUnknownItemThroughTheRealEngine() async throws {
+        let r = try rig()
+        let copied = await r.sync.copyBack(itemId: "00000000-0000-0000-0000-000000000000")
+        XCTAssertFalse(copied)
+        XCTAssertNotNil(r.sync.message)
     }
 
     /// Both refusals happen before the engine is called, so the message is the app's own.

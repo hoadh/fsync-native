@@ -42,11 +42,37 @@ final class ClipboardIntegrationTests: IntegrationTestCase {
         let watcher = try await watch("k1")
         copy("hello from the mac", to: r.pb)
         let event = try await watcher.waitEvent("clip", timeout: 30)
-        XCTAssertEqual(event["text"] as? String, "hello from the mac")
+        XCTAssertEqual(event.string("text"), "hello from the mac")
         let history = try XCTUnwrap(r.bridge.historyModel)
         await history.reload()
         XCTAssertEqual(history.items.first?.preview, "hello from the mac")
         XCTAssertEqual(history.items.first?.outgoing, true)
+    }
+
+    /// The history keeps a 200-character preview; copy-back must restore the whole clip from the engine.
+    func testHistoryCopyBackRestoresTheFullText() async throws {
+        let r = try await rig(cli: "k7")
+        let long = (0..<120).map { "line \($0) of a clip longer than the preview" }.joined(separator: "\n")
+        copy(long, to: r.pb)
+        let history = try XCTUnwrap(r.bridge.historyModel)
+        let deadline = Date().addingTimeInterval(30)
+        repeat {
+            await history.reload()
+            if history.items.first?.outgoing == true { break }
+            try await Task.sleep(nanoseconds: 200_000_000)
+        } while Date() < deadline
+        XCTAssertEqual(history.items.first?.outgoing, true, "clip not in history")
+        let item = try XCTUnwrap(history.items.first)
+        let preview = try XCTUnwrap(item.preview)
+        XCTAssertLessThan(preview.count, long.count, "preview must be truncated for this test to mean anything")
+        r.pb.clearContents()
+        let copied = await r.sync.copyBack(itemId: item.id)
+        XCTAssertTrue(copied)
+        XCTAssertEqual(r.pb.string(forType: .string), long)
+        // Our own write carries the origin marker: it must not come back as a new outgoing item.
+        try await Task.sleep(nanoseconds: 2_500_000_000)
+        await history.reload()
+        XCTAssertEqual(history.items.filter(\.outgoing).count, 1, "copy-back was sent again")
     }
 
     func testClipFromCliLandsOnPasteboardWithoutEcho() async throws {
@@ -71,7 +97,7 @@ final class ClipboardIntegrationTests: IntegrationTestCase {
         try await Task.sleep(nanoseconds: 1_500_000_000)
         copy("not a secret", to: r.pb)
         let event = try await watcher.waitEvent("clip", timeout: 30)
-        XCTAssertEqual(event["text"] as? String, "not a secret", "the concealed copy reached the other device")
+        XCTAssertEqual(event.string("text"), "not a secret", "the concealed copy reached the other device")
         let history = try XCTUnwrap(r.bridge.historyModel)
         await history.reload()
         XCTAssertEqual(history.items.compactMap(\.preview), ["not a secret"])
@@ -89,7 +115,7 @@ final class ClipboardIntegrationTests: IntegrationTestCase {
         XCTAssertNil(watcher.lastEvent("clip"), "manual mode sent on its own")
         await r.sync.publishCurrent()
         let event = try await watcher.waitEvent("clip", timeout: 30)
-        XCTAssertEqual(event["text"] as? String, "only when asked")
+        XCTAssertEqual(event.string("text"), "only when asked")
         // One engine per data dir (core `engine.lock`): the watcher must be gone before `clip put`.
         try await watcher.expectExit(0, timeout: 15)
 

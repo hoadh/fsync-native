@@ -62,7 +62,7 @@ struct DevBackend: Sendable {
     }
 
     /// Sends a code, reads it from the backend log and verifies it. Returns the `logged_in` event.
-    func cliLogin(_ name: String, email: String) async throws -> [String: Any] {
+    func cliLogin(_ name: String, email: String) async throws -> CliEvent {
         let send = try cli(name, ["login", "--email", email, "--send-only"])
         try await send.expectExit(0, timeout: 30)
         let code = try await otp(for: email)
@@ -90,29 +90,45 @@ enum HarnessError: Error, CustomStringConvertible {
 final class CliProcess: @unchecked Sendable {
     private let process = Process()
     private let lock = NSLock()
-    private var lines: [[String: Any]] = []
+    private var lines: [CliEvent] = []
     private var raw: [String] = []
     private var errText = ""
     private var buffer = Data()
     private var exited: Int32?
+    private var exitedAt: Date?
+    private let readers: [FileHandle]   // stdout, stderr
+    /// After exit, how long open pipes (e.g. held by a grandchild) may delay reporting it.
+    private static let drainGrace: TimeInterval = 1
+    private var eofStreams = 0   // stdout and stderr each reach EOF once
 
     init(executable: URL, arguments: [String]) throws {
         process.executableURL = executable
         process.arguments = arguments
         let out = Pipe(), err = Pipe()
+        readers = [out.fileHandleForReading, err.fileHandleForReading]
         process.standardOutput = out
         process.standardError = err
         process.standardInput = FileHandle.nullDevice
-        out.fileHandleForReading.readabilityHandler = { [weak self] h in self?.append(h.availableData) }
+        out.fileHandleForReading.readabilityHandler = { [weak self] h in
+            let d = h.availableData
+            if d.isEmpty { h.readabilityHandler = nil; self?.finishStdout(); return }
+            self?.append(d)
+        }
         err.fileHandleForReading.readabilityHandler = { [weak self] h in
             let d = h.availableData
+            if d.isEmpty { h.readabilityHandler = nil; self?.sync { $0.eofStreams += 1 }; return }
             self?.sync { $0.errText += String(decoding: d, as: UTF8.self) }
         }
-        process.terminationHandler = { [weak self] p in self?.sync { $0.exited = p.terminationStatus } }
+        process.terminationHandler = { [weak self] p in self?.sync { $0.exited = p.terminationStatus; $0.exitedAt = Date() } }
         try process.run()
     }
 
     private func sync(_ body: (CliProcess) -> Void) { lock.lock(); body(self); lock.unlock() }
+
+    private func record(line: Data) {   // call with the lock held
+        raw.append(String(decoding: line, as: UTF8.self))
+        if let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any] { lines.append(CliEvent(obj)) }
+    }
 
     private func append(_ data: Data) {
         sync { s in
@@ -120,19 +136,26 @@ final class CliProcess: @unchecked Sendable {
             while let nl = s.buffer.firstIndex(of: 0x0A) {
                 let line = s.buffer.subdata(in: s.buffer.startIndex..<nl)
                 s.buffer.removeSubrange(s.buffer.startIndex...nl)
-                s.raw.append(String(decoding: line, as: UTF8.self))
-                if let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any] { s.lines.append(obj) }
+                s.record(line: line)
             }
         }
     }
 
-    func lastEvent(_ name: String) -> [String: Any]? {
+    /// stdout reached EOF: parse a final line that had no trailing newline, then mark the stream drained.
+    private func finishStdout() {
+        sync { s in
+            if !s.buffer.isEmpty { s.record(line: s.buffer); s.buffer = Data() }
+            s.eofStreams += 1
+        }
+    }
+
+    func lastEvent(_ name: String) -> CliEvent? {
         lock.lock(); defer { lock.unlock() }
-        return lines.last { $0["event"] as? String == name }
+        return lines.last { $0.string("event") == name }
     }
 
     /// Waits for the first `name` event.
-    func waitEvent(_ name: String, timeout: Double = 30) async throws -> [String: Any] {
+    func waitEvent(_ name: String, timeout: Double = 30) async throws -> CliEvent {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if let e = lastEvent(name) { return e }
@@ -144,12 +167,27 @@ final class CliProcess: @unchecked Sendable {
         throw HarnessError.timeout("CLI event \(name)\n\(diagnostics)")
     }
 
-    var exitCode: Int32? { lock.lock(); defer { lock.unlock() }; return exited }
+    /// The exit status, reported only once both output streams are drained, so no printed event is still in flight.
+    /// If a grandchild still holds the pipes `drainGrace` after exit, the streams are force-closed so exit is not hidden.
+    var exitCode: Int32? { lock.lock(); defer { lock.unlock() }; return resolveExit() }
+
+    /// Call with the lock held. Force-drains the streams once the grace has passed.
+    private func resolveExit() -> Int32? {
+        guard let code = exited else { return nil }
+        if eofStreams < 2 {
+            guard let at = exitedAt, Date().timeIntervalSince(at) >= Self.drainGrace else { return nil }
+            readers.forEach { $0.readabilityHandler = nil }
+            if !buffer.isEmpty { record(line: buffer); buffer = Data() }
+            eofStreams = 2
+        }
+        return code
+    }
 
     func expectExit(_ want: Int32, timeout: Double) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         while exitCode == nil, Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
-        guard exitCode == want else { throw HarnessError.exit(exitCode, diagnostics) }
+        guard let got = exitCode else { throw HarnessError.timeout("CLI exit within \(timeout) s\n\(diagnostics)") }
+        guard got == want else { throw HarnessError.exit(got, diagnostics) }
     }
 
     var diagnostics: String {
@@ -158,6 +196,14 @@ final class CliProcess: @unchecked Sendable {
     }
 
     func terminate() { if process.isRunning { process.terminate() } }
+
+    /// Waits (bounded) until a terminated process has exited, so it can't outlive the test.
+    /// Call `terminate()` first; with several processes, terminate them all, then await each.
+    func awaitExit(timeout: Double = 5) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while exitCode == nil, !Task.isCancelled, Date() < deadline { try? await Task.sleep(nanoseconds: 20_000_000) }
+        if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+    }
 }
 
 /// Polls `condition` every 100 ms until it holds or `timeout` passes. Returns whether it held.

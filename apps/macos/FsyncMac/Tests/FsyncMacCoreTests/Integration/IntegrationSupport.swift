@@ -9,15 +9,18 @@ class IntegrationTestCase: EngineTestCase {
     var backend: DevBackend!
     var procs: [CliProcess] = []
 
+    // No `super.setUp()` / `super.tearDown()`: EngineTestCase overrides neither (XCTestCase's are empty), and
+    // calling a nonisolated async super method from this main-actor class sends `self` across isolation,
+    // which Swift 6.1 (Xcode 16.4 on CI) rejects.
+    // If EngineTestCase ever gains its own async setUp/tearDown, this subclass must be revisited.
     override func setUp() async throws {
-        try await super.setUp()
         backend = try DevBackend.fromEnvironment()
     }
 
     override func tearDown() async throws {
         procs.forEach { $0.terminate() }
+        for p in procs { await p.awaitExit() }
         procs = []
-        try await super.tearDown()
     }
 
     // MARK: Helpers
@@ -71,7 +74,7 @@ class IntegrationTestCase: EngineTestCase {
         _ = try await backend.cliLogin(name, email: email)
         let offer = try spawn(name, ["pair", "offer", "--yes"])
         let offerEvent = try await offer.waitEvent("offer")
-        let code = try XCTUnwrap(offerEvent["code"] as? String)
+        let code = try XCTUnwrap(offerEvent.string("code"))
         let pairing = try XCTUnwrap(bridge.pairingModel)
         await pairing.join(code)
         let peer = try await sasPeer(pairing)

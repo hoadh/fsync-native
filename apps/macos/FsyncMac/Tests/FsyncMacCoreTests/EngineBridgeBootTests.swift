@@ -39,6 +39,24 @@ final class EngineBridgeBootTests: EngineTestCase {
         await bridge.shutdown()
     }
 
+    /// A second instance on the same data dir gets the typed `EngineAlreadyRunning`, shown as plain text, no reset offered.
+    func testSecondInstanceOnTheSameDataDirFailsWithTypedError() async throws {
+        let store = makeStore(), secrets = AppSecrets(store: store), dir = try tempDir()
+        let first = try makeEngine(dir, secrets: secrets)
+        try first.start()
+        addTeardownBlock { try? first.stop() }
+        XCTAssertThrowsError(try makeEngine(dir, secrets: secrets).start()) { error in
+            guard case FsyncError.EngineAlreadyRunning = error else { return XCTFail("error \(error)") }
+        }
+        let bridge = makeBridge(store, dir: dir)
+        bridge.boot()
+        await eventually("bootFailed") { if case .bootFailed = bridge.phase { return true } else { return false } }
+        guard case .bootFailed(let text, let canReset) = bridge.phase else { return XCTFail("phase \(bridge.phase)") }
+        XCTAssertEqual(text, "fsync is already running on this Mac.")
+        XCTAssertFalse(canReset)
+        await bridge.shutdown()
+    }
+
     func testWrongHistoryKeyFailsBootWithReset() async throws {
         let store = makeStore(), secrets = AppSecrets(store: store), dir = try tempDir()
         do { _ = try makeEngine(dir, secrets: secrets) }  // creates history.db with the stored key

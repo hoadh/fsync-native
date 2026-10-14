@@ -42,7 +42,7 @@ public struct HistoryView: View {
                     }
                 }
             }
-            Text("Copy again is offered for text clips stored in full; longer clips, images and files can't be restored yet.").font(.caption).foregroundStyle(.secondary)
+            Text("Copy again restores the full text or image of a clip; file clips can't be restored.").font(.caption).foregroundStyle(.secondary)
         }
         .padding(16)
         .frame(minWidth: 460, minHeight: 360)
@@ -62,7 +62,7 @@ public struct HistoryView: View {
     }
 
     private func copy(_ item: HistoryItem) -> (() -> Void)? {
-        guard item.copyBackText != nil, let text = item.copyBackText, let sync else { return nil }
-        return { Task { _ = await sync.copyBack(text: text) } }
+        guard item.canCopyBack, let sync else { return nil }
+        return { Task { _ = await sync.copyBack(itemId: item.id) } }
     }
 }
