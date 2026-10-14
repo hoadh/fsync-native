@@ -93,6 +93,9 @@ ssh <ssh-target> 'cd /opt/fsync && sudo docker compose -p fsync down -v'   # sto
 ```
 Rollback restores the previous images **and** the previous `compose.yml`. Migrations are forward-only (never
 rolled back): keep them backward compatible (expand/contract) so the old release still runs on the new schema.
+`--rollback` refuses (`scripts/rollback-guard.sh`) a target release that does not contain every migration the
+database already applied: sqlx would crash-loop it. `--force-rollback` skips the check. A second `--rollback`
+rolls forward again (the two tags swap). Rehearsal evidence: [operations.md](operations.md).
 
 ## OTP email (Gmail SMTP)
 The backend sends sign-in codes with `EMAIL_SENDER=smtp` (STARTTLS on `smtp.gmail.com:587`, certificate
@@ -182,7 +185,8 @@ docker compose ps; docker compose logs -f --tail 100 backend relay
 ./scripts/restore-postgres.sh backups/<file>.dump   # user/db from the stack .env; stop backend first
 # deploy.sh --install-backup-cron schedules the daily backup; the script refuses below 1 GiB free
 ```
-Backups share the disk: also enable Lightsail automatic snapshots and copy dumps off-box. Rotating
+Off-box copies, health probe and rollback rehearsal: [operations.md](operations.md). Backups share the
+disk: also enable Lightsail automatic snapshots. Rotating
 `JWT_SIGNING_KEY` signs everyone out (edit `.env`, `docker compose up -d backend`).
 
 ### Enabling QUIC address discovery
