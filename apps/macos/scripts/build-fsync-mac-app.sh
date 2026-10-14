@@ -2,6 +2,7 @@
 # Builds FsyncMac.app (release, hardened runtime; ad-hoc signed unless --sign is given).
 #
 #   build-fsync-mac-app.sh [--api URL] [--relay URL] [--bundle-id ID] [--out DIR] [--version X.Y.Z]
+#   --relay takes one URL or a comma-separated list (e.g. US and Singapore relays).
 #                          [--sign IDENTITY --profile FILE [--notary-profile NAME]]
 #
 # Defaults: api http://127.0.0.1:8080, no relay, app.fsync.mac, apps/macos/build/, 0.1.0, ad-hoc.

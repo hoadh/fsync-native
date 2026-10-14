@@ -19,6 +19,13 @@ final class AppConfigTests: XCTestCase {
         XCTAssertEqual(AppConfig.resolve(env: [:], info: nil, deviceName: "M").apiBase, AppConfig.defaultApiBase)
     }
 
+    func testRelayUrlListSplitsOnCommas() {
+        func urls(_ raw: String?) -> [String] { AppConfig(apiBase: "https://a", relayUrl: raw, deviceName: "M").relayUrls }
+        XCTAssertEqual(urls(nil), [])
+        XCTAssertEqual(urls("https://r1"), ["https://r1"])
+        XCTAssertEqual(urls(" https://r1 , https://r2,, "), ["https://r1", "https://r2"])
+    }
+
     func testInsecureHttpOnlyForLocalhost() {
         func allow(_ url: String) -> Bool { AppConfig(apiBase: url, relayUrl: nil, deviceName: "M").allowInsecureHttp }
         XCTAssertTrue(allow("http://127.0.0.1:8080"))

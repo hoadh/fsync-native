@@ -58,11 +58,12 @@ extension EngineBridge {
         let result = await Task.detached { () -> Result<FsyncEngine, Error> in
             Result {
                 let cfg = EngineConfig(
-                    dataDir: dataDir.path, apiBase: config.apiBase, relayUrl: config.relayUrl,
+                    dataDir: dataDir.path, apiBase: config.apiBase, relayUrl: nil,
                     deviceName: config.deviceName, platform: .mac,
                     deviceSecret: try secrets.loadOrCreateKey(AppSecrets.deviceSecretAccount),
                     historyKey: try secrets.loadOrCreateKey(AppSecrets.historyKeyAccount),
-                    forceRelay: false, allowInsecureHttp: config.allowInsecureHttp)
+                    forceRelay: false, allowInsecureHttp: config.allowInsecureHttp,
+                    relayUrls: config.relayUrls)
                 return try FsyncEngine(cfg: cfg, delegate: EngineDelegateAdapter(secrets: secrets, gate: gate, forward: forward))
             }
         }.value

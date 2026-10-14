@@ -6,8 +6,14 @@ public struct AppConfig: Sendable, Equatable {
     public static let defaultApiBase = "http://127.0.0.1:8080"
 
     public var apiBase: String
+    /// One relay URL, or several separated by commas (e.g. a US and a Singapore relay).
     public var relayUrl: String?
     public var deviceName: String
+
+    /// `relayUrl` split on commas; the engine picks the home relay by latency.
+    public var relayUrls: [String] {
+        (relayUrl ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
 
     public init(apiBase: String, relayUrl: String?, deviceName: String) {
         self.apiBase = apiBase
