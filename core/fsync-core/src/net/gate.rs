@@ -54,12 +54,12 @@ impl Gate {
         self.trust.is_trusted(remote) || (alpn == ALPN_PAIR && self.windows.is_open())
     }
 
-    /// Track a trusted inbound connection: path state + closable on device removal.
+    /// Track a trusted connection (inbound, or a one-off dial): path state + closable on device removal.
     pub fn track(self: &Arc<Self>, conn: &Connection) {
         self.track_dir(conn, false);
     }
 
-    /// Track a connection we dialed (the only kind `close_stale` may close).
+    /// Track a connection the shared `Dialer` opened (the only kind `close_stale` may close).
     pub fn track_outbound(self: &Arc<Self>, conn: &Connection) {
         self.track_dir(conn, true);
     }

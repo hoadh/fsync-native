@@ -96,7 +96,7 @@ impl Node {
             return Err(CoreError::NotTrusted(peer.to_string()));
         }
         let conn = self.dial(peer, alpn).await?;
-        self.gate.track_outbound(&conn);
+        self.gate.track(&conn);
         Ok(conn)
     }
 
