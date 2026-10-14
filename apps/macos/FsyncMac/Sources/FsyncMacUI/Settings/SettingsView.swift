@@ -1,7 +1,7 @@
 import FsyncMacCore
 import SwiftUI
 
-/// Settings scene: General (launch at login) and Account (sign out, node id).
+/// Settings scene: General (launch at login), Sync, Privacy and Storage (when signed in), Account (sign out, node id).
 public struct SettingsView: View {
     @ObservedObject private var bridge: EngineBridge
     @StateObject private var launch = LaunchAtLogin()
@@ -12,10 +12,15 @@ public struct SettingsView: View {
         TabView {
             GeneralSettingsView(launch: launch)
                 .tabItem { Label("General", systemImage: "gearshape") }
+            if let clip = bridge.clipSettings, bridge.phase == .ready {
+                SyncSettingsView(settings: clip).tabItem { Label("Sync", systemImage: "arrow.triangle.2.circlepath") }
+                PrivacySettingsView(settings: clip).tabItem { Label("Privacy", systemImage: "hand.raised") }
+                StorageSettingsView(settings: clip).tabItem { Label("Storage", systemImage: "internaldrive") }
+            }
             AccountSettingsView(bridge: bridge)
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
         }
-        .frame(width: 420, height: 230)
+        .frame(width: 420, height: 300)
     }
 }
 

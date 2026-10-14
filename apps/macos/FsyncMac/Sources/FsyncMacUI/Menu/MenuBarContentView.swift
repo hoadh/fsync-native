@@ -6,7 +6,11 @@ import TrustResetPrompt
 struct MenuBarContentView: View {
     @ObservedObject var devices: DevicesModel
     @ObservedObject var trust: TrustResetPromptModel
+    let sync: ClipboardSync?
+    var files: FilesSync?
+    var transfers: TransfersModel?
     let banner: String?
+    let openHistory: () -> Void
     let openMain: () -> Void
     let openSettings: () -> Void
     let addDevice: () -> Void
@@ -20,7 +24,16 @@ struct MenuBarContentView: View {
                 Button("Review device list change…", action: openMain).foregroundStyle(.orange)
             }
             Divider()
-            DeviceListView(devices: devices.devices, onRemove: nil)
+            if let sync {
+                ClipboardMenuSection(sync: sync, openHistory: openHistory)
+                Divider()
+            }
+            if let files, let transfers {
+                FilesMenuSection(files: files, transfers: transfers)
+            }
+            DeviceListView(devices: devices.devices, onRemove: nil, onSend: files.map { files in
+                { device, urls in Task { await files.send(urls, to: device.nodeId) } }
+            })
             Divider()
             Button("Add device…", action: addDevice)
             Button("Open fsync", action: openMain)

@@ -86,12 +86,24 @@ final class OnboardingRenderTests: XCTestCase {
     func testDevicesAndMenuRender() throws {
         let engine = try makeEngine()
         let devices = devices(engine)
+        let sync = ClipboardSync(engine: engine, settings: try engine.settings())
         try render(DeviceListView(devices: devices.devices, onRemove: { _ in }), "device list")
         try render(StatusHeaderView(summary: devices.summary).padding(20), "status header")
         let menu = MenuBarContentView(
-            devices: devices, trust: TrustResetPromptModel(engine: engine), banner: "Paired with Phone.",
-            openMain: {}, openSettings: {}, addDevice: {}, signOut: {})
+            devices: devices, trust: TrustResetPromptModel(engine: engine), sync: sync, banner: "Paired with Phone.",
+            openHistory: {}, openMain: {}, openSettings: {}, addDevice: {}, signOut: {})
         try render(menu, "menu")
+        let transfers = TransfersModel()
+        let files = FilesSync(engine: engine, fetcher: FileFetchService(engine: engine, transfers: transfers)) { false }
+        files.start()
+        let offer = ClipItem(itemId: "0a", from: "n", fromName: "Phone", kind: .files, tsMs: 1, preview: nil, reps: [],
+                             files: [FileInfo(fileId: 0, name: "report.pdf", relPath: "report.pdf", size: 5)], totalSize: 5, push: true)
+        let received = expectation(description: "offer listed")
+        Task { await files.receive(offer: offer); received.fulfill() }
+        wait(for: [received], timeout: 5)
+        XCTAssertEqual(files.offers.count, 1)
+        try render(FilesMenuSection(files: files, transfers: transfers).padding(20), "files section")
+        try render(DeviceRowView(device: try XCTUnwrap(devices.devices.first), onRemove: nil, onSend: { _ in }).padding(20), "device row send")
         let pairing = PairingModel(engine: engine, onPaired: { _ in }, onSignInRequired: {})
         try render(ReadyView(devices: devices, pairing: pairing, banner: nil, signOut: {}), "ready home")
     }
@@ -101,6 +113,12 @@ final class OnboardingRenderTests: XCTestCase {
             config: AppConfig(apiBase: "http://127.0.0.1:9", relayUrl: nil, deviceName: "t"),
             secrets: AppSecrets(), dataDir: FileManager.default.temporaryDirectory)
         try render(GeneralSettingsView(launch: LaunchAtLogin()).frame(width: 420, height: 160), "settings general")
+        let engine = try makeEngine()
+        let clip = ClipSettingsModel(engine: engine)
+        try render(SyncSettingsView(settings: clip).frame(width: 420, height: 220), "settings sync")
+        try render(PrivacySettingsView(settings: clip).frame(width: 420, height: 280), "settings privacy")
+        try render(StorageSettingsView(settings: clip).frame(width: 420, height: 160), "settings storage")
+        try render(HistoryView(history: HistoryModel(engine: engine), sync: nil), "history empty")
         try render(AccountSettingsView(bridge: bridge).frame(width: 420, height: 160), "settings account")
     }
 }

@@ -26,7 +26,7 @@ public enum ErrorText {
         case .Cancelled: return nil
         case .Io: return generic("io", e)
         case .Integrity: return generic("integrity", e)
-        case .TooLarge: return generic("too-large", e)
+        case .TooLarge: return "Too large to sync. Raise the limit in Settings or copy less."
         case .NotPaired: return generic("not-paired", e)
         case .Internal: return generic("internal", e)
         }

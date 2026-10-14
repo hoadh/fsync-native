@@ -7,6 +7,10 @@ struct DeviceRowView: View {
     let device: Device
     /// nil hides the remove action (the popover is read-only; this Mac can't be removed).
     let onRemove: (() -> Void)?
+    /// Files chosen with "Send files…" or dropped on the row; nil hides both.
+    var onSend: (([URL]) -> Void)?
+
+    @State private var dropTargeted = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -18,11 +22,22 @@ struct DeviceRowView: View {
             Spacer(minLength: 4)
             Circle().fill(color).frame(width: 8, height: 8).accessibilityHidden(true)
             Text(label).font(.caption).foregroundStyle(.secondary)
+            if let onSend, !device.isSelf, device.online {
+                Button("Send files…") { if let urls = FilePicker.chooseFiles() { onSend(urls) } }
+                    .buttonStyle(.borderless).font(.caption)
+            }
             if let onRemove, !device.isSelf {
                 Button("Remove", role: .destructive, action: onRemove).buttonStyle(.borderless).font(.caption)
             }
         }
         .accessibilityElement(children: .combine)
+        .padding(2)
+        .background(dropTargeted ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 6))
+        .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
+            guard let onSend, !device.isSelf, device.online else { return false }
+            FilePicker.fileURLs(from: providers, completion: onSend)
+            return true
+        }
     }
 
     private var icon: String {

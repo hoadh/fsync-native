@@ -5,7 +5,7 @@
 - Gates: [phase-12](phase-12-macos-clipboard-files-history.md)
 
 ## Overview
-- Priority: P0 | Status: pending | Effort: 1.5-2 wk (C)
+- Priority: P0 | Status: done for the automated part (2026-10-14, macOS 26.6.2 arm64); manual matrix open | Effort: 1.5-2 wk (C)
 - Answer 3 questions: (1) does reading pasteboard trigger privacy alerts on current macOS & how to get persistent allowance; (2) can we put a lazy remote-file entry on the general pasteboard that Finder + top apps resolve on paste; (3) best polling strategy.
 
 ## Key Insights
@@ -51,11 +51,17 @@ Hybrid allowed: lazy for Finder-compatible path, eager for small (< 20 MiB) file
 5. ADR 009: lazy / hybrid / eager decision + size thresholds.
 
 ## Todo List
-- [ ] Watcher + sensitive filter
-- [ ] Privacy alert test (2 macOS versions)
-- [ ] Lazy promise test matrix
-- [ ] Polling CPU measurement
-- [ ] ADR 009
+- [x] Watcher + sensitive filter (`spikes/macos-clipboard`, self-test)
+- [ ] Privacy alert test (2 macOS versions): `accessBehavior` API read and documented behavior recorded; alert itself needs a GUI session and macOS 15.x (open, human)
+- [~] Lazy promise test matrix: cross-process reader checks done (lazy file-url provider works, NSFilePromiseProvider does not); Finder / Mail / Messages / Slack / VS Code / Chrome open (human, `--offer`)
+- [x] Polling CPU measurement (0.05% at 300 ms, 0.02% adaptive; measured with getrusage, not Instruments)
+- [x] ADR 009 (`docs/adr/009-macos-lazy-paste.md`)
+- [ ] Real password managers (1Password, Keychain, Safari autofill) captured as concealed (open, human)
+
+## Deviations
+- Spike is a SwiftPM library + console self-test (reads cross a real process boundary via a child process), not a SwiftUI menubar app; `--offer` is the manual paste harness.
+- `NSFilePromiseProvider` verdict is no-go (not served outside a drag); the lazy mechanism is an `NSPasteboardItemDataProvider` on `public.file-url`.
+- CPU measured with getrusage (user+system / wall), not Instruments.
 
 ## Success Criteria
 - ADR 009 with per-app matrix results and chosen strategy; zero concealed items captured in test log.
