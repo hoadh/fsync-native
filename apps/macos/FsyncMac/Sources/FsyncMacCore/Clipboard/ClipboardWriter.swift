@@ -97,6 +97,7 @@ public final class ClipboardWriter {
         item.setData(Data(), forType: NSPasteboard.PasteboardType(SensitiveFilter.originType))
         pasteboard.clearContents()
         provider = nil
+        // NSPasteboard cannot write without clearing first, so a refused write leaves it empty (as in `apply`).
         guard pasteboard.writeObjects([item]) else { return .failure(.fetchFailed) }
         lastWriteCount = pasteboard.changeCount
         return .success(())

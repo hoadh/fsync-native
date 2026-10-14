@@ -63,11 +63,16 @@ final class ClipboardIntegrationTests: IntegrationTestCase {
         } while Date() < deadline
         XCTAssertEqual(history.items.first?.outgoing, true, "clip not in history")
         let item = try XCTUnwrap(history.items.first)
-        XCTAssertLessThan(item.preview?.count ?? .max, long.count, "preview must be truncated for this test to mean anything")
+        let preview = try XCTUnwrap(item.preview)
+        XCTAssertLessThan(preview.count, long.count, "preview must be truncated for this test to mean anything")
         r.pb.clearContents()
         let copied = await r.sync.copyBack(itemId: item.id)
         XCTAssertTrue(copied)
         XCTAssertEqual(r.pb.string(forType: .string), long)
+        // Our own write carries the origin marker: it must not come back as a new outgoing item.
+        try await Task.sleep(nanoseconds: 2_500_000_000)
+        await history.reload()
+        XCTAssertEqual(history.items.filter(\.outgoing).count, 1, "copy-back was sent again")
     }
 
     func testClipFromCliLandsOnPasteboardWithoutEcho() async throws {

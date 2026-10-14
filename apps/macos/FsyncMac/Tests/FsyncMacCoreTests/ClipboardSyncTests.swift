@@ -37,6 +37,7 @@ final class ClipboardSyncTests: EngineTestCase {
 
     func testCopyBackWritesTheFullContent() async throws {
         let r = try rig()
+        r.sync.message = "old problem"
         let long = String(repeating: "long text ", count: 100)
         let png = Data([0x89, 0x50, 0x4E, 0x47])
         r.sync.historyReps = { _, _ in
@@ -49,7 +50,7 @@ final class ClipboardSyncTests: EngineTestCase {
         XCTAssertEqual(r.pb.string(forType: .html), "<b>x</b>")
         XCTAssertEqual(r.pb.data(forType: .png), png)
         XCTAssertTrue(r.sync.writer.isCurrent, "the write is ours, so the watcher will not send it back")
-        XCTAssertNil(r.sync.message)
+        XCTAssertNil(r.sync.message, "success clears an older message")
     }
 
     func testCopyBackWithNothingUsableOrAnEngineErrorKeepsThePasteboard() async throws {

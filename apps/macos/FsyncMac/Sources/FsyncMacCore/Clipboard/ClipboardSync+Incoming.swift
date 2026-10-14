@@ -43,7 +43,7 @@ extension ClipboardSync {
     }
 
     /// History copy-back: reads the item's full content from the engine (off the main actor) and puts it back
-    /// on the pasteboard. Files-only items have no content to restore. Failures set `message`.
+    /// on the pasteboard. The item already passed the max-clip limit when it was stored, so no extra cap here. Files-only items have no content to restore. Failures set `message`.
     @discardableResult
     public func copyBack(itemId: String) async -> Bool {
         let load = historyReps
@@ -52,7 +52,9 @@ extension ClipboardSync {
         await serialized { [weak self] in
             guard let self else { return }
             switch loaded.flatMap({ reps in writer.writeReps(reps).mapError { $0 as Error } }) {
-            case .success: written = true
+            case .success:
+                written = true
+                message = nil
             case .failure(let error):
                 Self.log.info("history copy-back failed: \(String(describing: error), privacy: .private)")
                 message = "Couldn't copy that clip again."
