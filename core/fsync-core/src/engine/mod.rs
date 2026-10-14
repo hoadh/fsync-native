@@ -86,6 +86,15 @@ impl Engine {
     }
 
     pub async fn shutdown(self) {
-        self.node.shutdown().await;
+        self.close().await;
+    }
+
+    /// Gracefully stops the node and background tasks through a shared reference, for an engine
+    /// that a leaked handle keeps alive. Idempotent with `shutdown` and drop.
+    pub async fn close(&self) {
+        if let Some(r) = &self._retention {
+            r.abort();
+        }
+        self.node.close().await;
     }
 }

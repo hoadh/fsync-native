@@ -2,11 +2,13 @@ import FsyncCoreKit
 import Foundation
 
 extension EngineBridge {
+    static let settingsOffMessage = "Clipboard sync is off: your settings couldn't be read."
     private static let inboxCleanupInterval: UInt64 = 24 * 3600 * 1_000_000_000
 
     /// Clipboard sync, files, settings and the history list share the engine; they run only while `.ready`.
     /// Must run after `modelSubscriptions` was reset.
     func installClipboardModels(engine: FsyncEngine) {
+        isQuitting = false
         let settings = ClipSettingsModel(engine: engine) { [weak self] in self?.clipSettings(changed: $0) }
         let transfers = TransfersModel(engine: engine)
         let fetcher = FileFetchService(engine: engine, transfers: transfers)
@@ -23,10 +25,17 @@ extension EngineBridge {
         }.store(in: &modelSubscriptions)
     }
 
+    /// Runs on every successful settings load or edit. The first successful load while `.ready` starts
+    /// clipboard sync, even when an earlier load failed, so a transient read error never leaves it off.
     private func clipSettings(changed new: Settings) {
         let retentionChanged = new.retentionDays != clipSync?.retentionDays || new.retentionBytes != clipSync?.retentionBytes
         clipSync?.apply(settings: new)
-        if retentionChanged, phase == .ready { startInboxCleanup() }
+        guard phase == .ready, !isQuitting else { return }
+        if clipSync?.isRunning == false {
+            startClipboard()
+        } else if retentionChanged {
+            startInboxCleanup()
+        }
     }
 
     private func phaseChanged(for phase: AppPhase) {
@@ -37,24 +46,28 @@ extension EngineBridge {
             inboxCleanup?.cancel()
             return
         }
+        guard !isQuitting else { return }
         filesSync?.start()
-        Task { [weak self] in await self?.startClipboardWhenSettingsAreKnown() }
+        Task { [weak self] in await self?.loadClipSettings() }
     }
 
     /// The stored settings decide the mode, so sync does not start on guesses: when they can't be read the
-    /// clipboard stays off and the error shows in Settings.
-    private func startClipboardWhenSettingsAreKnown() async {
+    /// clipboard stays off and the error shows in Settings. A later successful load starts it
+    /// (see `clipSettings(changed:)`).
+    func loadClipSettings() async {
         guard let settings = clipSettings else { return }
-        guard await settings.load() else {
-            clipSync?.report("Clipboard sync is off: your settings couldn't be read.")
-            return
+        if await !settings.load() {
+            clipSync?.report(Self.settingsOffMessage)
         }
-        guard phase == .ready else { return }
-        clipSync?.apply(settings: settings.settings)
+    }
+
+    private func startClipboard() {
+        guard !isQuitting else { return }
+        if clipSync?.message == Self.settingsOffMessage { clipSync?.dismissMessage() }
         clipSync?.start()
         if hotkey?.register() == false { clipSync?.report("The shortcut \(HotkeyManager.sendClipboardLabel) is used by another app.") }
-        await historyModel?.reload()
         startInboxCleanup()
+        Task { [weak self] in await self?.historyModel?.reload() }
     }
 
     /// Downloaded clip files follow the history retention (days and size); runs now and then daily.
@@ -74,6 +87,9 @@ extension EngineBridge {
 
     /// The app is quitting: do not leave a pasteboard entry that nothing can serve any more.
     public func prepareToQuit() {
+        isQuitting = true
+        inboxCleanup?.cancel()
+        clipSync?.stop()
         clipSync?.prepareToQuit()
         hotkey?.unregister()
     }

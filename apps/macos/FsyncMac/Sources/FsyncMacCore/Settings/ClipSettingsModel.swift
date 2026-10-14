@@ -16,6 +16,8 @@ public final class ClipSettingsModel: ObservableObject {
 
     private let engine: FsyncEngineProtocol
     private let onChange: @MainActor (Settings) -> Void
+    /// Test seam: how `load()` reads the stored settings.
+    var readSettings: @Sendable (FsyncEngineProtocol) throws -> Settings = { try $0.settings() }
 
     /// Starts with the engine's defaults as placeholders; call `load()` to read the stored settings.
     public init(engine: FsyncEngineProtocol, onChange: @escaping @MainActor (Settings) -> Void = { _ in }) {
@@ -28,7 +30,8 @@ public final class ClipSettingsModel: ObservableObject {
     /// Reads the stored settings off the main actor. On failure the error is shown and edits stay refused.
     @discardableResult
     public func load() async -> Bool {
-        let result = await EngineCall.run(engine) { try $0.settings() }
+        let read = readSettings
+        let result = await EngineCall.run(engine) { try read($0) }
         switch result {
         case .success(let stored):
             settings = stored

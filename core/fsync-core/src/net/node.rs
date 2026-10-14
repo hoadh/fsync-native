@@ -151,9 +151,20 @@ impl Node {
     }
 
     pub async fn shutdown(self) {
+        self.close().await;
+    }
+
+    /// Graceful shutdown through a shared reference (for a node whose owner cannot be unwrapped).
+    /// Idempotent: repeated calls, and a later drop, are harmless.
+    pub async fn close(&self) {
         self.enforcer.abort();
         self.feeder.abort();
         let _ = self.router.shutdown().await;
         self.ep.close().await;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn is_closed(&self) -> bool {
+        self.ep.is_closed()
     }
 }

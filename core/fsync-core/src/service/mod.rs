@@ -13,6 +13,7 @@ mod config;
 mod convert;
 mod delegate;
 mod devices;
+mod engine_release;
 mod error;
 mod events;
 mod history_api;
@@ -24,6 +25,8 @@ mod pairing_control;
 mod pairing_events;
 mod presence;
 mod revoke;
+#[cfg(test)]
+mod stop_leak_tests;
 mod transfers;
 mod transfers_inner;
 mod trust_reset;
@@ -105,7 +108,7 @@ impl FsyncService {
 fn teardown(rt: tokio::runtime::Runtime, inner: Arc<Inner>, pump: tokio::task::AbortHandle) {
     // Best effort: close the node cleanly before the runtime goes away.
     let _ = rt.block_on(async {
-        tokio::time::timeout(std::time::Duration::from_secs(3), inner.stop()).await
+        tokio::time::timeout(engine_release::TEARDOWN_STOP_TIMEOUT, inner.stop()).await
     });
     pump.abort();
     rt.shutdown_timeout(std::time::Duration::from_secs(2));
