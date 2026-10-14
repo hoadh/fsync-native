@@ -10,24 +10,35 @@ set -euo pipefail
 umask 077
 base="${1:-$HOME/fsync-backups}" keep="${KEEP_DAYS:-30}" min_keep="${MIN_KEEP:-3}" settle="${SETTLE_MIN:-10}"
 incoming="${INCOMING:-$base/incoming}"
-mkdir -p "$incoming" "$base/store"
+mkdir -p "$incoming" "$base/store" "$base/rejected"
+now="$(date -u +%Y%m%dT%H%M%SZ)"
+future="fsync-$(date -u -d '+1 day' +%Y%m%dT%H%M%SZ).dump.gpg"   # later names are not real backups
 moved=0
+# (bash 4+ is needed for mapfile below: this runs on the Linux backup host.)
+reject() { echo "ingest: rejecting $1 ($2)" >&2; mv "$incoming/$1" "$base/rejected/$1.$now" 2>/dev/null || true; }
 while IFS= read -r f; do
   n="$(basename "$f")"
+  [[ "$n" =~ ^fsync-[0-9]{8}T[0-9]{6}Z\.dump\.gpg$ ]] || { reject "$n" "bad name"; continue; }
+  [[ ! "$n" > "$future" ]] || { reject "$n" "timestamp in the future"; continue; }
   # An OpenPGP message starts with a packet header byte with bit 7 set; reject empty/plain files.
   first="$(head -c1 "$f" 2>/dev/null | od -An -tu1 | tr -d ' ' || true)"
   [ -s "$f" ] && [ "${first:-0}" -ge 128 ] || { echo "ingest: skipping unreadable or invalid $n" >&2; continue; }
-  [ ! -e "$base/store/$n" ] || { echo "ingest: $n already stored, not overwriting" >&2; continue; }
+  [ ! -e "$base/store/$n" ] || { reject "$n" "already stored"; continue; }
   mv "$f" "$base/store/$n"; moved=$((moved + 1))
-done < <(find "$incoming" -maxdepth 1 -type f -name 'fsync-*.dump.gpg' -mmin "+$settle")
+done < <(find "$incoming" -maxdepth 1 -type f -name 'fsync-*' -mmin "+$settle")
 # Uploads that never finished.
 find "$incoming" -maxdepth 1 -type f -name '*.partial' -mtime +1 -delete
-# Retention by name timestamp (UTC), keeping at least MIN_KEEP files whatever the clock says.
+# Retention by name timestamp (UTC), keeping at least MIN_KEEP files, and never pruning while the
+# newest stored backup is itself older than the retention window (the pipeline is dead: keep what we have).
 mapfile -t all < <(find "$base/store" -maxdepth 1 -type f -name 'fsync-*.dump.gpg' -exec basename {} \; | sort)
 cutoff="fsync-$(date -u -d "-$keep days" +%Y%m%dT%H%M%SZ).dump.gpg"
 pruned=0
-for ((i = 0; i < ${#all[@]} - min_keep; i++)); do
-  [[ "${all[$i]}" < "$cutoff" ]] || break
-  rm -f "$base/store/${all[$i]}"; pruned=$((pruned + 1))
-done
+if ((${#all[@]} > 0)) && [[ ! "${all[${#all[@]} - 1]}" < "$cutoff" ]]; then
+  for ((i = 0; i < ${#all[@]} - min_keep; i++)); do
+    [[ "${all[$i]}" < "$cutoff" ]] || break
+    rm -f "$base/store/${all[$i]}"; pruned=$((pruned + 1))
+  done
+elif ((${#all[@]} > 0)); then
+  echo "ingest: newest stored backup is older than $keep days: pruning skipped" >&2
+fi
 echo "ingest: moved $moved, pruned $pruned, stored $((${#all[@]} - pruned))"

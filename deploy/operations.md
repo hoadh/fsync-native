@@ -20,9 +20,14 @@ the script header), ssh key `.backup/id_ed25519`, pinned `.backup/known_hosts`, 
 Backup host (the Singapore VPS): a dedicated user `fsyncbak` (no sudo) whose only authorized key is
 `restrict,command="internal-sftp -d /home/fsyncbak/incoming -u 007"` (`authorized_keys` is root-owned, so it cannot be edited by that
 user). `scripts/backup-ingest.sh` (cron.d, every 10 min, as the normal user, which is in group `fsyncbak`) moves finished uploads to
-`~/fsync-backups/store`, which the upload user cannot enter, and prunes there (30 days, never below 3 files). So a compromised app
+`~/fsync-backups/store`, which the upload user cannot enter, and prunes there (30 days, never below 3 files, never while the newest
+stored backup is itself older than 30 days; names with a future timestamp or an existing name go to `rejected/`). So a compromised app
 host can add files but not delete or replace stored backups. The upload user can still read world-readable files on the backup host.
-`BACKUP_PING_URL` in `offsite.env` (optional, e.g. a healthchecks.io check) is pinged after each successful shipment: without it a failed
+Provisioning on the backup host: `useradd -m fsyncbak`, `usermod -aG fsyncbak <normal user>`, `chmod 750 /home/fsyncbak`,
+`install -d -o fsyncbak -g fsyncbak -m 2770 /home/fsyncbak/incoming`, root-owned `/home/fsyncbak/.ssh/authorized_keys` with the
+restricted line, and `/etc/cron.d/fsync-backup-ingest`:
+`*/10 * * * * <normal user> INCOMING=/home/fsyncbak/incoming /home/<normal user>/fsync-backups/backup-ingest.sh >> /home/<normal user>/fsync-backups/ingest.log 2>&1`.
+`BACKUP_PING_URL` in `offsite.env` (optional, a secret: keep the file 600, e.g. a healthchecks.io check) is pinged after each successful shipment: without it a failed
 night is visible only in `<dir>/backup.log`.
 
 The private key is generated once and kept off both hosts (owner's password manager); losing it makes the off-box copies

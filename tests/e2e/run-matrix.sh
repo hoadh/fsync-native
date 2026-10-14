@@ -42,11 +42,14 @@ run_cell() { # scenario relay -> appends a summary row
   set -m
   E2E_RELAY_URL="$url" "$HERE/$script" >"$log" 2>&1 &
   local pid=$!
-  ( sleep "$limit" & wait $!; kill -TERM -- "-$pid" 2>/dev/null ) >/dev/null 2>&1 &
+  ( sleep "$limit" & sp=$!; trap 'kill $sp 2>/dev/null; exit 0' TERM; wait $sp && kill -TERM -- "-$pid" 2>/dev/null ) >/dev/null 2>&1 &
   local wd=$!
   set +m
+  # Ctrl-C: the cell has its own process group (set -m), so forward the signal to it.
+  trap 'kill -TERM -- "-$pid" 2>/dev/null; kill "$wd" 2>/dev/null' INT TERM
   wait "$pid"; rc=$?
-  pkill -P "$wd" 2>/dev/null; kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
+  trap - INT TERM
+  kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
   local note; note="$(grep -E 'FAIL|latency_s=' "$log" | tail -1 | cut -c1-90)"
   if [[ $rc -eq 0 ]]; then rows+=("$s|$r|PASS|$((SECONDS - t0))s|$note")
   else failed=1; rows+=("$s|$r|FAIL|$((SECONDS - t0))s|rc=$rc ${note}"); fi

@@ -2,7 +2,7 @@
 # Nightly backup entry point (cron): local pg_dump via backup-postgres.sh, then an encrypted copy
 # is pushed to a second host over sftp. Without a config file it only does the local dump.
 #   /opt/fsync/scripts/backup-offsite.sh
-# Config: $OFFSITE_ENV (default $STACK_DIR/.backup/offsite.env), plain KEY=value, no secrets:
+# Config: $OFFSITE_ENV (default $STACK_DIR/.backup/offsite.env), plain KEY=value (keep it mode 600: BACKUP_PING_URL is a capability token):
 #   OFFSITE_TARGET=user@host   OFFSITE_DIR=. (the sftp start dir: the backup host's incoming directory)
 #   OFFSITE_KEY=path to the ssh private key   OFFSITE_KNOWN_HOSTS=path (pinned host key)
 #   GPG_HOME=path to a gpg home holding only the PUBLIC key   GPG_RECIPIENT=key id/uid
@@ -44,4 +44,4 @@ remote="$(printf 'cd "%s"\nls -l "%s"\n' "$dir" "$name" | sftp_do | awk -v n="$n
 [ "$remote" = "$size" ] || { log "FAIL: remote size '${remote:-none}' != local $size for $name"; exit 1; }
 log "shipped $name ($size bytes) to $OFFSITE_TARGET:$dir"
 # Optional dead-man's switch (healthchecks.io style URL): a missed nightly run alerts the owner.
-[ -z "${BACKUP_PING_URL:-}" ] || curl -fsS -m 10 --retry 2 -o /dev/null "$BACKUP_PING_URL" || log "warning: ping failed"
+[ -z "${BACKUP_PING_URL:-}" ] || curl -fsS -m 10 --retry 2 -o /dev/null "$BACKUP_PING_URL" 2>/dev/null || log "warning: dead-man's switch ping failed"
