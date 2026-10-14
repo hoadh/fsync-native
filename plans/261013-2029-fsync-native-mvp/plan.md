@@ -60,6 +60,23 @@ A = Rust core | B = backend+DevOps | C = macOS | D = Windows
 - P1: 11∥13, then 12∥14; A = core hardening (owns `core/**`); B = 15 harness + 16 pipelines.
 - Ownership: A `core/**`, `scripts/**`; B `backend/**`, `deploy/**`, `.github/**`, `tests/e2e/**`; C `apps/macos/**`; D `apps/windows/**`; `spikes/<name>/` per owner; `docs/**` via PR reviewed by lead.
 
+## Execution tracks (2 machines, from 2026-10-14)
+Mac = macOS repo (lead/orchestrator). Windows = `ssh dev@waso`, repo `C:\Users\dev\workspace\fsync-native`, Claude session `c8122a94-d7e4-4edd-b247-a823d18c797d` (resumed headless via SSH). Sync only via GitHub `origin`; never force-push.
+
+| Track | Machine / branch | Work | Owns | Waits on |
+|---|---|---|---|---|
+| A macOS | Mac worktree `macos/phase-04-12` | 04 → 12 | `apps/macos/**`, `spikes/macos-*` | 12 needs 04 verdict |
+| B Windows | Windows `windows/phase-14` | 14 | `apps/windows/**`, `spikes/windows-*` | - (C read-ahead helps) |
+| C Core | Mac worktree `core/hardening` | read-ahead (ADR 010), logout revokes refresh token, `devices_reset` flake, e2e x3 | `core/**`, `scripts/**` | - |
+| D Infra | Mac worktree `infra/phase-10` | 10 on AWS Lightsail VPS | `backend/**`, `deploy/**`, `.github/**`, `tests/e2e/**` | VPS SSH from owner (deploy step) |
+| X Cross-OS | Mac + Windows | Mac ↔ Windows pairing (open item of 11/13) | reports only | - |
+
+Rules:
+- A track edits only its own paths; anything else goes to the owner or a PR the owner reviews.
+- Shared docs (`docs/project-changelog.md`, `docs/codebase-summary.md`, `docs/system-architecture.md`, this `plan.md`) are edited only by the lead when merging a track. Tracks update their own phase file and write `plans/reports/`.
+- Merge to main: lead runs cargo + swift tests (+ `dotnet test` on Windows for core changes); review >= 9.5.
+- 15 starts when 10 provides the harness; full 15 and 16 after 12 + 14.
+
 ## Critical path
 01 → 02 → 06 → 07 → 08 → 11/13 → 12/14 → 15 → 16. Spikes 04/05 gate 12/14 (lazy paste vs eager fallback).
 
