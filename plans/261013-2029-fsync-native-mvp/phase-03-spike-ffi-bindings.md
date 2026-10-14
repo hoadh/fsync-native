@@ -5,7 +5,7 @@
 - Consumers: [phase-08](phase-08-core-history-ffi-cli.md), [11](phase-11-macos-app-shell-pairing.md), [13](phase-13-windows-app-shell-pairing.md)
 
 ## Overview
-- Priority: P0 | Status: pending | Effort: 4-5 days (A + D pairing)
+- Priority: P0 | Status: partial (Swift done; C# x64 + ARM64 DLL done 2026-10-14; ARM64 never executed) | Effort: 4-5 days (A + D pairing)
 - Validate both binding toolchains with the real shape of our API (async, callbacks, byte buffers, errors) and **freeze FFI contract v0** so app teams can build UI before core is done.
 
 ## Key Insights
@@ -65,11 +65,11 @@ Errors: `FsyncError{ NotPaired, PeerOffline, Network(msg), Integrity, TooLarge, 
 5. Publish `docs/ffi-contract.md` v0; ADR 008.
 
 ## Todo List
-- [ ] Pin UniFFI version compatible with bindgen-cs
-- [ ] Swift test app green
-- [ ] C# test app green (or fallback decided)
-- [ ] Build scripts in scripts/
-- [ ] ffi-contract.md v0 + ADR 008
+- [x] Pin UniFFI version compatible with bindgen-cs (0.29.4 <-> bindgen-cs v0.10.0+v0.29.4, verified on Windows)
+- [x] Swift test app green (FsyncCoreKit tests)
+- [x] C# test app green: xUnit contract tests 9/9 on x64, 10k-callback stress + buffer timing in spikes/ffi-bindings (WinUI 3 host for the engine: phase 13). ARM64 DLL builds, not executed (no ARM64 host)
+- [x] Build scripts in scripts/ (build-xcframework.sh, gen-bindings.sh, gen-bindings-cs.ps1, build-windows-dll.ps1)
+- [x] ffi-contract.md + ADR 008 (C# section added)
 
 ## Success Criteria
 - Both test apps call every contract method; ADR 008 decides bindgen-cs vs C ABI.

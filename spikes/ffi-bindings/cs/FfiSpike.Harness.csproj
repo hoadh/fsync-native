@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Phase-03 spike harness: 10k callbacks from a Rust thread + 10 MiB echo timing. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Optimize>true</Optimize>
+    <!-- Generated code warnings are not ours. -->
+    <NoWarn>$(NoWarn);CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8625;CS0168</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../gen/ffi_spike.cs" />
+    <None Include="../target/$(RustTarget)/release/ffi_spike.dll" CopyToOutputDirectory="PreserveNewest" Condition="'$(RustTarget)' != ''" />
+    <None Include="../target/release/ffi_spike.dll" CopyToOutputDirectory="PreserveNewest" Condition="'$(RustTarget)' == ''" />
+  </ItemGroup>
+</Project>

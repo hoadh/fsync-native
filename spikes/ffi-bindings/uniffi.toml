@@ -1,0 +1,4 @@
+[bindings.csharp]
+namespace = "FfiSpike"
+access_modifier = "public"
+global_methods_class_name = "Spike"

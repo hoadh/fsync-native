@@ -1,0 +1,16 @@
+[package]
+name = "ffi-bindings-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Standalone: not part of the root workspace. Measures what fsync-ffi must not ship
+# (10k-callback stress from a non-foreign thread, 10 MiB echo) with the same UniFFI pin.
+[workspace]
+
+[lib]
+name = "ffi_spike"
+crate-type = ["cdylib"]
+
+[dependencies]
+uniffi = "=0.29.4"

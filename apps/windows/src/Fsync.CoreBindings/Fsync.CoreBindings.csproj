@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    C# bindings for fsync-ffi (contract v2). Generated/fsync_ffi.cs comes from
+    scripts/gen-bindings-cs.ps1; runtimes/<rid>/native/fsync_ffi.dll from
+    scripts/build-windows-dll.ps1 (or CI artifacts). Do not edit the generated file.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Fsync.Core</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!-- Generated code: not held to our nullability/warning rules. -->
+  <ItemGroup>
+    <Compile Update="Generated/fsync_ffi.cs">
+      <Nullable>disable</Nullable>
+    </Compile>
+  </ItemGroup>
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8625;CS8632;CS0168;CS0219;CS1998</NoWarn>
+  </PropertyGroup>
+
+  <!-- Native DLL per RID; consumers get it copied next to their output. -->
+  <ItemGroup>
+    <None Include="runtimes/win-x64/native/fsync_ffi.dll" Condition="Exists('runtimes/win-x64/native/fsync_ffi.dll')">
+      <Link>runtimes/win-x64/native/fsync_ffi.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Pack>true</Pack>
+      <PackagePath>runtimes/win-x64/native</PackagePath>
+    </None>
+    <None Include="runtimes/win-arm64/native/fsync_ffi.dll" Condition="Exists('runtimes/win-arm64/native/fsync_ffi.dll')">
+      <Link>runtimes/win-arm64/native/fsync_ffi.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Pack>true</Pack>
+      <PackagePath>runtimes/win-arm64/native</PackagePath>
+    </None>
+  </ItemGroup>
+</Project>

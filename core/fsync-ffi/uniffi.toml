@@ -1,0 +1,5 @@
+# C# (uniffi-bindgen-cs) settings; Swift uses the defaults.
+[bindings.csharp]
+namespace = "Fsync.Core"
+access_modifier = "public"
+global_methods_class_name = "FsyncFfi"
