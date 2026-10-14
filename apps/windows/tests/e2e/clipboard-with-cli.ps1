@@ -41,7 +41,14 @@ try {
     Start-Sleep 2
     $text = "win-to-cli-$tag"; $t0 = Get-Date
     Set-ClipRetry @{ Value = $text }
-    Wait-Until -Seconds 60 -What 'text at devA' { Get-CliEvents $watch.Out 'clip' | Where-Object { $_.text -eq $text } } | Out-Null
+    # Over RDP, rdpclip may re-post the clipboard with CanIncludeInClipboardHistory=0 right after our
+    # write (fsync then correctly skips it): copy again if nothing arrived yet.
+    $sets = 0
+    Wait-Until -Seconds 60 -What 'text at devA' {
+        $got = Get-CliEvents $watch.Out 'clip' | Where-Object { $_.text -eq $text }
+        if (-not $got -and ++$sets % 40 -eq 0) { Set-ClipRetry @{ Value = $text } }
+        $got
+    } | Out-Null
     Add-Pass $c ("text copied on Windows reached devA in {0:N1} s" -f ((Get-Date) - $t0).TotalSeconds)
     Set-ClipRetry @{ Value = "<b>bold-$tag</b>"; AsHtml = $true }
     Wait-Until -Seconds 60 -What 'html at devA' { Get-CliEvents $watch.Out 'clip' | Where-Object { $_.kind -eq 'rich' } } | Out-Null
