@@ -73,7 +73,8 @@ core/fsync-cli/src/{main.rs, cmd_login.rs, cmd_pair.rs, cmd_clip.rs, cmd_send.rs
 - Key storage: CLI uses a 0600 file. Keychain/DPAPI wiring is in phases 11/13.
 - FFI: added `NotFound`, `HistoryKeyMismatch`, `pairing_cancel`. Removed test-only `diag_echo`.
 - Open gate: Swift 10 MiB roundtrip was 37.8 ms in debug vs 20 ms target. Measured only in debug. Not re-measured in release, and the roundtrip test was replaced by a typed-error test, so the gate is not exercised in the suite.
-- Deferred: M5 TrustReset confirm API. Trust lives in the history DB, so key loss also drops pinned trust. `logout` clears pinned trust.
+- Done 2026-10-14: M5 TrustReset confirm API exposed in the FFI (`reset_account_trust`, `confirm_trust_reset`, `decline_trust_reset`, `pending_trust_resets`; contract v2) and CLI (`account reset-trust`, `trust resets|confirm|decline`). Trust lives in the history DB, so key loss also drops pinned trust. `logout` clears pinned trust.
+- Not done under this todo set: macOS app prompt UI for the reset event (phase 11/12).
 - Not done: CI does not publish bindings or xcframework artifacts (no such job in `ci.yml`). P0 exit demo ran on one Mac only (loopback, 256 MiB, not 1 GiB). The mac-to-Windows run is not done.
 - Not verified: x86_64 xcframework slice is linked but never executed.
 

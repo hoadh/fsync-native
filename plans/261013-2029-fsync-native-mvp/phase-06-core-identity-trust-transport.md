@@ -82,7 +82,7 @@ Data flow: backend presence/WS → discovery addrs → iroh dial → accept gate
 - Hardening from reviews 06/07 and 08b: consent before pin (C1), pairing window guard, `pairing_cancel`, re-pair after reset via `listed_head` (round 7, `pair/initiator_steps.rs`). Round-6 review found no SAS/MAC bypass.
 - Deviation: SignedList carries head only, not full chain. Root stays `UNKNOWN_ROOT` until a chain through the head is seen. Replay of an old genesis then prompts a reset.
 - Open: backend keeps last 100 rows per epoch, so a fresh device cannot always get a chain from genesis. Checkpoint mechanism not built.
-- Deferred: TrustReset confirm API (M5) is not in service or FFI.
+- Done 2026-10-14: TrustReset confirm API (M5) in trust manager, service, FFI and CLI (ADR 012). Pending/declined state is in memory only. No new todo ticked: the phase todos above are unchanged.
 - Not measured: "100% branch" coverage (tests exist, branch coverage not run); two-machine code and QR pairing.
 - SAS is 3 CVCV words (36 bits). Hole-punched direct paths report as `Lan`.
 

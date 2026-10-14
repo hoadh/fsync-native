@@ -87,6 +87,7 @@ Data flow: client → axum → auth middleware → repo (sqlx) → Postgres; dev
 - Open: email is `LogSender` only. No real provider chosen (plan Q3).
 - Flake: `devices_reset` hit `PortNotExposed` once in the final run. Root cause not found. Fix in `backend/tests/common/pg.rs` retry, not yet selective (review L3).
 - Not done: 10k idle WS load test (<1 GiB RAM target).
+- Trust reset endpoints (`PUT /v1/device-list` reset path, 401 `reauth_required` with 5-min fresh auth, 3/day cap) are covered by the M5 real-backend tests (2026-10-14). Email notice on reset not built.
 
 ## Success Criteria
 - Integration tests pass: auth flow, 409 on seq conflict, 422 on forged/rollback list, code single-use + expiry, WS rejects non-listed node; load test 10k WS idle sockets < 1 GiB RAM.

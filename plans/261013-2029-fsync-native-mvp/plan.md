@@ -22,8 +22,9 @@ A = Rust core | B = backend+DevOps | C = macOS | D = Windows
 ## Progress (sync 2026-10-14, P0 Rust track on macOS)
 - Complete: 0/16. Partial: 01, 02, 03, 06, 07, 08, 09. Scoped todos ticked: 28/37.
 - Partial = code done for Mac-verifiable criteria. Open: two-machine measurements, Windows/C#, signing, procurement, team sign-off.
-- **Blocker:** P0 exit gate not proven on the final tree. Last full run was interim (relay e2e red). Round-7 gates were fmt, clippy and fsync-core only. Full gate run needed (see report).
-- Scope changes: own file/1 instead of iroh-blobs (ADR 007 addendum). History wrong-key no longer auto-resets (explicit `reset_history`). Re-pair after reset via `listed_head` (round 7). mdns-sd fallback and M5 TrustReset API deferred.
+- Gate on final tree (2026-10-14 11:48): fmt, clippy `-D warnings`, workspace tests 253 pass / 0 fail, Swift 8/8, xcframework, e2e PASS. Earlier `devices_reset` PortNotExposed flake did not recur; root cause still open.
+- **Open (P0 exit):** e2e recorded once on final tree, target 3 runs (relay-only stability). Mac-to-Windows run not done.
+- Scope changes: own file/1 instead of iroh-blobs (ADR 007 addendum). History wrong-key no longer auto-resets (explicit `reset_history`). Re-pair after reset via `listed_head` (round 7). M5 TrustReset confirm API done (core, FFI, CLI; ADR 012). Not built: macOS app prompt UI (phase 11/12), email notice on reset. mdns-sd fallback deferred.
 - Out of scope this sync (04, 05, 10-16): status unchanged, not synced.
 
 ## Phases
