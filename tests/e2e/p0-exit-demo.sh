@@ -5,7 +5,8 @@
 #   -> 256 MiB file A -> B (hash verified), once direct/LAN and once with --force-relay.
 #
 # Asserts: clip latency < CLIP_MAX_S (default 5) and path (via) Lan in the direct round, Relay when forced.
-# Needs: docker, cargo (rustup), python3. Honors CARGO_TARGET_DIR, MIB (default 256), KEEP=1.
+# Needs: docker, cargo (rustup), python3. Honors CARGO_TARGET_DIR, MIB (default 256), KEEP=1,
+# E2E_RELAY_URL (use a deployed relay instead of the local one).
 # Everything it starts is stopped on exit.
 set -euo pipefail
 
@@ -95,11 +96,16 @@ PIDS+=($!)
 for _ in $(seq 1 100); do curl -fs "$API/health" >/dev/null 2>&1 && break; sleep 0.2; done
 curl -fs "$API/health" >/dev/null || fail "backend not healthy"
 
-log "relay"
-"$SPIKE" relay "$(free_port)" >"$WORK/relay.log" 2>&1 &
-PIDS+=($!)
-wait_for '^RELAY http' "$WORK/relay.log" 20
-RELAY="$(sed -n 's/^RELAY //p' "$WORK/relay.log" | head -1)"
+if [[ -n "${E2E_RELAY_URL:-}" ]]; then
+  # Exercise a deployed relay (e.g. https://relay-sg-fsync.10z.one) instead of the local spike.
+  RELAY="$E2E_RELAY_URL"
+else
+  log "relay"
+  "$SPIKE" relay "$(free_port)" >"$WORK/relay.log" 2>&1 &
+  PIDS+=($!)
+  wait_for '^RELAY http' "$WORK/relay.log" 20
+  RELAY="$(sed -n 's/^RELAY //p' "$WORK/relay.log" | head -1)"
+fi
 log "api=$API relay=$RELAY"
 
 # cli NAME [--force-relay] ARGS... (global flags first, then the subcommand)
