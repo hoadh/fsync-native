@@ -50,6 +50,8 @@ internal sealed class FakeEngine : IFsyncEngine
     public void Delete(string itemId) => throw new NotImplementedException();
     public ulong FetchFileTo(string itemId, uint fileId, string destDir) => Log($"FetchFileTo {fileId}", () => OnFetchFileTo(itemId, fileId, destDir));
     public byte[] FetchRep(string itemId, uint idx) => throw new NotImplementedException();
+    public Func<string, Rep[]> OnHistoryItemReps = _ => throw new FsyncException.NotFound();
+    public Rep[] HistoryItemReps(string itemId) => Log($"HistoryItemReps {itemId}", () => OnHistoryItemReps(itemId));
     public HistoryPage History(string? query, string? cursor, uint limit) => throw new NotImplementedException();
     public TrustResetInfo[] PendingTrustResets() => [];
     public void Pin(string itemId, bool pinned) => throw new NotImplementedException();

@@ -102,7 +102,7 @@ public sealed partial class EngineBridge : ObservableObject, IDisposable
             _secrets.ClearSession();
             Phase = AccountPhase.SignedOut;
         }
-        catch (FsyncException.Invalid e) when (IsDataDirLocked(e))
+        catch (FsyncException.EngineAlreadyRunning)
         {
             // Not transient: no retry loop, one clear message.
             AlreadyRunning = true;

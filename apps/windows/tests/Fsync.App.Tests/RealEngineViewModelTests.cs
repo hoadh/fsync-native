@@ -92,8 +92,10 @@ public sealed class RealEngineViewModelTests
     public async Task UnknownItemsCannotBeCopiedBackOrPinned()
     {
         using var r = await RealEngine.StartAsync();
-        Assert.False(r.Clipboard.CanCopyBack(Guid.NewGuid().ToString()));
-        Assert.False(await r.Clipboard.CopyBackAsync(Guid.NewGuid().ToString()));
+        var unknown = new HistoryItem(Guid.NewGuid().ToString(), false, null, ClipKind.Text, 1, 1, "x", false);
+        Assert.True(r.Clipboard.CanCopyBack(unknown)); // offered: core decides
+        Assert.False(await r.Clipboard.CopyBackAsync(unknown)); // core: NotFound
+        Assert.False(r.Clipboard.CanCopyBack(unknown with { kind = ClipKind.Files })); // no offer to stream from
         var vm = new HistoryViewModel(r.Bridge, r.Clipboard);
         var ghost = new HistoryRow(new HistoryItem(Guid.NewGuid().ToString(), true, null, ClipKind.Text, 1, 1, "x", false), "", false);
         await vm.TogglePinAsync(ghost);
