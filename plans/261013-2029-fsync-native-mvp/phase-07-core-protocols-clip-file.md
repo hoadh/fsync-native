@@ -72,6 +72,7 @@ Data flow: app publish_clip → limits+hash → outbox → ClipOffer to each Lan
 - Deviation: own file/1 instead of iroh-blobs (ADR 007 addendum). Added `push` and `sensitive` flags to `ClipOffer`. Sensitive items are not stored by the receiver.
 - Concerns: sender keeps CV list in memory (~0.2% of size). Resume is prefix-only. Spilled blobs are cleaned only on next publish sweep. No progress events.
 - Benchmarks (`docs/protocol-spec.md`, loopback): 1 GiB fetch 123 MiB/s, 200 MiB fetch+export 104 MiB/s, inline clip 58 us median.
+- Read-ahead (core hardening, 2026-10-14, ADR 010): after two sequential reads `read_file_range` keeps 4 windows (16 MiB) in flight and drops windows behind the reader; random reads stay single-window. Test `file_read_ahead.rs` (sender-side `serve_delay` test hook = one RTT per request; shell pattern: 256 KiB reads, one at a time, 200 MiB, loopback, release): before 0 ms 105.8 / 50 ms 45.8 / 100 ms 27.9 MiB/s; after 109.6 / 104.5 / 66.6 MiB/s (loopback hash/copy bound at ~105-110).
 - Not done: proptest/fuzz roundtrip from step 1 (wire roundtrip tests only).
 - Not measured: LAN throughput vs 80% of link, LAN clip <300 ms, relay <1.5 s, on two machines.
 

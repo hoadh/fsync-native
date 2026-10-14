@@ -85,7 +85,7 @@ Data flow: client → axum → auth middleware → repo (sqlx) → Postgres; dev
 - Hardening from reviews: TRUSTED_PROXIES CIDR list, trust reset needs auth under 5 min, WS closes at access-token expiry (4401).
 - Open: Postgres TLS not enabled (add sqlx `tls-rustls` before a remote DB). No global TCP connection cap (proxy responsibility).
 - Open: email is `LogSender` only. No real provider chosen (plan Q3).
-- Flake: `devices_reset` hit `PortNotExposed` once in the final run. Root cause not found. Fix in `backend/tests/common/pg.rs` retry, not yet selective (review L3).
+- Flake `PortNotExposed` (any test binary that starts Postgres): root cause found 2026-10-14. About 1 in 20-30 container starts under Docker Desktop load, the container runs and postgres is ready but Docker never publishes the port (`docker inspect`: `"5432/tcp": []`, permanent; the start itself then takes ~6 s). Waiting does not help (old retry, 12 s probe). Fix: `backend/tests/common/pg.rs` `start_with_port` retries only on `PortNotExposed` for 2 s, then removes the container and starts a new one (up to 4). 60 consecutive starts: 2 hits, both recovered on attempt 2. core `backend_harness` now shares this helper.
 - Not done: 10k idle WS load test (<1 GiB RAM target).
 - Trust reset endpoints (`PUT /v1/device-list` reset path, 401 `reauth_required` with 5-min fresh auth, 3/day cap) are covered by the M5 real-backend tests (2026-10-14). Email notice on reset not built.
 
