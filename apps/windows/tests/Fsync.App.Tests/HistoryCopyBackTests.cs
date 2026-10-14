@@ -56,6 +56,34 @@ public sealed class HistoryCopyBackTests : IDisposable
     }
 
     [Fact]
+    public async Task ANewerWriteStopsWaitingForASlowHistoryCopy()
+    {
+        await _h.Bridge.InitializeAsync();
+        using var release = new ManualResetEventSlim();
+        _h.Engine.OnHistoryItemReps = _ => { release.Wait(TimeSpan.FromSeconds(30)); return [new Rep("text/plain", [65])]; };
+        var slow = _svc.CopyBackAsync(Item());
+        for (var i = 0; i < 200 && !_h.Engine.Calls.Exists(c => c.StartsWith("HistoryItemReps")); i++) await Task.Delay(25);
+        var newer = new ClipItem(Guid.NewGuid().ToString(), new string('b', 64), "Mac", ClipKind.Text, 1, "hi", [new RepInfo("text/plain", 2)], [], 2, false);
+        _h.Engine.OnHistoryItemReps = _ => [];
+        _ = _svc.WriteAsync(newer); // supersedes: cancels the slow copy's ticket
+        Assert.False(await slow.WaitAsync(TimeSpan.FromSeconds(10))); // not held until core answers
+        release.Set();
+    }
+
+    [Fact]
+    public async Task AnEmptyRepListSaysSoAndABigPngIsKeptLazy()
+    {
+        await _h.Bridge.InitializeAsync();
+        _h.Engine.OnHistoryItemReps = _ => [];
+        Assert.False(await _svc.CopyBackAsync(Item()));
+        Assert.Equal("This item has no content this PC can paste", _svc.LastError);
+        var big = new byte[(int)IncomingClip.EagerRepBytes + 1];
+        // Garbage "PNG": a big one is not decoded until a target reads it (2 formats); a small one fails the DIB conversion now and keeps PNG only.
+        Assert.Equal(2, ClipboardService.EntriesFor([new Rep("image/png", big)]).Count);
+        Assert.Single(ClipboardService.EntriesFor([new Rep("image/png", [1, 2, 3])]));
+    }
+
+    [Fact]
     public void FirstRepOfAFormatWinsAndUnknownMimeTypesAreDropped()
     {
         var entries = ClipboardService.EntriesFor([

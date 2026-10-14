@@ -88,7 +88,8 @@ public sealed partial class ClipboardService
 
     /// <summary>One write at a time; a newer write cancels an older one. <paramref name="build"/> makes the entries.</summary>
     private async Task<bool> WriteCoreAsync(string itemId, string activity,
-        Func<CancellationToken, Task<(List<ClipEntry> Entries, List<VirtualFile> Files)>> build)
+        Func<CancellationToken, Task<(List<ClipEntry> Entries, List<VirtualFile> Files)>> build,
+        string emptyMessage = "Received a format this PC cannot paste")
     {
         if (IsDisposed) return false; // quitting: nothing to write
         var gen = Interlocked.Increment(ref _inGen);
@@ -110,7 +111,7 @@ public sealed partial class ClipboardService
             var (entries, files) = await build(ticket.Token);
             if (entries.Count == 0 && files.Count == 0)
             {
-                Post(() => LastError = "Received a format this PC cannot paste");
+                Post(() => LastError = emptyMessage);
                 return false;
             }
             entries.AddRange(ClipEntry.PrivacyFlags());

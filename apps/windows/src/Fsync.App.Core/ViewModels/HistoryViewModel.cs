@@ -146,7 +146,7 @@ public sealed partial class HistoryViewModel(EngineBridge bridge, ClipboardServi
     [RelayCommand]
     public async Task CopyAsync(HistoryRow row)
     {
-        if (!await clipboard.CopyBackAsync(row.Item)) Error = "This item cannot be copied back (its files are no longer offered, or its content is gone).";
+        if (!await clipboard.CopyBackAsync(row.Item)) Error = "Could not copy this item back (its content is gone, or it was files this PC can no longer fetch).";
         else Status = "Copied to the clipboard.";
     }
 }
