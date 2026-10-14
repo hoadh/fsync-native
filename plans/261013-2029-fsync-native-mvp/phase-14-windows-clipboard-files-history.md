@@ -4,7 +4,7 @@
 - Design §4 flows 3-6; ADR 010 ([phase-05](phase-05-spike-windows-clipboard-lazy-paste.md)); [phase-07](phase-07-core-protocols-clip-file.md), [phase-08](phase-08-core-history-ffi-cli.md); ADR 013 (decisions of this phase)
 
 ## Overview
-- Priority: P1 | Status: done with concerns (2026-10-14; Windows 11 x64: code, unit tests and e2e pass; open items below) | Effort: 5-6 wk (D) — parallel with phase 12
+- Priority: P1 | Status: done with concerns (2026-10-14; review round 1 fixed 2026-10-15; Windows 11 x64: code, unit tests and e2e pass; open items below) | Effort: 5-6 wk (D) — parallel with phase 12
 - Productionize spike: listener + filters, auto/manual, format mapping, delayed-render writer, virtual-file paste (or eager per ADR 010), drag-drop + Explorer "Send to", history, settings.
 
 ## Key Insights
@@ -50,12 +50,12 @@ Data flow out: WM_CLIPBOARDUPDATE (150 ms settle) → skip rules + denylist → 
 ## Todo List
 - [x] Listener/filter/mapper (skip rules before any `GetClipboardData`; app denylist by owner exe)
 - [x] Writer + delayed rendering (`ClipEntry.Lazy`, FsyncOrigin marker, `PNG` + `CF_DIB` for images)
-- [x] Virtual-file paste / eager fallback (folders included; eager = "Download copied files before pasting")
-- [x] Manual mode + hotkey (Ctrl+Alt+C send, Ctrl+Alt+V paste pending; tray menu)
+- [x] Virtual-file paste / eager fallback (folders kept both ways; eager only up to 20 MiB, 180 s, reuses earlier copies; inbox retention)
+- [x] Manual mode + hotkey (Win+Alt+C send, Win+Alt+V paste pending; tray menu; not Ctrl+Alt = AltGr)
 - [x] Send To + drag-drop (shortcut toggle in Settings; drop on a device row; Files page with offers, progress, cancel, retry)
 - [x] History + settings (search, paging, pin, delete, clear, copy-back; General / Privacy / Storage)
-- [x] Exit flush behavior (virtual files cleared; lazy reps ≤ 20 MiB rendered + flushed; larger cleared)
-- [x] Tests (unit 92/92; e2e `clipboard-with-cli.ps1` and `pair-with-cli.ps1` PASS)
+- [x] Exit flush behavior (virtual files or unrendered formats cleared, rendered entries flushed; quit bounded to ~3 s)
+- [x] Tests (unit 117/117; e2e `clipboard-with-cli.ps1` and `pair-with-cli.ps1` PASS)
 - [ ] ARM64 hardware run (ARM64 build compiles; no ARM64 host)
 - [ ] Manual QA checklist (below)
 
@@ -77,6 +77,38 @@ Data flow out: WM_CLIPBOARDUPDATE (150 ms settle) → skip rules + denylist → 
   logged to `app.log`.
 - ARM64: `dotnet build src/Fsync.App -c Release -p:Platform=ARM64 -r win-arm64` succeeds (not executed).
 
+## Review round 1 (score 6.5, fixed 2026-10-15)
+Merged origin/main (engine.lock, logout revoke, read-ahead); `fsync_ffi.dll` rebuilt (contract still v2, bindings
+not regenerated). Changes (ADR 013 §4-§14):
+- Privacy: built-in password-manager list ∪ user list always; writer read with the clipboard open, NULL owner →
+  foreground app; FsyncOrigin checked first; received clips carry `ExcludeClipboardContentFromMonitorProcessing`,
+  `CanIncludeInClipboardHistory=0`, `CanUploadToCloudClipboard=0`. ADR 013 §4 now lists exactly the formats checked.
+- Inbox: `InboxDirectory` (hex/dash ids) with macOS retention (days, then size) at start, daily, on settings change;
+  copy-back reuses a complete earlier download (no "name (1)").
+- Lanes: publish and write one at a time, newest wins, newer clip cancels older downloads; replaced entries release
+  their streams; all tasks observed, all failures logged.
+- Eager: fallback only up to 20 MiB per clip (else lazy), 180 s timeout, cancellation cancels transfers; core keeps
+  `rel_path` layout and CF_HDROP lists top-level entries, so folders paste as folders (verified in e2e).
+- Lifecycle: quit bounded (~3 s; engine-call gate refuses new calls, waits for running ones, no network at exit);
+  `InitializeAsync` disposes the old engine; engine.lock → "fsync is already running for this data folder", no retry;
+  data dir normalized (full path, no trailing slash, long names, case) for the instance key.
+- Also: StaThread wake-up via MsgWaitForMultipleObjectsEx + event (no lost wake-up), dispose fails queued work and
+  never self-joins; history search debounce (300 ms) with stale-result guard; offers stay until their pulls start;
+  auto-accept capped at 1 GiB; hotkeys Win+Alt+C / Win+Alt+V (Ctrl+Alt = AltGr); reserved device names refused;
+  images bounded (16384 px, 64 MP), colour table overflow fixed; Send to ignores UNC / `\\?\`; sizes in MiB / GiB;
+  the unhandled-exception log has type, HRESULT and stack only.
+- Tests: `dotnet test` CoreBindings 9, Interop 47, App 61 (117/117). New: eager path on the real engine (reuse,
+  folder layout, flags, echo), eager failure, eager cap, inbox retention, engine-call gate, second engine on one
+  folder (engine.lock message), search debounce, offer kept + 1 GiB cap, instance key spellings, private flags vs
+  echo marker, denylist union, reserved names, image bounds, StaThread stress and dispose.
+- E2E `clipboard-with-cli.ps1` (13 steps) and `pair-with-cli.ps1` PASS; new steps: echo not published back (W1
+  app.log), second launch with another spelling of the data folder hands over, lazy folder paste keeps the layout,
+  eager fallback downloads a folder with its layout (Win+Alt+V).
+- Throughput (real core, two app instances, loopback direct path, 200 MiB lazy paste, done = file closed):
+  read-ahead core 1.5-1.6 s (125-130 MiB/s); pre-read-ahead core 85f8968 1.5-1.6 s (126-130 MiB/s), runs
+  interleaved, hashes ok. No gain at ~0 RTT, as expected; relay / WAN not measurable on this machine. The spike's
+  fake-remote run (no core) is unchanged: 200 MiB in 13.1 s at 2 ms per read.
+
 ## Deviations
 - Clipboard owner is a dedicated STA thread, not the UI thread (ADR 013 §1): delayed renders block on `fetch_rep`.
 - One Settings page with General / Privacy / Storage sections instead of three pages; Transfers live on a "Files" page
@@ -96,8 +128,10 @@ Data flow out: WM_CLIPBOARDUPDATE (150 ms settle) → skip rules + denylist → 
   process) pushes to W1, W1's `fetch_file_to` dial times out (100% in 4 runs). Not seen CLI ↔ CLI when the receiver
   never dialed the old process. Likely stale iroh path state; `read_file_range` (lazy paste) would hit the same window
   after a sender restart. App mitigates with one retry (above).
-- **Read-ahead (track C):** lazy paste reads 256 KiB per Explorer call, one in flight (ADR 010 §6); local paste of
-  5 MiB took 0.9 s. Over a relay, throughput = 256 KiB / RTT until `read_file_range` reads ahead. No app change needed.
+- **Read-ahead (track C), landed:** Explorer still reads 256 KiB per call, one in flight (ADR 010 §6); with core
+  read-ahead a 200 MiB lazy paste runs at ~128 MiB/s on a loopback path, same as without (round 1 above); the gain
+  is expected on relay / WAN paths, not measured here. No app change was needed.
+  Relay-path throughput not measured here (the app has no force-relay switch).
 - `fetch_file_to` returns only after the dial: its Failed event can arrive before the call returns (handled).
 
 ## Manual QA checklist (open)
