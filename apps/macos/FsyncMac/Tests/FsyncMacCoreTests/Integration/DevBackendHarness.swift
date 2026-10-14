@@ -106,7 +106,7 @@ final class CliProcess: @unchecked Sendable {
         process.standardInput = FileHandle.nullDevice
         out.fileHandleForReading.readabilityHandler = { [weak self] h in
             let d = h.availableData
-            if d.isEmpty { h.readabilityHandler = nil; self?.sync { $0.eofStreams += 1 }; return }
+            if d.isEmpty { h.readabilityHandler = nil; self?.finishStdout(); return }
             self?.append(d)
         }
         err.fileHandleForReading.readabilityHandler = { [weak self] h in
@@ -120,15 +120,27 @@ final class CliProcess: @unchecked Sendable {
 
     private func sync(_ body: (CliProcess) -> Void) { lock.lock(); body(self); lock.unlock() }
 
+    private func record(line: Data) {   // call with the lock held
+        raw.append(String(decoding: line, as: UTF8.self))
+        if let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any] { lines.append(CliEvent(obj)) }
+    }
+
     private func append(_ data: Data) {
         sync { s in
             s.buffer.append(data)
             while let nl = s.buffer.firstIndex(of: 0x0A) {
                 let line = s.buffer.subdata(in: s.buffer.startIndex..<nl)
                 s.buffer.removeSubrange(s.buffer.startIndex...nl)
-                s.raw.append(String(decoding: line, as: UTF8.self))
-                if let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any] { s.lines.append(CliEvent(obj)) }
+                s.record(line: line)
             }
+        }
+    }
+
+    /// stdout reached EOF: parse a final line that had no trailing newline, then mark the stream drained.
+    private func finishStdout() {
+        sync { s in
+            if !s.buffer.isEmpty { s.record(line: s.buffer); s.buffer = Data() }
+            s.eofStreams += 1
         }
     }
 
