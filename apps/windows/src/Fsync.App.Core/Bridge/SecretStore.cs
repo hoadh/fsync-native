@@ -9,7 +9,7 @@ namespace Fsync.App.Bridge;
 /// the last email, in one DPAPI-protected file (CurrentUser scope). Core never sees the file.
 /// Writes are atomic and serialized: token refreshes arrive on the core callback thread.
 /// </summary>
-public sealed class SecretStore
+public sealed partial class SecretStore
 {
     private static readonly byte[] Entropy = "fsync-secrets-v1"u8.ToArray();
     private readonly string _path;
@@ -24,6 +24,7 @@ public sealed class SecretStore
         public string? Refresh { get; set; }
         public string? AccountId { get; set; }
         public string? Email { get; set; }
+        public PendingRevoke? PendingRevoke { get; set; }
     }
 
     public SecretStore(string path)

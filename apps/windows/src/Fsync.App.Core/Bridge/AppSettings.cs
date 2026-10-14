@@ -2,7 +2,7 @@ namespace Fsync.App.Bridge;
 
 /// <summary>
 /// Where the app keeps its files and which servers it talks to. Same variables as fsync-cli:
-/// FSYNC_API, FSYNC_RELAY; FSYNC_DOWNLOAD_DIR overrides Downloadssync; FSYNC_DATA_DIR overrides %LOCALAPPDATA%\fsync (a second instance
+/// FSYNC_API, FSYNC_RELAY (one URL or a comma-separated list); FSYNC_DOWNLOAD_DIR overrides Downloadssync; FSYNC_DATA_DIR overrides %LOCALAPPDATA%\fsync (a second instance
 /// for tests). Plain http is allowed only for loopback backends (dev).
 /// </summary>
 public sealed record AppSettings(string DataDir, string ApiBase, string? RelayUrl, string DeviceName, string? DownloadDirOverride = null)
@@ -18,8 +18,17 @@ public sealed record AppSettings(string DataDir, string ApiBase, string? RelayUr
     /// <summary>Accepted pushed files: Downloadssync, or FSYNC_DOWNLOAD_DIR (tests).</summary>
     public string DownloadDir => DownloadDirOverride ?? Path.Combine(Fsync.Interop.Shell.KnownFolders.DownloadsPath(), "fsync");
 
-    public bool AllowInsecureHttp =>
-        Uri.TryCreate(ApiBase, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttp && u.IsLoopback;
+    public bool AllowInsecureHttp => IsLoopbackHttp(ApiBase);
+
+    public static bool IsLoopbackHttp(string apiBase) =>
+        Uri.TryCreate(apiBase, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttp && u.IsLoopback;
+
+    /// <summary>FSYNC_RELAY: one URL, or several separated by commas (e.g. a US and a Singapore relay).</summary>
+    public IReadOnlyList<string> RelayUrls => SplitRelays(RelayUrl);
+
+    /// <summary>Split on commas, trimmed, empty entries dropped; the engine picks the home relay by latency.</summary>
+    public static string[] SplitRelays(string? relays) =>
+        (relays ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
     /// <summary>Single-instance key: one app per data directory (any spelling of the same path).</summary>
     public string InstanceKey => "fsync-" + Convert.ToHexString(

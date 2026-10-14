@@ -28,6 +28,8 @@ internal sealed class FakeEngine : IFsyncEngine
     public SessionTokens LoginVerify(string email, string code) => Log($"LoginVerify {email} {code}", () => OnLoginVerify(email, code));
     public void LoginStart(string email) => Log($"LoginStart {email}");
     public void Logout() => Log("Logout");
+    public Func<bool> OnLogoutConfirmed = () => true;
+    public bool LogoutConfirmed() => Log("LogoutConfirmed", OnLogoutConfirmed);
     public void SetSession(SessionTokens tokens) => Log($"SetSession {tokens.accountId}");
     public void Start() => Log("Start");
     public void Stop() => Log("Stop");
@@ -64,6 +66,8 @@ internal sealed class Harness : IDisposable
     public readonly string Dir = Path.Combine(Path.GetTempPath(), "fsync-app-" + Guid.NewGuid().ToString("N"));
     public readonly SecretStore Secrets;
     public readonly EngineBridge Bridge;
+    public readonly List<(string Api, string Refresh, bool Insecure)> Revokes = [];
+    public Action<string, string, bool> OnRevoke = (_, _, _) => { };
 
     public Harness(SessionTokens? session = null)
     {
@@ -71,7 +75,8 @@ internal sealed class Harness : IDisposable
         Secrets = new SecretStore(Path.Combine(Dir, "secrets.dat"));
         if (session is not null) Secrets.SaveSession(session, "me@example.com");
         var settings = new AppSettings(Dir, "http://127.0.0.1:9", null, "test-pc");
-        Bridge = new EngineBridge(settings, Secrets, new InlineDispatcher(), (_, d) => { Engine.Delegate = d; return Engine; });
+        Bridge = new EngineBridge(settings, Secrets, new InlineDispatcher(), (_, d) => { Engine.Delegate = d; return Engine; },
+            (api, refresh, insecure) => { lock (Revokes) Revokes.Add((api, refresh, insecure)); OnRevoke(api, refresh, insecure); });
     }
 
     public void Dispose()

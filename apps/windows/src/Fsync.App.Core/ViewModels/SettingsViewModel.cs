@@ -53,7 +53,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private async Task SignOutAsync()
     {
-        try { await _bridge.LogoutAsync(); }
-        catch (FsyncException e) { Error = UserMessages.For(e); }
+        await _bridge.LogoutAsync(); // handles its own backend and secret-store failures
     }
 }

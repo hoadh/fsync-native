@@ -875,6 +875,10 @@ static class _UniFFILib {
     
     
     
+    
+    
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -992,6 +996,10 @@ static class _UniFFILib {
     );
 
     [DllImport("fsync_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern sbyte uniffi_fsync_ffi_fn_method_fsyncengine_logout_confirmed(IntPtr @ptr,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("fsync_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern RustBuffer uniffi_fsync_ffi_fn_method_fsyncengine_node_id(IntPtr @ptr,ref UniffiRustCallStatus _uniffi_out_err
     );
 
@@ -1065,6 +1073,10 @@ static class _UniFFILib {
 
     [DllImport("fsync_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern void uniffi_fsync_ffi_fn_func_reset_history(RustBuffer @dataDir,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    [DllImport("fsync_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern void uniffi_fsync_ffi_fn_func_revoke_session(RustBuffer @apiUrl,RustBuffer @refreshToken,sbyte @allowInsecureHttp,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     [DllImport("fsync_ffi", CallingConvention = CallingConvention.Cdecl)]
@@ -1300,6 +1312,10 @@ static class _UniFFILib {
     );
 
     [DllImport("fsync_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_fsync_ffi_checksum_func_revoke_session(
+    );
+
+    [DllImport("fsync_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern ushort uniffi_fsync_ffi_checksum_method_enginedelegate_on_remote_clip(
     );
 
@@ -1381,6 +1397,10 @@ static class _UniFFILib {
 
     [DllImport("fsync_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern ushort uniffi_fsync_ffi_checksum_method_fsyncengine_logout(
+    );
+
+    [DllImport("fsync_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern ushort uniffi_fsync_ffi_checksum_method_fsyncengine_logout_confirmed(
     );
 
     [DllImport("fsync_ffi", CallingConvention = CallingConvention.Cdecl)]
@@ -1479,6 +1499,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_fsync_ffi_checksum_func_reset_history();
             if (checksum != 51414) {
                 throw new UniffiContractChecksumException($"Fsync.Core: uniffi bindings expected function `uniffi_fsync_ffi_checksum_func_reset_history` checksum `51414`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_fsync_ffi_checksum_func_revoke_session();
+            if (checksum != 7460) {
+                throw new UniffiContractChecksumException($"Fsync.Core: uniffi bindings expected function `uniffi_fsync_ffi_checksum_func_revoke_session` checksum `7460`, library returned `{checksum}`");
             }
         }
         {
@@ -1605,6 +1631,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_fsync_ffi_checksum_method_fsyncengine_logout();
             if (checksum != 36418) {
                 throw new UniffiContractChecksumException($"Fsync.Core: uniffi bindings expected function `uniffi_fsync_ffi_checksum_method_fsyncengine_logout` checksum `36418`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_fsync_ffi_checksum_method_fsyncengine_logout_confirmed();
+            if (checksum != 43100) {
+                throw new UniffiContractChecksumException($"Fsync.Core: uniffi bindings expected function `uniffi_fsync_ffi_checksum_method_fsyncengine_logout_confirmed` checksum `43100`, library returned `{checksum}`");
             }
         }
         {
@@ -2272,6 +2304,13 @@ public interface IFsyncEngine {
     SessionTokens LoginVerify(string @email, string @code);
     /// <exception cref="FsyncException"></exception>
     void Logout();
+    /// <summary>
+    /// `logout` that says whether the backend settled the revocation: `true` = revoked, already
+    /// dead or refused for good (drop your pending revoke); `false` = only queued in memory, or
+    /// no session was held (keep the refresh token, retry with `revoke_session` at next launch).
+    /// </summary>
+    /// <exception cref="FsyncException"></exception>
+    bool LogoutConfirmed();
     string NodeId();
     /// <exception cref="FsyncException"></exception>
     void PairingCancel();
@@ -2525,6 +2564,20 @@ public class FsyncEngine : IFsyncEngine, IDisposable {
 ));
     }
     
+    
+    
+    /// <summary>
+    /// `logout` that says whether the backend settled the revocation: `true` = revoked, already
+    /// dead or refused for good (drop your pending revoke); `false` = only queued in memory, or
+    /// no session was held (keep the refresh token, retry with `revoke_session` at next launch).
+    /// </summary>
+    /// <exception cref="FsyncException"></exception>
+    public bool LogoutConfirmed() {
+        return CallWithPointer(thisPtr => FfiConverterBoolean.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeFsyncError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_fsync_ffi_fn_method_fsyncengine_logout_confirmed(thisPtr,  ref _status)
+)));
+    }
     
     
     public string NodeId() {
@@ -2835,7 +2888,7 @@ class FfiConverterTypeDevice: FfiConverterRustBuffer<Device> {
 /// Holds `history.db` and `blobs/`.
 /// </param>
 /// <param name="relay_url">
-/// Our relay (none: LAN only).
+/// Our relay (none: LAN only). Merged with `relay_urls`.
 /// </param>
 /// <param name="device_secret">
 /// 32 bytes, from Keychain / DPAPI.
@@ -2849,6 +2902,11 @@ class FfiConverterTypeDevice: FfiConverterRustBuffer<Device> {
 /// <param name="allow_insecure_http">
 /// Dev backends on plain http.
 /// </param>
+/// <param name="relay_urls">
+/// More relays, e.g. one per region: iroh picks the home relay by latency. Merged with
+/// `relay_url` and deduplicated; https only unless `allow_insecure_http`. Added after v2, kept last (uniffi records are positional),
+/// defaults to `[]`.
+/// </param>
 public record EngineConfig (
     /// <summary>
     /// Holds `history.db` and `blobs/`.
@@ -2856,7 +2914,7 @@ public record EngineConfig (
     string @dataDir, 
     string @apiBase, 
     /// <summary>
-    /// Our relay (none: LAN only).
+    /// Our relay (none: LAN only). Merged with `relay_urls`.
     /// </summary>
     string? @relayUrl, 
     string @deviceName, 
@@ -2876,7 +2934,13 @@ public record EngineConfig (
     /// <summary>
     /// Dev backends on plain http.
     /// </summary>
-    bool @allowInsecureHttp
+    bool @allowInsecureHttp, 
+    /// <summary>
+    /// More relays, e.g. one per region: iroh picks the home relay by latency. Merged with
+    /// `relay_url` and deduplicated; https only unless `allow_insecure_http`. Added after v2, kept last (uniffi records are positional),
+    /// defaults to `[]`.
+    /// </summary>
+    string[] @relayUrls = null
 ) {
 }
 
@@ -2893,7 +2957,8 @@ class FfiConverterTypeEngineConfig: FfiConverterRustBuffer<EngineConfig> {
             @deviceSecret: FfiConverterByteArray.INSTANCE.Read(stream),
             @historyKey: FfiConverterByteArray.INSTANCE.Read(stream),
             @forceRelay: FfiConverterBoolean.INSTANCE.Read(stream),
-            @allowInsecureHttp: FfiConverterBoolean.INSTANCE.Read(stream)
+            @allowInsecureHttp: FfiConverterBoolean.INSTANCE.Read(stream),
+            @relayUrls: FfiConverterSequenceString.INSTANCE.Read(stream)
         );
     }
 
@@ -2907,7 +2972,8 @@ class FfiConverterTypeEngineConfig: FfiConverterRustBuffer<EngineConfig> {
             + FfiConverterByteArray.INSTANCE.AllocationSize(value.@deviceSecret)
             + FfiConverterByteArray.INSTANCE.AllocationSize(value.@historyKey)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.@forceRelay)
-            + FfiConverterBoolean.INSTANCE.AllocationSize(value.@allowInsecureHttp);
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.@allowInsecureHttp)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.@relayUrls);
     }
 
     public override void Write(EngineConfig value, BigEndianStream stream) {
@@ -2920,6 +2986,7 @@ class FfiConverterTypeEngineConfig: FfiConverterRustBuffer<EngineConfig> {
             FfiConverterByteArray.INSTANCE.Write(value.@historyKey, stream);
             FfiConverterBoolean.INSTANCE.Write(value.@forceRelay, stream);
             FfiConverterBoolean.INSTANCE.Write(value.@allowInsecureHttp, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.@relayUrls, stream);
     }
 }
 
@@ -4575,6 +4642,22 @@ public static class FsyncFfi {
         
     _UniffiHelpers.RustCallWithError(FfiConverterTypeFsyncError.INSTANCE, (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_fsync_ffi_fn_func_reset_history(FfiConverterString.INSTANCE.Lower(@dataDir), ref _status)
+);
+    }
+
+
+    /// <summary>
+    /// Revokes a refresh token without an engine: the retry of a `logout` that was not confirmed
+    /// (see `FsyncEngine::logout_confirmed`), e.g. at the next launch. Blocking, bounded by about
+    /// 10 s: call it off the UI thread. `Ok` = revoked or already dead (401): delete the token.
+    /// `Network` = no answer in time or backend trouble: keep it and retry later. Other errors are
+    /// final. `allow_insecure_http` is for dev backends only.
+    /// </summary>
+    /// <exception cref="FsyncException"></exception>
+    public static void RevokeSession(string @apiUrl, string @refreshToken, bool @allowInsecureHttp) {
+        
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeFsyncError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_fsync_ffi_fn_func_revoke_session(FfiConverterString.INSTANCE.Lower(@apiUrl), FfiConverterString.INSTANCE.Lower(@refreshToken), FfiConverterBoolean.INSTANCE.Lower(@allowInsecureHttp), ref _status)
 );
     }
 
