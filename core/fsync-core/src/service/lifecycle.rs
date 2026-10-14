@@ -10,7 +10,7 @@ use super::{
     inner::{Inner, lock},
 };
 use crate::{config::EngineConfig, engine::Engine, net::Node};
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 impl Inner {
     pub(super) async fn start(self: &Arc<Self>) -> SvcResult<()> {
@@ -64,6 +64,13 @@ impl Inner {
     }
 
     pub(super) async fn stop(&self) {
+        self.stop_with(INLINE_RELEASE_WAIT, LINGERING_LOCK_MAX_HOLD)
+            .await;
+    }
+
+    /// `stop` with injectable waits: `inline_wait` for handles to drop before returning,
+    /// `max_hold` for the background lock holder after that.
+    pub(super) async fn stop_with(&self, inline_wait: Duration, max_hold: Duration) {
         let _one_start = self.start_gate.lock().await;
         let (engine, _presence, tasks, data_lock) = match lock(&self.live) {
             Ok(mut l) => (
@@ -84,7 +91,7 @@ impl Inner {
         drop(_presence);
         let Some(engine) = engine else { return };
         // Aborted tasks release their engine handles shortly after.
-        let engine = match wait_unique(engine, POLL_INLINE, INLINE_RELEASE_WAIT).await {
+        let engine = match wait_unique(engine, POLL_INLINE, inline_wait).await {
             Ok(e) => {
                 e.shutdown().await;
                 drop(data_lock);
@@ -95,13 +102,14 @@ impl Inner {
         // Something still holds the engine. Keep the data-dir lock until it is really gone (then
         // shut down cleanly), so a new engine never overlaps with a lingering one, but only for
         // a bounded time: a leaked handle must not block restart forever.
-        tracing::warn!("engine still referenced at stop; shutting down once released");
+        tracing::warn!("engine still referenced at stop; holding engine.lock until released");
         tokio::spawn(hold_lock_until_released(
             engine,
             data_lock,
             POLL_LINGERING,
-            LINGERING_LOCK_MAX_HOLD,
+            max_hold,
             |e: Engine| e.shutdown(),
+            |e: Arc<Engine>| async move { e.close().await },
         ));
     }
 }

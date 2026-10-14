@@ -16,6 +16,12 @@ const RETENTION_EVERY: Duration = Duration::from_secs(3600);
 /// Aborts the task when dropped (engine shutdown).
 pub(super) struct TaskGuard(JoinHandle<()>);
 
+impl TaskGuard {
+    pub(super) fn abort(&self) {
+        self.0.abort();
+    }
+}
+
 impl Drop for TaskGuard {
     fn drop(&mut self) {
         self.0.abort();
