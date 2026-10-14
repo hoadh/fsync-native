@@ -44,7 +44,7 @@ final class RealBackendRevokeTests: EngineTestCase {
         XCTAssertEqual(again, .nothingPending)
     }
 
-    /// Backend unreachable (right host, closed port): kept and counted, the token is still there for the next launch.
+    /// Backend unreachable (right host, port 9 that nothing answers on; each try waits up to the 10 s revoke budget): kept and counted, the token is still there for the next launch.
     func testUnreachableDeployedHostIsKeptThenDropped() async throws {
         let api = try api
         let host = try XCTUnwrap(URL(string: api)?.host)
@@ -58,7 +58,7 @@ final class RealBackendRevokeTests: EngineTestCase {
         XCTAssertNil(try secrets.pendingRevoke())
     }
 
-    /// Owner-supplied live token: after the retry the server must refuse it.
+    /// Owner-supplied live token, consumed by this test: after the retry the server must refuse it.
     func testLiveRefreshTokenIsRevokedServerSide() async throws {
         let api = try api
         guard let token = ProcessInfo.processInfo.environment["FSYNC_REAL_REFRESH"], !token.isEmpty else {
