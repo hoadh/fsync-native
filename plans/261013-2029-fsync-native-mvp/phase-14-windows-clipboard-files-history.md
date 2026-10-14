@@ -125,6 +125,20 @@ not regenerated). Changes (ADR 013 §4-§14):
   13/13 and `pair-with-cli.ps1` 9/9, twice each. The text-out step re-copies if `rdpclip` (RDP session) re-posts
   the clipboard with `CanIncludeInClipboardHistory=0`, which fsync correctly skips.
 
+## Review round 3 (score 9.0, fixed 2026-10-15)
+- H1: one budget (180 s) and one cancellation cover both starting the eager transfers (fetch_file_to can block
+  through the dial) and waiting for them; each id is registered as soon as fetch_file_to returns and the finally
+  cancels every started, unfinished transfer, including one whose start returns after we stopped waiting.
+- M2: quit stops the 15 s account retry first and ignores phase changes while tearing down; GoOnlineAsync treats
+  a missing engine (InvalidOperationException) as nothing to do.
+- L1/L2: a download's in-flight mark is taken under the cleanup lock and the kept set is read inside it; a reused
+  inbox folder is touched, so the 5 min minimum age protects it too.
+- Tests (124/124: CoreBindings 9, Interop 47, App 68): the real DownloadAsync start path on the real engine (budget
+  spent before the first start, a newer clip stopping an older download before any transfer starts, a failing start
+  releasing the folder and touching a reused one). Cancelling a transfer that already started needs a real offer
+  from a peer, so it is covered by the e2e eager step (happy path) and by code review, not by a unit test.
+  E2E `clipboard-with-cli.ps1` 13/13 and `pair-with-cli.ps1` 9/9, twice each.
+
 ## Deviations
 - Clipboard owner is a dedicated STA thread, not the UI thread (ADR 013 §1): delayed renders block on `fetch_rep`.
 - One Settings page with General / Privacy / Storage sections instead of three pages; Transfers live on a "Files" page
