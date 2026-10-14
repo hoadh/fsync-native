@@ -139,3 +139,24 @@ async fn smtp_failure_gives_a_generic_500_and_frees_the_code() {
         .unwrap();
     assert_eq!(left.0, 0);
 }
+
+/// A server that accepts the TCP connection and never sends the SMTP greeting must end in the
+/// overall send timeout (30 s; lettre's 10 s socket timeout does not cover the greeting read),
+/// not hang the request.
+#[tokio::test]
+async fn silent_server_ends_in_a_timeout_error() {
+    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let cfg = SmtpConfig {
+        port: l.local_addr().unwrap().port(),
+        ..dead_config()
+    };
+    let started = std::time::Instant::now();
+    let err = SmtpSender::new(&cfg)
+        .unwrap()
+        .send_otp("alice@example.com", "493027")
+        .await
+        .unwrap_err();
+    assert!(err.0.contains("timeout"), "{err:?}");
+    assert!(started.elapsed() < std::time::Duration::from_secs(40));
+    drop(l);
+}

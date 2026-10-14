@@ -39,7 +39,7 @@ tests/e2e/compose-stack-sync.sh          # local verification
 
 - **DNS-only (grey cloud)** for both hostnames. The relay needs long-lived upgraded connections and UDP, which the Cloudflare proxy does not carry. The backend's per-IP limits need the real client address.
 - **The owner applies the host Caddy snippet.** `deploy.sh` never edits or reloads Caddy. Public HTTPS checks (`--public-smoke`) fail until it is in place.
-- **No email sender yet.** Production mode cannot deliver one-time codes. The stack runs in staging with dev OTP output for private testing only. Do not onboard real users on it.
+- **OTP email is Gmail SMTP.** Production refuses to start until `SMTP_USERNAME`, `SMTP_PASSWORD` and `SMTP_FROM` are set (see `deploy/README.md`, "OTP email"). `OTP_DAILY_SEND_CAP` (default 450 per rolling 24 h) keeps the stack under the Gmail limit; use a transactional provider before real traffic.
 - **Migrations are forward-only.** Rollback restores the previous images and `compose.yml`, not the database. Keep migrations backward compatible.
 - **Backups.** `backup-postgres.sh` runs daily when installed with `deploy.sh --install-backup-cron`. Copy dumps off the host and enable provider snapshots; both live on the same disk otherwise.
 - **Rotating `JWT_SIGNING_KEY`** signs every user out.

@@ -68,6 +68,7 @@ services:
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
+      OTP_DAILY_SEND_CAP: ${OTP_DAILY_SEND_CAP:-450}
       RUST_LOG: ${RUST_LOG:-info}
     read_only: true
     cap_drop: [ALL]

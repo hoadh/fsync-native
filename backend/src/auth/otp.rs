@@ -1,8 +1,9 @@
 //! OTP issue/verify. Codes are keyed-hashed, expire in 10 min, allow 5 attempts.
 //! A repeated `start` does not replace a live code younger than `RESEND_AFTER_MS` (a third party
 //! cannot keep invalidating a victim's code); an older live code may be replaced so a lost
-//! email can be re-requested. Only starts that issue a code count toward the per-email limit.
+//! email can be re-requested. Only starts that deliver a code count toward the per-email limit; a failed send is refunded.
 
+use super::otp_budget;
 use crate::{
     error::{ApiError, ApiResult},
     state::AppState,
@@ -67,20 +68,43 @@ pub async fn start(state: &AppState, email: &str, ip: &str) -> ApiResult<()> {
         // A fresh live code is pending; only its hash is stored so it cannot be re-sent.
         return Ok(());
     }
-    state.limiter.record(&email_key, HOUR);
-    if let Err(e) = state.email.send_otp(&email, &code).await {
-        // Never leave a live code the user was not told about.
-        if let Err(db) = sqlx::query("DELETE FROM otp_codes WHERE email = $1 AND code_hash = $2")
-            .bind(&email)
-            .bind(hash)
-            .execute(&state.db)
-            .await
-        {
-            tracing::warn!(kind = %crate::error::sqlx_kind(&db), "otp cleanup after send failure failed");
+    let result = deliver(state, &email, &code, hash).await;
+    match &result {
+        // Only a delivered code spends the per-email slot; the per-IP slot was taken by `check`.
+        Ok(()) => state.limiter.record(&email_key, HOUR),
+        // A failed send (provider outage, global cap) must not lock the user out for an hour.
+        Err(_) => state.limiter.unrecord(&format!("otp:ip:{ip}")),
+    }
+    result
+}
+
+/// Reserve a global send slot and send. On any failure the code row is removed (never leave a live
+/// code the user was not told about) and the slot is given back.
+async fn deliver(state: &AppState, email: &str, code: &str, hash: &[u8]) -> ApiResult<()> {
+    let slot = match otp_budget::reserve(&state.db, state.cfg.otp_daily_send_cap).await {
+        Ok(id) => id,
+        Err(e) => {
+            discard_code(state, email, hash).await;
+            return Err(e);
         }
+    };
+    if let Err(e) = state.email.send_otp(email, code).await {
+        otp_budget::release(&state.db, slot).await;
+        discard_code(state, email, hash).await;
         return Err(ApiError::internal(e));
     }
     Ok(())
+}
+
+async fn discard_code(state: &AppState, email: &str, hash: &[u8]) {
+    if let Err(db) = sqlx::query("DELETE FROM otp_codes WHERE email = $1 AND code_hash = $2")
+        .bind(email)
+        .bind(hash)
+        .execute(&state.db)
+        .await
+    {
+        tracing::warn!(kind = %crate::error::sqlx_kind(&db), "otp cleanup after send failure failed");
+    }
 }
 
 /// Returns the account id (created on first successful login).

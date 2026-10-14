@@ -103,15 +103,17 @@ verified, no plaintext fallback). Variables, all in `/opt/fsync/.env` (mode 600,
 Create the App Password (Google refuses the normal password for SMTP):
 1. Sign in to the sender Google account and turn on **2-Step Verification** (Security > How you sign in to Google). App Passwords are not offered without it.
 2. Open <https://myaccount.google.com/apppasswords>, name it `fsync`, click Create and copy the 16 characters (shown in groups of four; the spaces are ignored).
-3. On the host: `sudoedit /opt/fsync/.env`, set the four variables above and **delete the `ALLOW_LOG_EMAIL=1` line**.
+3. On the host: `sudoedit /opt/fsync/.env`, set the four variables above and delete any `ALLOW_LOG_EMAIL=1` line.
 4. `cd /opt/fsync && docker compose up -d backend`, then request a code from the app. Failures are logged as a category only (`smtp timeout`, `smtp rejected (permanent) 535`, ...), never the password or the code.
 
 Rules: with `FSYNC_ENV=production` the backend **refuses to start** unless `EMAIL_SENDER=smtp` or
-`ALLOW_LOG_EMAIL=1` (explicit: codes are not delivered). `gen-env.sh` writes `ALLOW_LOG_EMAIL=1`, and
-`deploy.sh` appends it (with a warning) to an existing host `.env` that has neither setting, so the current
+`ALLOW_LOG_EMAIL=1` (explicit: codes are not delivered). `gen-env.sh` writes `EMAIL_SENDER=smtp` with empty
+`SMTP_*` values, so a new host refuses to start until they are filled. `deploy.sh` appends `ALLOW_LOG_EMAIL=1` (with a warning) to an existing host `.env` that has neither setting, so the current
 staging host keeps running; removing it after configuring SMTP is the switch-over. To rotate, revoke the App
 Password in the Google account. Consumer Gmail allows about **500 recipients per day** (and throttles bursts):
-fine for a pre-launch, use a transactional provider before real traffic (only the `SMTP_*` values change).
+`OTP_DAILY_SEND_CAP` (default 450 per rolling 24 h, kept in Postgres) makes `start` return 429 before that
+limit is hit. A failed send (provider outage) does not spend the per-email/per-IP quota or a global slot.
+Fine for a pre-launch, use a transactional provider before real traffic (only the `SMTP_*` values change).
 For private testing without any mail, `FSYNC_ENV=staging`, `FSYNC_DEV_MODE=1`,
 `RUST_LOG=fsync_backend=debug,info` and `docker compose logs backend | grep "dev otp"` still work; never with real users.
 

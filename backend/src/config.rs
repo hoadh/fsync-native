@@ -34,6 +34,8 @@ pub struct Config {
     pub header_read_timeout: Duration,
     /// OTP delivery: log sink or SMTP (see `email::config`).
     pub email: EmailMode,
+    /// Global cap on OTP emails per rolling 24 h (Gmail SMTP allows about 500 a day).
+    pub otp_daily_send_cap: u32,
 }
 
 impl std::fmt::Debug for Config {
@@ -96,6 +98,7 @@ impl Config {
             pending_recheck: Duration::from_secs(30),
             header_read_timeout: Duration::from_secs(10),
             email: EmailMode::Log,
+            otp_daily_send_cap: 450,
         }
     }
 
@@ -139,6 +142,7 @@ impl Config {
         cfg.max_unauth_ws = num("MAX_UNAUTH_WS", cfg.max_unauth_ws)?;
         cfg.max_unauth_ws_per_ip = num("MAX_UNAUTH_WS_PER_IP", cfg.max_unauth_ws_per_ip)?;
         cfg.max_in_flight = num("MAX_IN_FLIGHT", cfg.max_in_flight)?;
+        cfg.otp_daily_send_cap = num("OTP_DAILY_SEND_CAP", cfg.otp_daily_send_cap)?;
         Ok(cfg)
     }
 }

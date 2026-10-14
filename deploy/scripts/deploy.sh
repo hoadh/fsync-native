@@ -48,6 +48,23 @@ else die "no docker access on $host: install Docker first (deploy/README.md, \"I
 rsh "$D compose version >/dev/null" || die "docker compose missing on $host"
 rsh "test -d '$dir' && test -w '$dir' || { sudo -n install -d -o \"\$(id -un)\" -m 750 '$dir'; }"
 
+# --- host mode guard: a relay-only deploy must never replace (and --remove-orphans must never
+# delete) a full stack, and a full deploy must not land on a relay-only host. The mode is recorded in
+# $dir/.mode on every deploy; hosts that predate it are inferred from compose.yml / running containers.
+host_mode="$(rsh "cd '$dir' && cat .mode 2>/dev/null; true")"
+if [[ -z "$host_mode" ]]; then
+  if rsh "grep -Eq '^  (backend|postgres):' '$dir/compose.yml' 2>/dev/null" \
+    || [[ -n "$(rsh "for s in backend postgres; do $D ps -aq --filter label=com.docker.compose.project=fsync --filter label=com.docker.compose.service=\$s; done")" ]]; then
+    host_mode=full
+  fi
+fi
+if [[ "$host_mode" == "relay-only" && $relay_only -eq 0 ]]; then
+  [[ $rollback -eq 1 ]] || die "$host runs the relay-only stack in $dir: pass --relay-only"
+  relay_only=1; log "host is relay-only: rolling back in relay-only mode"
+elif [[ "$host_mode" == "full" && $relay_only -eq 1 ]]; then
+  die "$host already runs the full stack (backend/postgres) in $dir: --relay-only would remove it. Use a dedicated relay host or a separate --dir"
+fi
+
 # --- release tag
 if [[ $rollback -eq 1 ]]; then
   tag="$(rsh "sed -n 's/^FSYNC_TAG_PREV=//p' '$dir/.env'")"
@@ -115,6 +132,7 @@ if [ "$rollback" = 1 ]; then
 else
   [ "$cur" = "$tag" ] || { [ ! -f compose.yml ] || cp compose.yml compose.yml.prev; }
   cp "$stage/$compose_src" compose.yml.new && mv compose.yml.new compose.yml
+  if [ "$relay_only" = 1 ]; then echo relay-only; else echo full; fi > .mode
   cp "$stage/Caddyfile" Caddyfile; mkdir -p scripts; cp -r "$stage/scripts/." scripts/; rm -rf "$stage"
   chmod 644 compose.yml Caddyfile; chmod 755 scripts; chmod 755 scripts/*.sh
 fi
@@ -122,7 +140,7 @@ umask 077
 # An .env written before the email settings existed would make the backend refuse to start
 # (production + log sender). Keep such a host working, loudly, until SMTP is configured.
 legacy_log=0
-if [ "$relay_only" = 0 ] && ! grep -q -e '^EMAIL_SENDER=smtp' -e '^ALLOW_LOG_EMAIL=' .env; then
+if [ "$relay_only" = 0 ] && ! grep -Eq -e '^EMAIL_SENDER=["'\'']?smtp["'\'']?([[:space:]]|$)' -e '^ALLOW_LOG_EMAIL=' .env; then
   legacy_log=1; echo "WARNING: no EMAIL_SENDER=smtp in .env: adding ALLOW_LOG_EMAIL=1 (OTP codes are NOT emailed)" >&2
 fi
 {
