@@ -7,6 +7,8 @@ namespace Fsync.App.Bridge;
 /// </summary>
 public sealed partial class SecretStore
 {
+    private void SetPending(PendingRevoke? value) => MutateAndSave(d => d.PendingRevoke = value);
+
     public PendingRevoke? PendingRevoke { get { lock (_lock) return _data.PendingRevoke; } }
 
     /// <summary>Persists (replaces) the pending revoke. Call BEFORE <c>LogoutConfirmed</c>.</summary>
@@ -14,7 +16,7 @@ public sealed partial class SecretStore
     {
         lock (_lock)
         {
-            SetPendingAndSave(pending);
+            SetPending(pending);
         }
     }
 
@@ -28,7 +30,7 @@ public sealed partial class SecretStore
         {
             if (_data.Refresh is not { } refresh) return null;
             var pending = new PendingRevoke(refresh, apiBase, now);
-            SetPendingAndSave(pending);
+            SetPending(pending);
             return pending;
         }
     }
@@ -42,16 +44,7 @@ public sealed partial class SecretStore
         lock (_lock)
         {
             if (_data.PendingRevoke is not { } current || current.Refresh != retried.Refresh) return;
-            SetPendingAndSave(replacement);
+            SetPending(replacement);
         }
-    }
-
-    /// <summary>Caller holds the lock. The in-memory entry changes only once it is on disk, so a failed save cannot leak into a later one.</summary>
-    private void SetPendingAndSave(PendingRevoke? value)
-    {
-        var previous = _data.PendingRevoke;
-        _data.PendingRevoke = value;
-        try { Save(); }
-        catch { _data.PendingRevoke = previous; throw; }
     }
 }

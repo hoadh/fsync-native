@@ -97,7 +97,7 @@ public sealed class PendingRevokeBridgeTests
         await bridge.InitializeAsync();
         await bridge.LogoutAsync();
         // The launch retry may also pick the entry up before sign-out settles it: a repeat of the same token is harmless.
-        lock (revokes) Assert.Equal(["ref-1"], revokes.Distinct());
+        lock (revokes) { Assert.NotEmpty(revokes); Assert.All(revokes, r => Assert.Equal("ref-1", r)); }
         Assert.Null(h.Secrets.PendingRevoke);
         Assert.Null(h.Secrets.Session);
     }
@@ -110,8 +110,10 @@ public sealed class PendingRevokeBridgeTests
         Assert.ThrowsAny<Exception>(() => h.Secrets.SavePendingRevokeFromSession("https://api.example.com", DateTimeOffset.UtcNow));
         Assert.ThrowsAny<Exception>(() => h.Secrets.SavePendingRevoke(Pending("x")));
         Assert.Null(h.Secrets.PendingRevoke);
+        Assert.ThrowsAny<Exception>(() => h.Secrets.ClearSession());
+        Assert.NotNull(h.Secrets.Session); // a failed clear is rolled back too
         Directory.Delete(Path.Combine(h.Dir, "secrets.dat.tmp"));
-        h.Secrets.ClearSession(); // a later successful save must not persist the failed entry
+        h.Secrets.SaveSession(Session); // a later successful save must not persist the failed entry
         Assert.Null(new SecretStore(Path.Combine(h.Dir, "secrets.dat")).PendingRevoke);
     }
 

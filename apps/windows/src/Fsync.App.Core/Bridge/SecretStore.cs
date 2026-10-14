@@ -25,6 +25,16 @@ public sealed partial class SecretStore
         public string? AccountId { get; set; }
         public string? Email { get; set; }
         public PendingRevoke? PendingRevoke { get; set; }
+        public Data Copy() => (Data)MemberwiseClone(); // byte arrays are replaced, never edited in place
+    }
+
+    /// <summary>Caller holds the lock. The in-memory state changes only once it is on disk: a failed save is rolled back.</summary>
+    private void MutateAndSave(Action<Data> change)
+    {
+        var before = _data.Copy();
+        change(_data);
+        try { Save(); }
+        catch { _data = before; throw; }
     }
 
     public SecretStore(string path)
@@ -54,9 +64,11 @@ public sealed partial class SecretStore
     {
         lock (_lock)
         {
-            (_data.Access, _data.Refresh, _data.AccountId) = (tokens.access, tokens.refresh, tokens.accountId);
-            if (email is not null) _data.Email = email;
-            Save();
+            MutateAndSave(d =>
+            {
+                (d.Access, d.Refresh, d.AccountId) = (tokens.access, tokens.refresh, tokens.accountId);
+                if (email is not null) d.Email = email;
+            });
         }
     }
 
@@ -64,8 +76,7 @@ public sealed partial class SecretStore
     {
         lock (_lock)
         {
-            (_data.Access, _data.Refresh, _data.AccountId) = (null, null, null);
-            Save();
+            MutateAndSave(d => (d.Access, d.Refresh, d.AccountId) = (null, null, null));
         }
     }
 

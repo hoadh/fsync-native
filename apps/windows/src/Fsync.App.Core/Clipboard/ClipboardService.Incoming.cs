@@ -67,6 +67,7 @@ public sealed partial class ClipboardService
     /// <summary>Writes a received clip (also history "Copy"); returns false when superseded or failed.</summary>
     public async Task<bool> WriteAsync(ClipItem item)
     {
+        if (Volatile.Read(ref _disposed) != 0) return false; // quitting: nothing to write
         var gen = Interlocked.Increment(ref _inGen);
         var ticket = new WriteTicket();
         Interlocked.Exchange(ref _inTicket, ticket).Replace(); // a newer clip stops older downloads
