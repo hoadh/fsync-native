@@ -18,15 +18,19 @@ public sealed partial class EngineBridge : ObservableObject, IDisposable
     private readonly SecretStore _secrets;
     private readonly IUiDispatcher _ui;
     private readonly Func<EngineConfig, EngineDelegate, IFsyncEngine> _factory;
+    private readonly Action<string, string, bool> _revoke;
     private IFsyncEngine? _engine;
+    private bool _revokeResumed;
 
     [ObservableProperty] private AccountPhase _phase = AccountPhase.Starting;
     /// <summary>Last user-facing problem (network, core error), or null.</summary>
     [ObservableProperty] private string? _statusMessage;
 
     public EngineBridge(AppSettings settings, SecretStore secrets, IUiDispatcher ui,
-        Func<EngineConfig, EngineDelegate, IFsyncEngine>? factory = null)
+        Func<EngineConfig, EngineDelegate, IFsyncEngine>? factory = null,
+        Action<string, string, bool>? revoke = null)
     {
+        _revoke = revoke ?? PendingRevokeResume.DefaultRevoke;
         _settings = settings;
         _secrets = secrets;
         _ui = ui;
@@ -54,11 +58,12 @@ public sealed partial class EngineBridge : ObservableObject, IDisposable
     /// <summary>Creates the engine, restores the session, starts the node, asks for the account state.</summary>
     public async Task InitializeAsync()
     {
+        if (!_revokeResumed) { _revokeResumed = true; ResumePendingRevoke(); } // once per launch
         DisposeEngine(); // ResetHistoryAsync: the old engine must release its files and engine.lock first
         Directory.CreateDirectory(_settings.CoreDir);
-        var cfg = new EngineConfig(_settings.CoreDir, _settings.ApiBase, _settings.RelayUrl, _settings.DeviceName,
+        var cfg = new EngineConfig(_settings.CoreDir, _settings.ApiBase, null, _settings.DeviceName,
             Platform.Win, _secrets.DeviceSecret, _secrets.HistoryKey, forceRelay: false,
-            allowInsecureHttp: _settings.AllowInsecureHttp);
+            allowInsecureHttp: _settings.AllowInsecureHttp, relayUrls: _settings.RelayUrls.ToArray());
         try
         {
             _engine = await Task.Run(() => _factory(cfg, new EngineDelegateAdapter(_ui, _secrets, this)));
@@ -127,7 +132,7 @@ public sealed partial class EngineBridge : ObservableObject, IDisposable
 
     public async Task LogoutAsync()
     {
-        await RunAsync(e => e.Logout());
+        await LogoutKeepingRevokeAsync();
         _secrets.ClearSession();
         Phase = AccountPhase.SignedOut;
         DevicesChanged?.Invoke();
