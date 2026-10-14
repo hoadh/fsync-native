@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Phase-05 automated checks. Runs child copies of itself for the cross-process side. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <!-- Main is [STAThread]; the clipboard owner lives on a dedicated StaThread. -->
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ClipSpike.Core/ClipSpike.Core.csproj" />
+  </ItemGroup>
+</Project>

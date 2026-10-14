@@ -5,7 +5,7 @@
 - Gates: [phase-14](phase-14-windows-clipboard-files-history.md)
 
 ## Overview
-- Priority: P0 | Status: pending | Effort: 1.5-2 wk (D; overlaps phase 03 days)
+- Priority: P0 | Status: partial (automated checks done on Win11 x64 2026-10-14, ADR 010; manual app matrix open) | Effort: 1.5-2 wk (D; overlaps phase 03 days)
 - Validate: `AddClipboardFormatListener` from WinUI 3 app (hidden message window), privacy formats filter, delayed-render `IDataObject` with `CFSTR_FILEDESCRIPTORW` + `CFSTR_FILECONTENTS` (IStream) pasted into Explorer & apps, H.NotifyIcon tray in WinUI 3.
 
 ## Key Insights
@@ -54,12 +54,12 @@ COM interop via CsWin32 source generator (no hand-written P/Invoke where avoidab
 5. ADR 010.
 
 ## Todo List
-- [ ] Tray (H.NotifyIcon) + listener
-- [ ] Sensitive format filter
-- [ ] Virtual file IDataObject + IStream
-- [ ] App test matrix + ARM64
-- [ ] Exit behavior defined
-- [ ] ADR 010
+- [x] Tray (H.NotifyIcon) + listener (WinUI 3 smoke: icon, 21/21 updates on UI thread)
+- [x] Sensitive format filter (documented formats simulated; real password managers not tested)
+- [x] Virtual file IDataObject + IStream (+ IDataObjectAsyncCapability; shell paste 3 files and 200 MiB OK)
+- [ ] App test matrix + ARM64 (ARM64 builds compile; manual matrix via tray "Offer test files" menu not run)
+- [x] Exit behavior defined (clear on exit, never flush)
+- [x] ADR 010
 
 ## Success Criteria
 - ADR 010 with per-app results and chosen strategy; filter skips all password-manager copies tested.

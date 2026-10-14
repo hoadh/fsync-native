@@ -1,0 +1,6 @@
+PASS tray icon created (H.NotifyIcon in WinUI 3): IsCreated=True
+PASS listener on UI thread: 21 writes seen: 21 updates, all on UI thread=True
+PASS filter in WinUI process: last=ExcludeFromMonitor
+PASS own entry seen as echo: last=OwnEcho
+PASS exit policy: clear our lazy entry: OleSetClipboard(NULL) while current
+RESULT PASS
