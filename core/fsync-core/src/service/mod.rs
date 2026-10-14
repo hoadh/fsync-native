@@ -23,6 +23,7 @@ mod pairing;
 mod pairing_control;
 mod pairing_events;
 mod presence;
+mod revoke;
 mod transfers;
 mod transfers_inner;
 mod trust_reset;

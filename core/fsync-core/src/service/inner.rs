@@ -70,6 +70,10 @@ pub(super) struct Inner {
     pub peers: Mutex<HashMap<NodeId, PeerSeen>>,
     pub xfers: Mutex<Transfers>,
     pub pairing: Mutex<PairingSlot>,
+    /// Logout revocations still being retried (dropped with the service).
+    pub revokes: Mutex<Vec<AbortOnDrop>>,
+    /// First retry delay of a queued revocation.
+    pub revoke_base: Mutex<std::time::Duration>,
 }
 
 pub(super) fn lock<T>(m: &Mutex<T>) -> SvcResult<MutexGuard<'_, T>> {
@@ -127,6 +131,8 @@ impl Inner {
             peers: Mutex::default(),
             xfers: Mutex::default(),
             pairing: Mutex::default(),
+            revokes: Mutex::default(),
+            revoke_base: Mutex::new(super::revoke::DEFAULT_BASE),
         };
         Ok((inner, events))
     }

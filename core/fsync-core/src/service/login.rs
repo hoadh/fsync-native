@@ -52,13 +52,17 @@ impl Inner {
         self.restart_presence()
     }
 
+    /// Signs out locally first (never blocked by the network), then revokes the refresh token
+    /// server-side: retried briefly inline, then in the background (see `revoke.rs`).
     pub(super) async fn logout(self: &Arc<Self>) -> SvcResult<()> {
-        // Local sign-out happens even when the server cannot be reached.
-        let remote = self.api.logout().await;
         self.set_account(None)?;
         lock(&self.live)?.presence = None;
-        self.trust.clear()?;
-        remote.map_err(Into::into)
+        let refresh = self.api.take_refresh();
+        let cleared = self.trust.clear();
+        if let Some(refresh) = refresh {
+            self.revoke_or_queue(refresh).await;
+        }
+        cleared.map_err(Into::into)
     }
 }
 
@@ -78,7 +82,10 @@ impl FsyncService {
         self.rt_enter(|| self.inner.set_session(tokens))
     }
 
-    /// Ends the session, forgets the pinned device list.
+    /// Ends the session and forgets the pinned device list. The refresh token is revoked on the
+    /// server: retried for a few seconds, then in the background while the service lives. `Ok`
+    /// means signed out locally; if the backend stays unreachable and the app quits first, the
+    /// token stays valid until its 30 day expiry.
     pub fn logout(&self) -> SvcResult<()> {
         self.run(self.inner.logout())
     }

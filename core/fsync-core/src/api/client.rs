@@ -19,7 +19,7 @@ pub type TokenCallback = Arc<dyn Fn(&TokenPair) + Send + Sync>;
 pub struct ApiClient {
     base: String,
     http: Client,
-    tokens: Mutex<Option<TokenPair>>,
+    pub(super) tokens: Mutex<Option<TokenPair>>,
     refresh_lock: tokio::sync::Mutex<()>,
     on_tokens: Option<TokenCallback>,
 }
