@@ -42,6 +42,18 @@ impl Discovery {
         Ok(())
     }
 
+    /// Where to dial `node`: its id plus the addresses presence / mDNS gave us. iroh only asks
+    /// the lookup when it has no selected path, so after a peer restarts (same id, new port) it
+    /// keeps trying the dead path until that idles out (15 s or more). Passing the current
+    /// addresses with every dial makes iroh try them at once.
+    pub fn addr_for(&self, node: &NodeId) -> Result<EndpointAddr> {
+        let id = endpoint_id(node)?;
+        Ok(self
+            .lookup
+            .get_endpoint_info(id)
+            .map_or_else(|| EndpointAddr::new(id), |i| i.into_endpoint_addr()))
+    }
+
     /// Apply one presence entry. Only paired devices reach the lookup table.
     pub fn apply_peer(&self, p: &PeerInfo) {
         if let Ok(mut k) = self.known.lock()

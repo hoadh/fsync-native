@@ -29,6 +29,9 @@ pub enum FsyncError {
     NotFound,
     #[error("invalid: {0}")]
     Invalid(String),
+    /// Another engine holds `engine.lock`. The text stays what `Invalid` carried.
+    #[error("invalid: another fsync engine is already running on this data directory")]
+    EngineAlreadyRunning,
     #[error("internal: {0}")]
     Internal(String),
 }

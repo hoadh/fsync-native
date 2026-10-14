@@ -110,23 +110,32 @@ impl Mailpit {
 
     /// Mails delivered to `to` (Mailpit search API), polled until one shows up or ~5 s pass.
     pub async fn messages_to(&self, to: &str) -> Vec<Value> {
-        let http = reqwest::Client::new();
+        let http = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .unwrap();
+        // Docker may publish the HTTP port a moment after the container logs "ready": a reset or
+        // refused connection is retried like an empty result, not a failure.
+        let mut answered = false;
         for _ in 0..25 {
-            let v: Value = http
-                .get(format!("{}/api/v1/search", self.http))
-                .query(&[("query", format!("to:{to}"))])
-                .send()
-                .await
-                .unwrap()
-                .json()
-                .await
-                .unwrap();
-            let list = v["messages"].as_array().cloned().unwrap_or_default();
-            if !list.is_empty() {
-                return list;
+            let fetched = async {
+                http.get(format!("{}/api/v1/search", self.http))
+                    .query(&[("query", format!("to:{to}"))])
+                    .send()
+                    .await?
+                    .json::<Value>()
+                    .await
+            };
+            if let Ok(v) = fetched.await {
+                answered = true;
+                let list = v["messages"].as_array().cloned().unwrap_or_default();
+                if !list.is_empty() {
+                    return list;
+                }
             }
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
+        assert!(answered, "mailpit HTTP API never answered");
         Vec::new()
     }
 

@@ -38,12 +38,20 @@ async fn off_rt<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T 
     std::thread::spawn(move || {
         let _ = tx.send(f());
     });
-    rx.await.expect("service thread panicked")
+    // Bounded: a wedged service call fails the test (with the thread still visible in a
+    // sample) instead of hanging the whole suite.
+    tokio::time::timeout(Duration::from_secs(90), rx)
+        .await
+        .expect("service call did not return within 90 s")
+        .expect("service thread panicked")
 }
 
 /// Status of an authenticated call with `access` made straight against the backend.
 async fn status(base: &str, access: &str) -> u16 {
-    reqwest::Client::new()
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .unwrap()
         .get(format!("{base}/v1/device-list"))
         .bearer_auth(access)
         .send()

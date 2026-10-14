@@ -44,14 +44,13 @@ fn second_engine_on_the_same_data_dir_is_refused_until_the_first_stops() {
 
     let b = service(dir.path(), 1);
     let err = b.start().unwrap_err();
-    assert!(
-        matches!(&err, FsyncError::Invalid(m) if m.contains("already running")),
-        "{err:?}"
-    );
+    assert_eq!(err, FsyncError::EngineAlreadyRunning);
+    // Hosts that still match on the text keep working.
+    assert!(err.to_string().contains("already running"), "{err}");
 
     a.stop().unwrap();
     b.start().expect("free after the first engine stopped");
-    assert!(matches!(a.start(), Err(FsyncError::Invalid(_))));
+    assert_eq!(a.start(), Err(FsyncError::EngineAlreadyRunning));
     b.stop().unwrap();
     a.start().expect("start works again after stop");
 }

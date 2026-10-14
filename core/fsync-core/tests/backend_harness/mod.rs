@@ -43,18 +43,26 @@ pub struct Backend {
 
 impl Backend {
     pub async fn start() -> Self {
-        let admin = pg::admin_url().await;
+        // A wedged Docker daemon must fail the test with a message, not hang the whole run.
+        let admin = tokio::time::timeout(Duration::from_secs(240), pg::admin_url())
+            .await
+            .expect("postgres container did not become ready within 240 s (Docker stuck?)");
         let name = format!("t_{}", Uuid::new_v4().simple());
         let mut conn = {
             let mut attempt = 0;
             loop {
-                match PgConnection::connect(&format!("{admin}/postgres")).await {
-                    Ok(c) => break c,
-                    Err(_) if attempt < 40 => {
+                let try_connect = tokio::time::timeout(
+                    Duration::from_secs(5),
+                    PgConnection::connect(&format!("{admin}/postgres")),
+                );
+                match try_connect.await {
+                    Ok(Ok(c)) => break c,
+                    Ok(Err(e)) if attempt >= 40 => panic!("connect admin: {e}"),
+                    Err(_) if attempt >= 40 => panic!("connect admin: timed out"),
+                    Ok(Err(_)) | Err(_) => {
                         attempt += 1;
                         tokio::time::sleep(Duration::from_millis(250)).await;
                     }
-                    Err(e) => panic!("connect admin: {e}"),
                 }
             }
         };

@@ -1,7 +1,6 @@
 //! `Node`: the running iroh endpoint with gated protocols and pairing entry points.
 
 use super::{
-    convert::endpoint_id,
     dialer::Dialer,
     discovery::Discovery,
     gate::Gate,
@@ -17,7 +16,7 @@ use crate::{
     trust::TrustManager,
 };
 use fsync_proto::{ALPN_PAIR, NodeId, presence::Addrs};
-use iroh::{Endpoint, EndpointAddr, endpoint::Connection, protocol::Router};
+use iroh::{Endpoint, endpoint::Connection, protocol::Router};
 use std::{sync::Arc, time::Duration};
 
 pub struct Node {
@@ -58,8 +57,18 @@ impl Node {
     }
 
     /// Connection cache for protocol clients (clip/file).
+    /// The accept gate (live-connection bookkeeping).
+    pub fn gate(&self) -> &Arc<Gate> {
+        &self.gate
+    }
+
     pub fn dialer(&self) -> Dialer {
-        Dialer::new(self.ep.clone(), self.gate.clone(), self.trust.clone())
+        Dialer::new(
+            self.ep.clone(),
+            self.gate.clone(),
+            self.trust.clone(),
+            self.discovery.clone(),
+        )
     }
 
     /// Current relay URL + direct addresses, as sent in presence `Hello`.
@@ -92,7 +101,7 @@ impl Node {
     }
 
     async fn dial(&self, peer: &NodeId, alpn: &[u8]) -> Result<Connection> {
-        let addr = EndpointAddr::new(endpoint_id(peer)?);
+        let addr = self.discovery.addr_for(peer)?;
         self.ep.connect(addr, alpn).await.map_err(CoreError::net)
     }
 
