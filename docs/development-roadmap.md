@@ -16,7 +16,7 @@ Last updated: 2026-10-14. Plan of record: [plans/261013-2029-fsync-native-mvp](.
 | 08 | History, facade, FFI v1, CLI, Swift package, e2e demo | Done | Part A: SQLCipher history, FSB1 blobs, settings. Part B: `FsyncService`, FFI, `fsync-cli`, `FsyncCoreKit`, `tests/e2e/p0-exit-demo.sh`. |
 | 09 | Backend (auth, device registry, pairing, presence) | Done | Review rounds 1-2 applied. Docker and compose exist. |
 | 10 | Infra: relay, backend deploy, CI | Partial | CI (`.github/workflows/ci.yml`) and backend Dockerfile/compose exist. `deploy/relay/` is empty. No 2-region relay. |
-| 11 | macOS app: shell, auth, pairing, devices | Not started | Plan P1 w1-5. Depends on 03, 04, 08, 09. |
+| 11 | macOS app: shell, auth, pairing, devices | Done with concerns | `apps/macos/FsyncMac`: menubar, login, pairing, devices, recovery, trust-reset wiring, settings, bundle script. Integration run passes against a dev backend. Open: manual UI checks, signed build for the data-protection Keychain, Lan/Relay status needs phase 12 sync. |
 | 12 | macOS app: clipboard, files, history, settings | Not started | Plan P1 w5-11. |
 | 13 | Windows app: shell, auth, pairing, devices | Not started | Plan P1 w1-5. Depends on 03, 05, 08, 09. |
 | 14 | Windows app: clipboard, files, history, settings | Not started | Plan P1 w5-11. |
@@ -29,7 +29,7 @@ Phase names and dependencies follow the MVP plan. Its own status column still re
 
 1. ~~**Green gate on the final tree.**~~ Green 2026-10-14 11:48: fmt, clippy `-D warnings`, `cargo test --workspace` 253 pass / 0 fail, `swift test` 8/8, xcframework, e2e PASS. Open: the earlier `devices_reset` `PortNotExposed` failure did not recur, but its root cause is unverified (`backend/tests/common/pg.rs` retry is not selective).
 2. **E2E repeat runs and relay-only stability.** The final tree has one e2e PASS. Target is 3 runs. An interim run once timed out on the relay-only round. Run the demo 2 more times and record the results.
-3. ~~**Trust reset confirmation API (M5).**~~ Done 2026-10-14: `reset_account_trust`, `confirm_trust_reset`, `decline_trust_reset`, `pending_trust_resets` in core, FFI and CLI (ADR 012). The macOS `TrustResetPrompt` library shows the warning (2026-10-14); wiring it into the app is open (phase 11). Pending state is in memory only.
+3. ~~**Trust reset confirmation API (M5).**~~ Done 2026-10-14: `reset_account_trust`, `confirm_trust_reset`, `decline_trust_reset`, `pending_trust_resets` in core, FFI and CLI (ADR 012). The macOS `TrustResetPrompt` library shows the warning (2026-10-14); wiring it into the app is done (phase 11, 2026-10-14). Pending state is in memory only.
 4. **Denylist decision.** Setting is stored and validated but not enforced in core. Enforce in the clip path or drop the setting from the UI plan.
 5. **Two-machine measurements.** mDNS median (~2.7 s on one spike run), hole-punch ratio, real LAN results. Feeds ADR 007.
 6. **Windows phase 03 half.** `uniffi-bindgen-cs`, DLL packaging, callback stress test (10k).
