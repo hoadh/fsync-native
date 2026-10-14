@@ -17,8 +17,9 @@ use std::{
     time::Duration,
 };
 
-/// Called with every new token pair so the app can persist it (Keychain/DPAPI). Runs while the
-/// client holds its token lock: it must be quick and must not call back into the client.
+/// Called with every new token pair so the app can persist it (Keychain/DPAPI). Runs outside
+/// the token lock (reading `tokens()` from it is fine), but `take_refresh` waits for a running
+/// callback: it must not call logout (directly or by blocking on another thread that does).
 pub type TokenCallback = Arc<dyn Fn(&TokenPair) + Send + Sync>;
 
 pub struct ApiClient {
@@ -28,6 +29,8 @@ pub struct ApiClient {
     refresh_lock: tokio::sync::Mutex<()>,
     /// Bumped by `take_refresh`: a refresh that started earlier must not store its result.
     epoch: AtomicU64,
+    /// Held while a refresh result is stored and reported, so logout orders against it.
+    notify: Mutex<()>,
     on_tokens: Option<TokenCallback>,
 }
 
@@ -62,6 +65,7 @@ impl ApiClient {
             tokens: Mutex::new(tokens),
             refresh_lock: tokio::sync::Mutex::new(()),
             epoch: AtomicU64::new(0),
+            notify: Mutex::new(()),
             on_tokens,
         })
     }
@@ -107,23 +111,28 @@ impl ApiClient {
     }
 
     /// Store the result of a refresh that began at `epoch`, unless a logout happened since.
-    /// The check, the store and the app callback share one critical section, so a logout
-    /// either precedes all of it (nothing is stored or reported) or follows it.
+    /// The check, the store and the app callback sit in one critical section of `notify` (which
+    /// `take_refresh` also takes first), so a logout either precedes all of it (nothing is stored
+    /// or reported) or follows it. The callback runs without the token lock held.
     fn set_tokens_at(&self, epoch: u64, t: TokenPair) -> Result<()> {
-        let mut g = self.tokens.lock().map_err(|_| CoreError::Closed)?;
-        if self.epoch.load(Ordering::SeqCst) != epoch {
-            return Err(CoreError::AuthExpired);
+        let _order = self.notify.lock().map_err(|_| CoreError::Closed)?;
+        {
+            let mut g = self.tokens.lock().map_err(|_| CoreError::Closed)?;
+            if self.epoch.load(Ordering::SeqCst) != epoch {
+                return Err(CoreError::AuthExpired);
+            }
+            *g = Some(t.clone());
         }
         if let Some(cb) = &self.on_tokens {
             cb(&t);
         }
-        *g = Some(t);
         Ok(())
     }
 
     /// Logout: forget the tokens, hand back the refresh token, and invalidate refreshes in
     /// flight. A poisoned lock is recovered (the tokens must go regardless).
     pub fn take_refresh(&self) -> Option<String> {
+        let _order = self.notify.lock().unwrap_or_else(|p| p.into_inner());
         let mut g = self.tokens.lock().unwrap_or_else(|p| {
             tracing::warn!("token lock poisoned during logout; clearing anyway");
             p.into_inner()

@@ -52,17 +52,23 @@ impl Inner {
         self.restart_presence()
     }
 
+    fn sign_out_locally(&self) -> SvcResult<()> {
+        let account = self.set_account(None);
+        let presence = lock(&self.live).map(|mut l| l.presence = None);
+        let trust = self.trust.clear().map_err(FsyncError::from);
+        account.and(presence).and(trust)
+    }
+
     /// Signs out locally first (never blocked by the network), then revokes the refresh token
     /// server-side: retried briefly inline, then in the background (see `revoke.rs`).
     pub(super) async fn logout(self: &Arc<Self>) -> SvcResult<()> {
-        self.set_account(None)?;
-        lock(&self.live)?.presence = None;
+        // Take the token first: a later local failure must not leave the session unrevoked.
         let refresh = self.api.take_refresh();
-        let cleared = self.trust.clear();
+        let local = self.sign_out_locally();
         if let Some(refresh) = refresh {
             self.revoke_or_queue(refresh).await;
         }
-        cleared.map_err(Into::into)
+        local
     }
 }
 

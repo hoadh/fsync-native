@@ -27,15 +27,15 @@ const AHEAD: u64 = 4;
 /// Sequential reads seen before the full read-ahead depth is used; until then one window.
 const RAMP_READS: u32 = 2;
 
+use super::seq_run::SeqRun;
+
 type Cell = Arc<OnceCell<Arc<Vec<u8>>>>;
 
 #[derive(Default)]
 struct State {
     verifier: Option<Arc<Verifier>>,
     windows: HashMap<u64, Cell>,
-    last_end: u64,
-    /// Consecutive sequential reads.
-    run: u32,
+    seq: SeqRun,
 }
 
 pub struct RangeReader {
@@ -118,19 +118,14 @@ impl RangeReader {
             let Ok(mut s) = self.state.lock() else {
                 return;
             };
-            if offset == s.last_end {
-                s.run = s.run.saturating_add(1);
-            } else {
-                s.run = 0;
-            }
-            s.last_end = end;
-            if s.run == 0 {
+            s.seq.note_read(offset, end);
+            if s.seq.run == 0 {
                 return;
             }
             // Behind a sequential reader nothing is read again: free it for the windows ahead.
             let keep_from = offset / WINDOW;
             s.windows.retain(|k, _| *k >= keep_from);
-            let depth = if s.run >= RAMP_READS { AHEAD } else { 1 };
+            let depth = if s.seq.run >= RAMP_READS { AHEAD } else { 1 };
             (first..first + depth)
                 .filter(|i| i * WINDOW < self.exp.size && !s.windows.contains_key(i))
                 .collect()

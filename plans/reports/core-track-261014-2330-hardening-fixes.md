@@ -19,3 +19,12 @@ Branch `core/hardening`. Gates: fmt clean, clippy -D warnings clean, `cargo test
 ## Unresolved
 - Hard revoke guarantee after app quit needs an additive FFI `revoke_session(refresh)` (app persists pending token). Not done: FFI additive change needs coordinator approval.
 - Windows track should re-run the 200 MiB shell paste with read-ahead.
+
+## Round 3 (re-review lows)
+Gates: fmt, clippy -D warnings clean; `cargo test --workspace` 264 passed / 0 failed.
+- L1: `SeqRun` (`file/seq_run.rs`) keeps `last_end: Option<u64>`; first read never sequential. In-module unit test `first_read_is_never_sequential_even_at_offset_zero`.
+- L2: `Inner.start_gate` (tokio mutex) serializes `start` and `stop`. Test `concurrent_starts_on_one_service_all_succeed` (6 threads).
+- L3: `logout` takes the refresh token first, then signs out locally; local errors are returned after revoke is queued/attempted.
+- L4: if the engine is still referenced after the 50-try wait, a background task keeps the data-dir lock, waits until the engine is unique, then shuts it down cleanly and releases the lock. No overlap with a new engine.
+- L5: `on_tokens` now runs outside the token lock (reading `tokens()` inside is safe). Ordering vs logout kept by a separate `notify` mutex that `take_refresh` also takes first: logout waits for a running callback, so it must not be called from `on_session_changed` (or by something that blocks on it). Proposed `docs/ffi-contract.md` wording for `on_session_changed`: "Called on the delegate queue with each rotated token pair; do not call `logout()` synchronously from this callback and wait for it. After `logout()` returns, no further `on_session_changed` is delivered for a refresh that began before it." (The delegate is dispatched through a queue, so the engine-side callback only enqueues; no deadlock on re-entry.)
+- Open question (answered): backend `refresh::revoke` resolves the family from the presented token hash (`family_id IN (SELECT family_id ... WHERE token_hash = $1)`, no revoked/rotated filter) and sets `revoked_at` on every live token of that family. A token rotated by an abandoned in-flight refresh therefore dies with the family. No backend src change. Added test `logout_kills_the_whole_family_including_rotated_tokens` (backend/tests/auth_refresh.rs): refresh once, logout with the old rotated token, newer token gets 401.

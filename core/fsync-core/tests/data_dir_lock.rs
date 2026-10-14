@@ -76,3 +76,19 @@ fn a_different_data_dir_is_independent() {
     a.stop().unwrap();
     b.stop().unwrap();
 }
+
+#[test]
+fn concurrent_starts_on_one_service_all_succeed() {
+    let dir = tempfile::tempdir().unwrap();
+    let a = Arc::new(service(dir.path(), 5));
+    let hs: Vec<_> = (0..6)
+        .map(|_| {
+            let a = a.clone();
+            std::thread::spawn(move || a.start())
+        })
+        .collect();
+    for h in hs {
+        h.join().unwrap().expect("no spurious Invalid");
+    }
+    a.stop().unwrap();
+}

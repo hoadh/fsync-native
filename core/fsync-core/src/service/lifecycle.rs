@@ -10,6 +10,7 @@ use std::{sync::Arc, time::Duration};
 
 impl Inner {
     pub(super) async fn start(self: &Arc<Self>) -> SvcResult<()> {
+        let _one_start = self.start_gate.lock().await;
         if lock(&self.live)?.engine.is_some() {
             return Ok(());
         }
@@ -59,7 +60,8 @@ impl Inner {
     }
 
     pub(super) async fn stop(&self) {
-        let (engine, _presence, tasks, _data_lock) = match lock(&self.live) {
+        let _one_start = self.start_gate.lock().await;
+        let (engine, _presence, tasks, data_lock) = match lock(&self.live) {
             Ok(mut l) => (
                 l.engine.take(),
                 l.presence.take(),
@@ -82,6 +84,7 @@ impl Inner {
             match Arc::try_unwrap(engine) {
                 Ok(e) => {
                     e.shutdown().await;
+                    drop(data_lock);
                     return;
                 }
                 Err(still_shared) => {
@@ -90,7 +93,21 @@ impl Inner {
                 }
             }
         }
-        tracing::warn!("engine still referenced at stop; dropping without clean shutdown");
+        // Something still holds the engine. Keep the data-dir lock until it is really gone (then
+        // shut down cleanly), so a new engine never overlaps with a lingering one.
+        tracing::warn!("engine still referenced at stop; shutting down once released");
+        tokio::spawn(async move {
+            let (_data_lock, mut engine) = (data_lock, engine);
+            loop {
+                match Arc::try_unwrap(engine) {
+                    Ok(e) => return e.shutdown().await,
+                    Err(shared) => {
+                        engine = shared;
+                        tokio::time::sleep(Duration::from_millis(250)).await;
+                    }
+                }
+            }
+        });
     }
 }
 

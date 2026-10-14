@@ -13,6 +13,7 @@ mod policy;
 mod range_reader;
 mod reader_cache;
 mod resume;
+mod seq_run;
 mod served;
 
 pub use fetch_client::Expect;
