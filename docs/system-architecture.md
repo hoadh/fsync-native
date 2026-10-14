@@ -112,7 +112,7 @@ Mac-side logic lives in `FsyncMacCore/Clipboard`, `Files`, `Settings` and `Featu
 | Pairing | `POST /v1/pairing`, `GET /v1/pairing/{code}` |
 | Presence | `GET /v1/presence` (WebSocket) |
 
-- Tables (`backend/migrations/0001_init`, `0002_refresh_session`): `accounts`, `otp_codes`, `refresh_tokens`, `device_lists`, `device_list_history`, `pairing_codes`.
+- Tables (`backend/migrations/0001_init`, `0002_refresh_session`, `0003_otp_send_log`): `accounts`, `otp_codes`, `refresh_tokens`, `device_lists`, `device_list_history`, `pairing_codes`, `otp_send_log`.
 - Behaviour that matters to clients:
   - OTP codes, pairing codes: stored as keyed hashes. Pairing codes are bound to the account.
   - Access token: EdDSA JWT, 15 min. Each request checks that its refresh family is still live.
@@ -125,7 +125,10 @@ Mac-side logic lives in `FsyncMacCore/Clipboard`, `Files`, `Settings` and `Featu
 ## Relay
 
 - The core never uses n0 default relays. Relays come from config (`NodeBuilder::relays`). An empty list disables relays.
-- Production relay: `deploy/relay/` builds an image from `iroh-relay` 1.3.0 (pinned to `Cargo.lock`). It runs in the compose stack on the VPS, published on loopback `18081`, and is reached as `relay-fsync.10z.one` through the host Caddy (no buffering: `flush_interval -1`). One region only; a second region is not started.
+- Production relays: `deploy/relay/` builds an image from `iroh-relay` 1.3.0 (pinned to `Cargo.lock`). Two regions, each published on loopback `18081` behind its host's Caddy (no buffering: `flush_interval -1`):
+  - US-East-2 (Ohio): `relay-fsync.10z.one`, in the full compose stack with the backend.
+  - ap-southeast-1 (Singapore): `relay-sg-fsync.10z.one`, relay-only host (`deploy.sh --relay-only`), no backend or Postgres.
+- The backend runs only in Ohio.
 - QUIC address discovery (QAD, udp/7842) is off by default. With `RELAY_QAD=1` the relay needs the Caddy-managed certificate for its own hostname, mounted alone.
 - For local runs and the e2e demo, `spikes/iroh-discovery` starts an in-process `iroh-relay` in HTTP dev mode (`relay [port]`).
 - Relay sees only QUIC ciphertext. Clip and file bytes never reach the backend.
@@ -143,6 +146,10 @@ internet --udp/7842--> relay QAD (optional, off by default)
 compose network (pinned subnet, FSYNC_SUBNET)
   backend  --> postgres:17 (no host port)
   relay    (metrics stay inside the network)
+
+Singapore relay-only host (no backend, no Postgres)
+internet --443--> host Caddy (owner-managed)
+                    relay-sg-fsync.10z.one -> 127.0.0.1:18081  relay
 ```
 
 - **Client IP trust.** Caddy reaches the backend through the published loopback port, so the backend sees the subnet gateway (or 127.0.0.1). `TRUSTED_PROXIES` names that subnet plus loopback and `TRUST_PROXY_HOPS=1`, so `X-Forwarded-For` is honored only from those peers. `smoke-check.sh` with `CHECK_PROXY_TRUST=1` verifies this on the host.
@@ -153,7 +160,8 @@ compose network (pinned subnet, FSYNC_SUBNET)
 - **Limits.** Memory limits are sized for a shared host of about 2 GiB: Postgres 192 MiB, backend 96 MiB, relay 96 MiB, no swap.
 - **Backups.** `backup-postgres.sh` writes `pg_dump -Fc` dumps daily (cron, installed with `deploy.sh --install-backup-cron`), keeps 14 days, and refuses to run below 1 GiB free. `restore-postgres.sh` restores one dump.
 - **CI.** `ci.yml` runs the Rust job always and the macOS and Windows jobs only when their paths change (always on push to `main` and on dispatch). `deploy-stack.yml` builds both images and runs `tests/e2e/compose-stack-sync.sh` when deploy inputs change. Actions are pinned by SHA.
-- **Status (2026-10-14).** Deployed on loopback. Public HTTPS smoke waits for the owner's host Caddy snippet. No email sender exists yet, so the stack runs in staging with dev OTP output and must not serve real users.
+- **Status (2026-10-15).** Ohio runs the full stack behind host Caddy (public HTTPS, release `519ec821e90f`, migrations 0001-0003). OTP email goes out through Gmail SMTP, verified 2026-10-15. Singapore runs the relay only (release `519ec821e90f`, `.mode` = `relay-only`).
+- **Relay-only mode.** `deploy.sh --relay-only` ships only the relay image and `compose.relay-only.yml`. It writes `.mode` on every deploy, so a full deploy cannot land on that host and a relay-only deploy cannot replace a full stack.
 
 ## Data flows
 
@@ -219,6 +227,7 @@ Limits: at most 3 unauthenticated sessions per window, one attempt per source no
 |---|---|
 | `accounts` | Account id, email (lowercased) |
 | `otp_codes` | Keyed hash of the OTP, attempts, expiry |
+| `otp_send_log` | One row per OTP email sent, for the global 24 h cap (`OTP_DAILY_SEND_CAP`); a definite send failure deletes its row |
 | `refresh_tokens` | Hashed refresh tokens by family (`auth_time`, `rotated_at`) |
 | `device_lists` | Current signed list per account and epoch |
 | `device_list_history` | Signed lists for chain fetch (last 100 per epoch) |
@@ -270,12 +279,12 @@ Defaults (settings): history mode Auto, 30 days, 1 GiB size cap, 50 MiB max clip
 
 - Presence and rate-limit state is per instance. The backend is single-instance.
 - No Postgres TLS (`tls-rustls` not enabled in sqlx).
-- Email delivery is a log sender only.
+- Email: Gmail SMTP is the only real sender. Gmail's consumer limit (about 500 recipients per day) is enforced by `OTP_DAILY_SEND_CAP` (450 per rolling 24 h). A transactional provider is needed before real traffic (only the `SMTP_*` values change).
 - Root of a fresh device's chain is learned only when a chain through the head is seen. An old genesis replayed to a fresh device triggers a reset prompt, not a silent accept.
 - The denylist setting is stored and validated, but the core does not enforce it. Apps must filter before publishing.
-- Windows (phases 03 C#, 05, 13, 14) is partial. Phase 10 is deployed on loopback only: public HTTPS smoke is pending, and there is one relay region.
+- Windows (phases 03 C#, 05, 13, 14) is partial: phase 14 is merged, manual GUI QA is open, and ARM64 is not run. Phase 10 has two relay regions; the backend is still single-region (Ohio).
 - Logout revocation is in memory only. A hard guarantee after an app quit needs an additive FFI (`revoke_session`), which is not built.
-- Public relay throughput from Vietnam to the US-East-2 VPS is about 0.1 MiB/s, the same as the raw path. The network is the bottleneck, not the relay.
+- Public relay throughput from Vietnam to the US-East-2 VPS is about 0.1 MiB/s, the same as the raw path. A Vietnam client measured about 0.63 MiB/s (8 MiB, relay-only) through the Singapore relay, about 6x the Ohio figure.
 
 ## Related docs
 

@@ -2,6 +2,28 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-10-15 - OTP email over SMTP, relay-only deploy, Singapore relay, Windows phase 14
+
+### Added
+- OTP email sender `EMAIL_SENDER=smtp` (lettre, STARTTLS on `smtp.gmail.com:587` by default; 465 = implicit TLS). Env: `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, optional `SMTP_HOST`, `SMTP_PORT`. Production refuses `log` unless `ALLOW_LOG_EMAIL=1`. Code: `backend/src/email/` (`smtp.rs`, `config.rs`, `sender.rs`).
+- Global OTP send cap `OTP_DAILY_SEND_CAP` (default 450 per rolling 24 h), counted in Postgres (migration `0003_otp_send_log`) under an advisory lock. Over the cap, `otp/start` returns 429 and logs `global OTP send cap reached`.
+- Relay-only deploy mode: `deploy/compose.relay-only.yml`, `deploy/relay-only.env.example`, `deploy.sh --relay-only`, and a `.mode` marker on each host. `smoke-check.sh --relay-only`, `test-relay-only-local.sh`.
+- Singapore relay `relay-sg-fsync.10z.one` on a relay-only host (release `519ec821e90f`). See [deployment guide](./deployment-guide.md#hosts).
+- Windows phase 14 merged: clipboard sync, files, history and settings. Default hotkeys Win+Alt+C (send) and Win+Alt+V (paste from another device). Windows 11 x64: `dotnet` 124/124.
+- `tests/e2e/p0-exit-demo.sh` accepts `E2E_RELAY_URL` to run against a deployed relay.
+
+### Changed
+- OTP send failures now follow the outcome: a definite failure (refused, TLS/auth, rejected) deletes the code and refunds the slot and quotas. A timeout keeps the code and counts. See [api](./api.md#auth).
+- Ohio full stack moved to release `519ec821e90f` with migrations 0001-0003.
+
+### Verification
+- Ohio: real OTP through Gmail SMTP, `otp/start` 204 in 1.8 s (2026-10-15).
+- Singapore relay e2e (client in Vietnam): relay-only clip 0.42 s; 8 MiB via relay at 0.63 MiB/s, hash OK. Ohio relay measured earlier at about 0.105 MiB/s, so about 6x.
+
+### Open
+- Phase 14 manual GUI QA (Windows app) not done.
+- Alert on the log line `global OTP send cap reached` (alerting setup is not in the repo).
+
 ## 2026-10-14 - Track merge: core hardening, infra phase 10, macOS phases 04 and 12
 
 ### Added

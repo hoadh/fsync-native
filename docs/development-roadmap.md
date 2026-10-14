@@ -1,6 +1,6 @@
 # Development Roadmap
 
-Last updated: 2026-10-14. Plan of record: [plans/261013-2029-fsync-native-mvp](../plans/261013-2029-fsync-native-mvp/plan.md). Its phase files still show "pending"; this page is the current status.
+Last updated: 2026-10-15. Plan of record: [plans/261013-2029-fsync-native-mvp](../plans/261013-2029-fsync-native-mvp/plan.md). Its phase files still show "pending"; this page is the current status.
 
 ## Phase Status
 
@@ -15,11 +15,11 @@ Last updated: 2026-10-14. Plan of record: [plans/261013-2029-fsync-native-mvp](.
 | 07 | Core clip and file protocols | Done | `fsync/clip/1`, `fsync/file/1`. 1 GiB benchmark is `#[ignore]`. |
 | 08 | History, facade, FFI v1, CLI, Swift package, e2e demo | Done | Part A: SQLCipher history, FSB1 blobs, settings. Part B: `FsyncService`, FFI, `fsync-cli`, `FsyncCoreKit`, `tests/e2e/p0-exit-demo.sh`. |
 | 09 | Backend (auth, device registry, pairing, presence) | Done | Review rounds 1-2 applied. Docker and compose exist. |
-| 10 | Infra: relay, backend deploy, CI | Partial | Production stack in `deploy/` (compose, Caddy snippet, `deploy/scripts/`): backend and relay bound to loopback 18080/18081 behind host Caddy on a shared VPS. Backups, rollback and smoke check scripted. CI path-filtered jobs and `deploy-stack.yml` added; the GitHub workflows have not yet run on a hosted runner. Public HTTPS smoke and two-client e2e verified 2026-10-14. Open: second region, alerts, first GitHub run. |
+| 10 | Infra: relay, backend deploy, CI | Partial | Production stack in `deploy/` (compose, Caddy snippet, `deploy/scripts/`): backend and relay bound to loopback 18080/18081 behind host Caddy on a shared VPS. Backups, rollback and smoke check scripted. Public HTTPS smoke and two-client e2e verified 2026-10-14. Second relay region (Singapore, relay-only mode) deployed 2026-10-15. Open: alerts, first GitHub run. |
 | 11 | macOS app: shell, auth, pairing, devices | Done with concerns | `apps/macos/FsyncMac`: menubar, login, pairing, devices, recovery, trust-reset wiring, settings, bundle script. Integration run passes against a dev backend. Open: manual UI checks, signed build for the data-protection Keychain, Lan/Relay status needs phase 12 sync. |
 | 12 | macOS app: clipboard, files, history, settings | Implemented; automated tests pass; manual QA open | Clipboard sync (auto/manual), privacy filters, history, settings, file clips, incoming offers, transfers, retention. Swift tests green; integration script 12/12 against a real backend and relay (run locally, needs Docker). Open: manual QA, copy-back of full history content. |
 | 13 | Windows app: shell, auth, pairing, devices | Partial | `apps/windows`: WinUI 3 tray app, DPAPI secrets, sign-in, pairing (code/QR/SAS), devices, start with Windows; 35/35 unit tests; `tests/e2e/pair-with-cli.ps1` PASS against fsync-cli. Open: pairing with the Mac app, ARM64 hardware. |
-| 14 | Windows app: clipboard, files, history, settings | Not started | Plan P1 w5-11. |
+| 14 | Windows app: clipboard, files, history, settings | Merged 2026-10-15; manual GUI QA open | Clipboard sync, files, history, settings. Default hotkeys Win+Alt+C / Win+Alt+V. Windows 11 x64: `dotnet` 124/124. Open: manual GUI QA. |
 | 15 | Cross-OS integration and network test matrix | Not started | Harness depends on 10. |
 | 16 | Release: signing, notarization, auto-update | Not started | Depends on 10, 12, 14. |
 
@@ -34,8 +34,8 @@ Phase names and dependencies follow the MVP plan. Its own status column still re
 5. **Two-machine measurements.** mDNS median (~2.7 s on one spike run), hole-punch ratio, real LAN results. Feeds ADR 007.
 6. **Windows ARM64 + app e2e.** Run on ARM64 hardware, pair Windows with the Mac app (phase 11). Read-ahead in `read_file_range` landed in core (46 to 105 MiB/s at 50 ms RTT). Re-run the 200 MiB shell paste on Windows to confirm (ADR 010).
 7. **x86_64 slice.** Execute at least once on an Intel host or in CI.
-8. **Production stack (phase 10).** Stack runs on loopback behind host Caddy. Public HTTPS (`api-fsync.10z.one`, `relay-fsync.10z.one`) verified 2026-10-14. Open: first GitHub run of `ci.yml` and `deploy-stack.yml`; a second relay region.
-9. **Backend production gaps.** Multi-instance state (presence, rate limits are in memory), Postgres TLS (sqlx `tls-rustls` not enabled), a real email provider (OTP is currently logged only; production mode cannot send codes yet).
+8. **Production stack (phase 10).** Stack runs on loopback behind host Caddy. Public HTTPS (`api-fsync.10z.one`, `relay-fsync.10z.one`) verified 2026-10-14. ~~Second relay region~~ done 2026-10-15 (Singapore, `relay-sg-fsync.10z.one`, relay only). Open: first GitHub run of `ci.yml` and `deploy-stack.yml`.
+9. **Backend production gaps.** Multi-instance state (presence, rate limits are in memory), Postgres TLS (sqlx `tls-rustls` not enabled). ~~A real email provider~~ Gmail SMTP done 2026-10-15, with `OTP_DAILY_SEND_CAP` 450 per 24 h; a transactional provider is still recommended before real traffic.
 10. **Logout is not a hard guarantee.** Logout revokes the session with background retry, but the server-side revoke is in memory and no `revoke_session` FFI exists yet. Stale sessions can survive a crash until the retry succeeds.
 11. **macOS manual QA and copy-back.** Run the manual paste and privacy matrix (phase 04/12). History keeps 200-character previews, so copy-back works only for text stored in full; images and files need a core content accessor (`history_item_reps` proposal).
 12. **Phases 05, 11, 13-16.** Per plan.
@@ -47,5 +47,6 @@ Phase names and dependencies follow the MVP plan. Its own status column still re
 | 2026-10-13 | Phases 01, 02 (single host), 06, 07, 09 landed; backend review rounds 1-2 and core 06/07 security fixes applied |
 | 2026-10-14 | Phase 08 landed (facade, FFI v1, CLI, Swift package, e2e demo); core 08b review rounds 3-7 applied |
 | 2026-10-14 | Track merge into local main (HEAD d3435e8): core hardening (read-ahead, logout revocation, `engine.lock`), phase 10 production stack on loopback, phases 04 and 12 (macOS clipboard, files, history, settings) |
+| 2026-10-15 | OTP email over Gmail SMTP with a global send cap; relay-only deploy mode; Singapore relay live; Windows phase 14 merged |
 
 See [project-changelog.md](./project-changelog.md) for details.
