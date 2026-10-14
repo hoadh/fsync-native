@@ -12,12 +12,13 @@ extension EngineBridge {
             let saved = Self.savePendingRevoke(secrets: secrets, apiBase: apiBase)
             guard let engine else {
                 // No engine to log out with (boot failed): revoke directly.
-                if saved { _ = PendingRevokeResume.run(secrets: secrets) }
+                if saved != nil { _ = PendingRevokeResume.run(secrets: secrets) }
                 return
             }
             do {
-                if try engine.logoutConfirmed() {
-                    try? secrets.clearPendingRevoke()
+                // Only drop the entry this sign-out saved; a newer one stays for the next launch.
+                if try engine.logoutConfirmed(), let saved {
+                    try? secrets.settlePendingRevoke(retried: saved, replacement: nil)
                 }
             } catch {
                 Self.log.error("logout failed: \(String(describing: error), privacy: .private)")
@@ -35,14 +36,15 @@ extension EngineBridge {
     }
 
     /// The newest refresh token the Keychain holds (every rotation is stored by the delegate).
-    private nonisolated static func savePendingRevoke(secrets: AppSecrets, apiBase: String) -> Bool {
+    private nonisolated static func savePendingRevoke(secrets: AppSecrets, apiBase: String) -> PendingRevoke? {
         do {
-            guard let session = try secrets.session() else { return false }
-            try secrets.savePendingRevoke(PendingRevoke(refresh: session.refresh, apiBase: apiBase, createdAt: Date()))
-            return true
+            guard let session = try secrets.session() else { return nil }
+            let pending = PendingRevoke(refresh: session.refresh, apiBase: apiBase, createdAt: Date())
+            try secrets.savePendingRevoke(pending)
+            return pending
         } catch {
             Self.log.error("could not keep a pending revoke: \(String(describing: error), privacy: .private)")
-            return false
+            return nil
         }
     }
 }

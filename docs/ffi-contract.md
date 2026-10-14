@@ -166,7 +166,8 @@ FsyncError { NotPaired, PeerOffline, Network{msg}, Integrity, TooLarge, Auth, Re
   Swift only: the initializer is labeled and the field has a default, so existing call sites
   compile unchanged. C# records are positional: a C# host must regenerate `fsync_ffi.cs`, update
   its positional `EngineConfig` call, and ship the native DLL together with the new binding. An
-  old binding against a new DLL fails at record decode. It is merged with `relay_url`: `relay_url` first, then `relay_urls`, duplicates dropped
+  old binding against a new DLL fails at record decode. `apps/windows` is updated in a
+  follow-up (S5), not with this change. It is merged with `relay_url`: `relay_url` first, then `relay_urls`, duplicates dropped
   (`https://a` and `https://a/` are one relay). All of them go into one iroh `RelayMap`; the
   endpoint probes them and picks its home relay by latency (and moves it when the network
   changes), so a US-East-2 and a Singapore relay need no host logic. A peer that cannot reach one
