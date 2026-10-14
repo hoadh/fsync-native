@@ -34,7 +34,8 @@ public sealed partial class ClipboardService
         var dir = _inbox.Folder(item.itemId);
         _inbox.Touch(dir); // a reused folder is fresh again for the cleanup's minimum age
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        budget.CancelAfter(EagerTimeout);
+        // A spent budget must be spent now: CancelAfter(0) fires on a timer, so a start could slip through before it.
+        if (EagerTimeout <= TimeSpan.Zero) budget.Cancel(); else budget.CancelAfter(EagerTimeout);
         var ids = new List<ulong>();
         var waits = new List<Task<string>>();
         try
