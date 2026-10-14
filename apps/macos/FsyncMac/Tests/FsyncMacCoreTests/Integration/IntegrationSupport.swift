@@ -9,15 +9,16 @@ class IntegrationTestCase: EngineTestCase {
     var backend: DevBackend!
     var procs: [CliProcess] = []
 
+    // No `super.setUp()` / `super.tearDown()`: EngineTestCase overrides neither (XCTestCase's are empty), and
+    // calling a nonisolated async super method from this main-actor class sends `self` across isolation,
+    // which Swift 6.1 (Xcode 16.4 on CI) rejects.
     override func setUp() async throws {
-        try await super.setUp()
         backend = try DevBackend.fromEnvironment()
     }
 
     override func tearDown() async throws {
         procs.forEach { $0.terminate() }
         procs = []
-        try await super.tearDown()
     }
 
     // MARK: Helpers

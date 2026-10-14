@@ -88,6 +88,7 @@ enum HarnessError: Error, CustomStringConvertible {
 
 /// One JSON line printed by `fsync-cli`. The values come from `JSONSerialization` (NSString, NSNumber,
 /// NSArray, NSDictionary) and are never mutated after parsing, so sharing them across isolation domains is safe.
+/// Keep it immutable: do not add mutating members.
 struct CliEvent: @unchecked Sendable {
     private let fields: [String: Any]
 
