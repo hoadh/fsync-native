@@ -51,6 +51,7 @@ final class ErrorTextTests: XCTestCase {
         XCTAssertEqual(text(.Io(msg: "secret path")), "Something went wrong (io)")
         XCTAssertEqual(text(.Internal(msg: "x")), "Something went wrong (internal)")
         XCTAssertEqual(text(.NotPaired), "Something went wrong (not-paired)")
+        XCTAssertEqual(text(.EngineAlreadyRunning), "fsync is already running on this Mac.")
         XCTAssertNotNil(ErrorText.message(for: CancellationError(), context: .general))
     }
 

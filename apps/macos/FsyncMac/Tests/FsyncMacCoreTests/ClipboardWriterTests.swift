@@ -93,13 +93,22 @@ final class ClipboardWriterTests: EngineTestCase {
         XCTAssertTrue((pb.types ?? []).isEmpty, "our lazy entry is removed on quit")
     }
 
-    func testWriteTextIsMarked() {
+    func testWriteRepsIsMarkedAndSkipsUnusable() {
         let pb = scratchPasteboard()
         let writer = ClipboardWriter(pasteboard: pb) { _, _ in Data() }
-        XCTAssertTrue(writer.writeText("copied back"))
+        XCTAssertNil(writer.writeReps([Rep(mime: "text/plain", data: Data("copied back".utf8)), Rep(mime: "x/unknown", data: Data([1]))]).failure)
         XCTAssertEqual(pb.string(forType: .string), "copied back")
         XCTAssertTrue(writer.isCurrent)
         XCTAssertTrue(pb.types?.contains(NSPasteboard.PasteboardType(SensitiveFilter.originType)) ?? false)
+    }
+
+    func testWriteRepsWithNothingUsableLeavesThePasteboard() {
+        let pb = scratchPasteboard()
+        pb.clearContents(); pb.setString("keep", forType: .string)
+        let writer = ClipboardWriter(pasteboard: pb) { _, _ in Data() }
+        XCTAssertEqual(writer.writeReps([]).failure, .nothingUsable)
+        XCTAssertEqual(writer.writeReps([Rep(mime: "text/plain", data: Data([0xFF, 0xFE]))]).failure, .nothingUsable, "invalid UTF-8")
+        XCTAssertEqual(pb.string(forType: .string), "keep")
     }
 }
 

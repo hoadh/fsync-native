@@ -3,12 +3,8 @@ import FsyncCoreKit
 import Foundation
 
 extension HistoryItem {
-    /// The history keeps a 200-character preview, not the content. Copying it back is only honest when the
-    /// preview is the whole clip (plain text whose size equals the preview's); otherwise nil.
-    public var copyBackText: String? {
-        guard kind == .text, let preview, !preview.isEmpty, UInt64(preview.utf8.count) >= totalSize else { return nil }
-        return preview
-    }
+    /// The engine can return the full content of every item that is not files-only.
+    public var canCopyBack: Bool { kind != .files }
 }
 
 /// The clipboard history list: search, paging, pin, delete and clear. Content stays in the engine.

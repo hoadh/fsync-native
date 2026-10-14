@@ -49,6 +49,27 @@ final class ClipboardIntegrationTests: IntegrationTestCase {
         XCTAssertEqual(history.items.first?.outgoing, true)
     }
 
+    /// The history keeps a 200-character preview; copy-back must restore the whole clip from the engine.
+    func testHistoryCopyBackRestoresTheFullText() async throws {
+        let r = try await rig(cli: "k7")
+        let long = (0..<120).map { "line \($0) of a clip longer than the preview" }.joined(separator: "\n")
+        copy(long, to: r.pb)
+        let history = try XCTUnwrap(r.bridge.historyModel)
+        let deadline = Date().addingTimeInterval(30)
+        repeat {
+            await history.reload()
+            if history.items.first?.outgoing == true { break }
+            try await Task.sleep(nanoseconds: 200_000_000)
+        } while Date() < deadline
+        XCTAssertEqual(history.items.first?.outgoing, true, "clip not in history")
+        let item = try XCTUnwrap(history.items.first)
+        XCTAssertLessThan(item.preview?.count ?? .max, long.count, "preview must be truncated for this test to mean anything")
+        r.pb.clearContents()
+        let copied = await r.sync.copyBack(itemId: item.id)
+        XCTAssertTrue(copied)
+        XCTAssertEqual(r.pb.string(forType: .string), long)
+    }
+
     func testClipFromCliLandsOnPasteboardWithoutEcho() async throws {
         let r = try await rig(cli: "k2")
         let put = try spawn("k2", ["clip", "put", "--text", "hello from the cli", "--wait", "40"])

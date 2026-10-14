@@ -31,14 +31,12 @@ final class HistoryModelTests: EngineTestCase {
         XCTAssertFalse(m.isLoading)
     }
 
-    func testCopyBackOnlyForTextStoredInFull() {
-        func item(_ kind: ClipKind, _ preview: String?, _ size: UInt64) -> HistoryItem {
-            HistoryItem(id: "aa", outgoing: false, peer: nil, kind: kind, createdMs: 1, totalSize: size, preview: preview, pinned: false)
+    func testCopyBackIsOfferedForEverythingButFiles() {
+        func item(_ kind: ClipKind) -> HistoryItem {
+            HistoryItem(id: "aa", outgoing: false, peer: nil, kind: kind, createdMs: 1, totalSize: 5000, preview: "p", pinned: false)
         }
-        XCTAssertEqual(item(.text, "héllo", 6).copyBackText, "héllo")
-        XCTAssertNil(item(.text, String(repeating: "a", count: 200), 5000).copyBackText, "truncated preview")
-        XCTAssertNil(item(.text, "", 0).copyBackText)
-        XCTAssertNil(item(.text, nil, 3).copyBackText)
-        XCTAssertNil(item(.image, "img", 3).copyBackText)
+        XCTAssertTrue(item(.text).canCopyBack)
+        XCTAssertTrue(item(.image).canCopyBack)
+        XCTAssertFalse(item(.files).canCopyBack)
     }
 }

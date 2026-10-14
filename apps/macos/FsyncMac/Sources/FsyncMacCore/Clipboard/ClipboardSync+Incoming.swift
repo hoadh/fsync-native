@@ -42,11 +42,22 @@ extension ClipboardSync {
         }
     }
 
-    /// History copy-back: only the stored preview (200 characters) is available.
+    /// History copy-back: reads the item's full content from the engine (off the main actor) and puts it back
+    /// on the pasteboard. Files-only items have no content to restore. Failures set `message`.
     @discardableResult
-    public func copyBack(text: String) async -> Bool {
+    public func copyBack(itemId: String) async -> Bool {
+        let load = historyReps
+        let loaded = await EngineCall.run(engine) { try load($0, itemId) }
         nonisolated(unsafe) var written = false
-        await serialized { [weak self] in written = self?.writer.writeText(text) ?? false }.value
+        await serialized { [weak self] in
+            guard let self else { return }
+            switch loaded.flatMap({ reps in writer.writeReps(reps).mapError { $0 as Error } }) {
+            case .success: written = true
+            case .failure(let error):
+                Self.log.info("history copy-back failed: \(String(describing: error), privacy: .private)")
+                message = "Couldn't copy that clip again."
+            }
+        }.value
         return written
     }
 }

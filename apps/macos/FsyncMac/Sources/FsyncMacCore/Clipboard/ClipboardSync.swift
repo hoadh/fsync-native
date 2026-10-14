@@ -21,7 +21,7 @@ public final class ClipboardSync: ObservableObject {
     @Combine.Published public internal(set) var message: String?
 
     static let log = Logger(subsystem: AppConfig.bundleId, category: "clipboard")
-    private let engine: FsyncEngineProtocol
+    let engine: FsyncEngineProtocol
     private let pasteboard: NSPasteboard
     let writer: ClipboardWriter
     let fileWriter: FileClipWriter?
@@ -32,6 +32,8 @@ public final class ClipboardSync: ObservableObject {
     private var publishing = false
     private var queued: Request?
     var chain: Task<Void, Never>?
+    /// Test seam: how history copy-back reads an item's full content.
+    var historyReps: @Sendable (FsyncEngineProtocol, String) throws -> [Rep] = { try $0.historyItemReps(itemId: $1) }
 
     /// `fetchRep` defaults to the engine's `fetch_rep`.
     public init(engine: FsyncEngineProtocol, pasteboard: NSPasteboard = .general, settings: Settings,
