@@ -49,7 +49,7 @@ IP and every per-IP limit (unauthenticated presence sockets, rate limits) would 
 ## Client IP trust
 Caddy connects to the backend's published loopback port, so the backend sees the gateway of the compose
 network (docker-proxy) or 127.0.0.1 (userland proxy off). The network is pinned to `FSYNC_SUBNET`
-(default `172.29.0.0/24`; must not overlap other docker networks or the VPC: on cms-node 172.17-19/16
+(default `172.29.0.0/24`; must not overlap other docker networks or the VPC: on the current host 172.17-19/16
 and 172.26.0.0/20 are in use) and `TRUSTED_PROXIES` defaults to that subnet + `127.0.0.0/8`.
 `smoke-check.sh` with `CHECK_PROXY_TRUST=1` (run by `deploy.sh` on the host and by the e2e test)
 opens more unauthenticated presence sockets than the per-IP limit, each with a different
@@ -69,7 +69,7 @@ Nothing else is published beyond loopback (backend 18080, relay 18081; Postgres 
 ## Deploy
 ```bash
 deploy/scripts/gen-env.sh api-fsync.10z.one relay-fsync.10z.one > /tmp/fsync.env   # secrets stay out of git
-deploy/scripts/deploy.sh ubuntu@cms-node --env-file /tmp/fsync.env                 # add --public-smoke after the Caddy snippet
+deploy/scripts/deploy.sh <ssh-target> --env-file /tmp/fsync.env                 # add --public-smoke after the Caddy snippet
 ```
 `deploy.sh` builds `linux/amd64` images locally (buildx; never compiles Rust on the VPS), ships
 only the tags the host lacks (`docker save | ssh docker load`), copies compose files to `/opt/fsync`,
@@ -86,9 +86,9 @@ cron. Do not run it on the shared host.
 
 ## Rollback / stop
 ```bash
-deploy/scripts/deploy.sh ubuntu@cms-node --rollback      # previous release (FSYNC_TAG_PREV)
-ssh ubuntu@cms-node 'cd /opt/fsync && sudo docker compose -p fsync down'      # stop (data kept)
-ssh ubuntu@cms-node 'cd /opt/fsync && sudo docker compose -p fsync down -v'   # stop and delete data
+deploy/scripts/deploy.sh <ssh-target> --rollback      # previous release (FSYNC_TAG_PREV)
+ssh <ssh-target> 'cd /opt/fsync && sudo docker compose -p fsync down'      # stop (data kept)
+ssh <ssh-target> 'cd /opt/fsync && sudo docker compose -p fsync down -v'   # stop and delete data
 ```
 Rollback restores the previous images **and** the previous `compose.yml`. Migrations are forward-only (never
 rolled back): keep them backward compatible (expand/contract) so the old release still runs on the new schema.

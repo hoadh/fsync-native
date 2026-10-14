@@ -4,7 +4,7 @@
 - Design §2 Networking, §5 relay cost; ADR 007 ([phase-02](phase-02-spike-iroh-discovery-relay.md)); [phase-09](phase-09-backend-auth-registry-presence.md)
 
 ## Overview
-- Priority: P0 | Status: partial (single-VPS staging deployed on loopback; public HTTPS pending owner actions) | Effort: 1-1.5 wk (B)
+- Priority: P0 | Status: Partial (single shared VPS staging live with public TLS 2026-10-14; success criteria below still open) | Effort: 1-1.5 wk (B)
 - Deploy staging + prod: backend (container) + managed Postgres + iroh-relay in **2 regions at launch (Singapore + US/EU)** <!-- Updated: Validation Session 1 - 2 relay regions -->, TLS, monitoring, CI pipelines producing core artifacts.
 
 ## Key Insights
@@ -49,19 +49,18 @@ env `staging` + dev mode (OTP in logs; no email provider yet). Host Caddy untouc
 `plans/reports/infra-track-261014-1510-phase-10.md`. Local compose e2e (`tests/e2e/compose-stack-sync.sh`) passes.
 
 ## Todo List
-- [ ] DNS + mail auth records (DNS: see owner actions; mail: no provider yet)
-- [x] Relay stack (iroh-relay 1.3.0 image, limits, optional QAD) - deployed, loopback smoke ok; public/prod region pair pending
-- [x] Backend + Postgres stack, deploy/rollback/smoke scripts, `pg_dump` backup script (cron `/etc/cron.d/fsync-backup` installed on cms-node, restore script)
-- [x] CI: `.github/workflows/ci.yml` (rust, macOS swift, Windows dotnet; Windows job unverified on a real runner) + `deploy-stack.yml`
+- [~] DNS done (`api-fsync` grey cloud, `relay-fsync` .10z.one, public TLS OK); mail auth records (SPF/DKIM/DMARC) pending, no provider yet
+- [x] Relay stack (iroh-relay 1.3.0 image, limits, optional QAD) - deployed, public TLS smoke ok (relay-fsync.10z.one); second region pending
+- [x] Backend + Postgres stack, deploy/rollback/smoke scripts, `pg_dump` backup (cron 03:15 on cms-node + restore script); off-box copy pending
+- [~] CI: `.github/workflows/ci.yml` (rust, macOS swift, Windows dotnet) + `deploy-stack.yml` written; never run on GitHub yet (Windows job unverified on a real runner)
+- [x] Public two-client e2e (staging, from Mac): login, pair (SAS), clip direct 22 ms / relay 802 ms, 16 MiB file direct and relay hash-verified
 - [ ] Monitoring + alerts
 - [ ] Core artifacts workflow
 - [~] Deployment runbook (in `deploy/README.md`; `docs/deployment-guide.md` not written)
 - [ ] Second relay region, staging/prod split, backend-deploy workflow, rollback rehearsal on the VPS
 
 ## Owner Action Needed
-1. Append the two site blocks from `deploy/README.md` to `/etc/caddy/Caddyfile`, `caddy validate`, reload Caddy.
-2. DNS: both `relay-fsync.10z.one` (done) and `api-fsync.10z.one` DNS-only (grey cloud) -> 18.223.244.168. api-fsync must be grey: behind Cloudflare, Caddy would replace X-Forwarded-For with the edge IP and per-IP limits would bucket by edge.
-3. Then run `deploy/scripts/deploy.sh ubuntu@cms-node --public-smoke`.
+1-3. Done 2026-10-14: Caddy site blocks applied; DNS for both hosts (api-fsync must stay grey cloud, else per-IP limits bucket by edge); `deploy.sh --public-smoke` ok.
 4. Lightsail firewall: 443/80/22 already open; open 7842/udp only if enabling QAD (`RELAY_QAD=1`).
 5. Email provider + secret (and a backend sender; none exists) before any real user; then switch `FSYNC_ENV=production`, dev mode off.
 6. Enable Lightsail snapshots; off-box copy of dumps (daily cron already installed on cms-node, same-disk only); decide second region (SG + US/EU).
@@ -69,6 +68,7 @@ env `staging` + dev mode (OTP in logs; no email provider yet). Host Caddy untouc
 
 ## Success Criteria
 - CLI pairs + transfers via prod relay with `--force-relay`; backend deploy rollback rehearsed once in staging; alerts fire on simulated relay outage.
+- 2026-10-14 status: pairs + transfers via public staging relay PASS. Open: rollback rehearsal, alerts, prod split, second region.
 
 ## Risk Assessment
 | Risk | L x I | Mitigation |

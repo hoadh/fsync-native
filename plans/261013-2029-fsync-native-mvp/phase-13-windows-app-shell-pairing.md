@@ -4,7 +4,7 @@
 - Design §2, §4 flows 1-2; [phase-03](phase-03-spike-ffi-bindings.md) ADR 008; [phase-05](phase-05-spike-windows-clipboard-lazy-paste.md) ADR 010; [phase-09](phase-09-backend-auth-registry-presence.md)
 
 ## Overview
-- Priority: P1 | Status: partial (code, unit tests and e2e vs fsync-cli pass 2026-10-14; open: pairing with the Mac app, ARM64 hardware, long-lived "Connected" status needs phase 14) | Effort: 4-5 wk (D) — parallel with phase 11
+- Priority: P1 | Status: Partial (code, unit tests, e2e vs fsync-cli pass; Mac↔Win code+SAS pairing PASS via Track X (CLI both sides) over Tailscale 2026-10-14; open: Win GUI manual run, Mac↔Win LAN path, ARM64 hardware, long-lived "Connected" status needs phase 14) | Effort: 4-5 wk (D) — parallel with phase 11
 - WinUI 3 (Windows App SDK, unpackaged + Velopack) tray app with H.NotifyIcon, bindings project (uniffi-bindgen-cs or C ABI per ADR 008), login, pairing, device list, start with Windows.
 
 ## Key Insights
@@ -49,7 +49,9 @@ Data flow: View → ViewModel → EngineBridge → FsyncEngine (FFI) → core; e
 - [x] Pairing offer (code + QR)/join/SAS (unit-tested + e2e)
 - [x] Devices + remove (unit-tested + e2e)
 - [x] Run at login (HKCU Run, --background)
-- [x] Tests (Fsync.App.Tests 35/35, tests/e2e/pair-with-cli.ps1 PASS)
+- [x] Tests (Fsync.App.Tests 35/35; dotnet 44/44 incl. 9 bindings; tests/e2e/pair-with-cli.ps1 PASS)
+- [ ] Win app GUI pairing run with Mac (Track X did not run the GUI)
+- [ ] ARM64 hardware run
 
 ## Success Criteria
 - Win pairs with Mac (phase 11) via code + SAS; status LAN/relay/offline correct within 5 s; ARM64 build runs.

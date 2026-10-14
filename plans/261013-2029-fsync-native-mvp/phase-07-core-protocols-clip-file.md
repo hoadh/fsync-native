@@ -74,7 +74,8 @@ Data flow: app publish_clip → limits+hash → outbox → ClipOffer to each Lan
 - Benchmarks (`docs/protocol-spec.md`, loopback): 1 GiB fetch 123 MiB/s, 200 MiB fetch+export 104 MiB/s, inline clip 58 us median.
 - Read-ahead (core hardening, 2026-10-14, ADR 010): after two sequential reads `read_file_range` keeps 4 windows (16 MiB) in flight and drops windows behind the reader; random reads stay single-window. Review fixes: sequential means `offset == last_end` (a first read at offset 0 no longer counts as a run); prefetch draws from a shared per-peer budget (8 permits, `try_acquire`, never waits) so foreground reads keep stream headroom under the 16 streams/connection cap. Test `file_read_ahead.rs` (sender-side `serve_delay` test hook = one RTT per request; shell pattern: 256 KiB reads, one at a time, 200 MiB, loopback, release): before 0 ms 105.8 / 50 ms 45.8 / 100 ms 27.9 MiB/s; after 109.6 / 104.5 / 66.6 MiB/s (loopback hash/copy bound at ~105-110).
 - Not done: proptest/fuzz roundtrip from step 1 (wire roundtrip tests only).
-- Not measured: LAN throughput vs 80% of link, LAN clip <300 ms, relay <1.5 s, on two machines.
+- Merged to main 2026-10-14 with Track C (review 9.6, 0 critical). P0 e2e on merged main (local relay): direct 256 MiB 35.6 MiB/s, relay-only 49.7 MiB/s. Public staging two-client: clip direct 22 ms / relay 802 ms.
+- Not measured: LAN throughput vs 80% of link, LAN clip <300 ms; Mac↔Win LAN unreachable (Track X ran over Tailscale).
 
 ## Success Criteria
 - Integration tests (in-process 2 endpoints): tampered chunk → Integrity error; kill mid-transfer → resume completes with correct hash; latency/throughput targets met on LAN bench.

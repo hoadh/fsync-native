@@ -5,7 +5,8 @@
 - Gates: [phase-12](phase-12-macos-clipboard-files-history.md)
 
 ## Overview
-- Priority: P0 | Status: done for the automated part (2026-10-14, macOS 26.6.2 arm64); manual matrix open | Effort: 1.5-2 wk (C)
+- Priority: P0 | Status: Partial (automated part done 2026-10-14, macOS 26.6.2 arm64, merged to main; manual matrix open) | Effort: 1.5-2 wk (C)
+- Verdict (ADR 009): hybrid — eager < 20 MiB, lazy larger; NSFilePromiseProvider no-go.
 - Answer 3 questions: (1) does reading pasteboard trigger privacy alerts on current macOS & how to get persistent allowance; (2) can we put a lazy remote-file entry on the general pasteboard that Finder + top apps resolve on paste; (3) best polling strategy.
 
 ## Key Insights

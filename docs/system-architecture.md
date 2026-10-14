@@ -1,6 +1,6 @@
 # System Architecture
 
-Last updated: 2026-10-14. Covers the P0 Rust track (phases 01, 02, 06, 07, 08, 09), the macOS FFI package, and the macOS app shell (phase 11). Phases 03 (Windows half), 04, 05, 10 (relay deploy), and 12-16 are not built yet; see [development-roadmap](./development-roadmap.md).
+Last updated: 2026-10-14. Covers the P0 Rust track (phases 01, 02, 06-09) with its hardening (read-ahead, logout revocation, data-dir lock), the production deployment (phase 10), the macOS FFI package, and the macOS app (phases 04, 11, 12). Windows (phases 03 C# half, 05, 13, 14) is partial or not started, and phases 15-16 are not started; see [development-roadmap](./development-roadmap.md).
 
 ## Overview
 
@@ -8,7 +8,7 @@ fsync syncs clipboard items and files between a user's own devices. Trust is roo
 
 - **Backend** (`backend/`): email-OTP auth, a signed device-list registry, pairing-code storage, and presence (which devices are online and where they can be reached). It never sees clipboard or file bytes.
 - **Core** (`core/`): the Rust engine. It verifies the device-list chain, pairs devices, moves clips and files over iroh QUIC, and keeps encrypted local history.
-- **Apps** (`apps/`): thin UI layers over the core through UniFFI. macOS (`apps/macos/Packages/FsyncCoreKit`, the `TrustResetPrompt` library, and the `apps/macos/FsyncMac` menubar app shell) is built; Windows is not started.
+- **Apps** (`apps/`): thin UI layers over the core through UniFFI. macOS (`apps/macos/Packages/FsyncCoreKit`, the `TrustResetPrompt` library, and the `apps/macos/FsyncMac` menubar app with clipboard and file sync) is built; Windows is partially built (see the roadmap).
 
 ```
   Backend (axum + Postgres 17)           metadata only: accounts, device lists, pairing codes, presence
@@ -35,6 +35,43 @@ fsync syncs clipboard items and files between a user's own devices. Trust is roo
 - **Flows**: email + OTP login; first device (`Created`); pairing in both roles with a SAS check bound to the displayed request id; device list with remove (confirmed); recovery via `reset_account_trust` behind a two-step confirm; trust-reset prompt wired from `AccountEvent.trustReset`; launch at login (`SMAppService.mainApp`, bundle only); pairing codes are copied with the `ConcealedType`/`TransientType` pasteboard markers.
 - **Status**: the core reports Lan/Relay only for a live QUIC connection. Until something syncs, a peer the backend sees online shows as "Online" (`Device.online`), not Lan.
 - **Packaging**: `build-fsync-mac-app.sh` assembles an `LSUIElement` bundle, with the hardened runtime: ad hoc with no entitlements by default, or Developer ID with an embedded profile and the Keychain entitlements (`--sign`/`--profile`), optionally notarized (`--notary-profile`).
+
+## macOS clipboard and files
+
+Mac-side logic lives in `FsyncMacCore/Clipboard`, `Files`, `Settings` and `Features/History`; the engine does the transport. Decision record: [ADR 009](./adr/009-macos-lazy-paste.md).
+
+### Clipboard send (auto mode)
+
+1. `PasteboardWatcher` polls `changeCount` and reports changes to `ClipboardSync`.
+2. `SensitiveFilter` decides before the content is read. It skips copies marked as our own write (`com.fsync.origin`), concealed (`org.nspasteboard.ConcealedType`, 1Password's type), transient, auto-generated, and copies while a denylisted app is frontmost. The built-in denylist holds six password managers; the user's list is added on top.
+3. Every step is guarded by `changeCount`: if the pasteboard changed before the snapshot, during the read, or before the send, the clip is dropped (no stale send). Explicit sends also re-check the sensitive types.
+4. `RepresentationMapper` builds text/plain, text/html, text/rtf and image/png representations. TIFF is converted to PNG off the main thread. A clip over `maxClipBytes` is refused (default 50 MiB, minimum 1 MiB); an oversized TIFF is refused without decoding.
+5. The clip goes to the engine as an offer (see [data flow 4](#4-clip-fsyncclip1)). The engine records it in history and sends it to paired devices.
+- `⌃⌥C` sends the current clipboard explicitly. Explicit sends skip the denylist (ADR 009).
+
+### Clipboard receive
+
+- `ClipboardWriter` puts received representations on the pasteboard. Representations up to 1 MiB are fetched before the write; larger ones are served when read.
+- Writes are tagged `com.fsync.origin`, so the watcher ignores them (echo guard).
+- In manual mode, the newest remote clip waits as "Paste from <device>" until the user asks for it.
+
+### File clips
+
+- Received files of a clip follow `FileClipStrategy`. Default `hybrid`: files under 20 MiB are fetched before the pasteboard write, larger files are served when a reader asks for their file URL (`LazyFileProvider`). Eager bytes per clip are capped at 512 MiB; files over the cap are lazy. `lazy` and `eager` are settings too.
+- Eager files land in `~/Library/Caches/fsync/inbox/<item id>/` (folder mode 0700). Item ids from other devices are checked as plain hex and dashes before they become folder names.
+- A lazy entry cannot be served after the app quits, so `FileClipWriter` removes it on quit. A blocking fetch on the main thread gives up after 180 s.
+- Retention (`InboxDirectory.clean`) runs at start, when the retention settings change, and daily. It removes inbox folders older than `retentionDays` (default 30), then the oldest until the folder is under `retentionBytes` (default 1 GiB). The folder of the current clip is kept.
+
+### Incoming offers and transfers
+
+- "Send to…" and drop on a device row call `FilesSync.send`. The receiver must accept.
+- An incoming offer waits for the user unless auto-accept is on and the offer is 1 GiB or less. The list keeps the 20 newest offers.
+- Accept downloads each file into the Downloads folder. `TransfersModel` shows progress (last 50 rows) and cancel. Cancel stops the rest of the offer and does not count as a failure.
+
+### History and settings
+
+- `HistoryModel` pages 50 items, with search, pin, delete and clear (pinned items kept by default). History keeps 200-character previews; copy-back works only for text stored in full.
+- `ClipSettingsModel` loads settings off the main actor. Edits are refused until the load succeeds. Defaults: auto mode, 30-day retention, 1 GiB size cap, 50 MiB max clip, auto-accept off. Settings are stored by the core.
 
 ## Repository crates
 
@@ -83,14 +120,40 @@ fsync syncs clipboard items and files between a user's own devices. Trust is roo
   - Device-list history keeps the last 100 rows per account and epoch. Clients fetch from genesis or pin a head.
   - Presence: in-memory hub, one bounded queue per socket (drop on full). Membership is rechecked before a socket registers and before `peers` is sent.
   - Rate limits and the unauthenticated-socket cap are in memory, so they reset on restart and do not span instances.
-- Deployment: `deploy/backend/` has a Dockerfile (build context = repo root) and `compose.yml` (Postgres 17 + backend). Config comes from env; see [api](./api.md#config-env).
+- Deployment: `deploy/backend/Dockerfile` (build context = repo root). The production stack is `deploy/compose.yml` (see [deployment topology](#deployment-topology)); `deploy/backend/compose.yml` is the older dev-only file. Config comes from env; see [api](./api.md#config-env).
 
 ## Relay
 
 - The core never uses n0 default relays. Relays come from config (`NodeBuilder::relays`). An empty list disables relays.
-- Production relay is not deployed. `deploy/relay/` is empty; phase 10 plans two regions (SG and US/EU).
+- Production relay: `deploy/relay/` builds an image from `iroh-relay` 1.3.0 (pinned to `Cargo.lock`). It runs in the compose stack on the VPS, published on loopback `18081`, and is reached as `relay-fsync.10z.one` through the host Caddy (no buffering: `flush_interval -1`). One region only; a second region is not started.
+- QUIC address discovery (QAD, udp/7842) is off by default. With `RELAY_QAD=1` the relay needs the Caddy-managed certificate for its own hostname, mounted alone.
 - For local runs and the e2e demo, `spikes/iroh-discovery` starts an in-process `iroh-relay` in HTTP dev mode (`relay [port]`).
 - Relay sees only QUIC ciphertext. Clip and file bytes never reach the backend.
+
+## Deployment topology
+
+One VPS shared with other services. Compose project `fsync`, files in `deploy/`. Runbook: [deploy/README.md](../deploy/README.md). Short guide: [deployment guide](./deployment-guide.md).
+
+```
+internet --443--> host Caddy (TLS, ACME; not part of the compose file)
+                    api-fsync.10z.one   -> 127.0.0.1:18080  backend
+                    relay-fsync.10z.one -> 127.0.0.1:18081  relay
+internet --udp/7842--> relay QAD (optional, off by default)
+
+compose network (pinned subnet, FSYNC_SUBNET)
+  backend  --> postgres:17 (no host port)
+  relay    (metrics stay inside the network)
+```
+
+- **Client IP trust.** Caddy reaches the backend through the published loopback port, so the backend sees the subnet gateway (or 127.0.0.1). `TRUSTED_PROXIES` names that subnet plus loopback and `TRUST_PROXY_HOPS=1`, so `X-Forwarded-For` is honored only from those peers. `smoke-check.sh` with `CHECK_PROXY_TRUST=1` verifies this on the host.
+- **DNS.** Both hostnames must be DNS-only (not proxied). The relay needs long-lived upgraded connections and UDP. Behind a proxy, per-IP limits would bucket by the proxy address.
+- **Ports.** Nothing is published beyond loopback except the optional QAD port.
+- **Images.** Built on the operator machine for `linux/amd64` (cross-compiled; no Rust compile under emulation), then shipped with `docker save | docker load` only for tags the host lacks. Releases are git-sha tags; the host keeps the current and the previous release.
+- **Deploy.** `deploy.sh` takes a remote `flock`, stages into a unique directory, rewrites `.env` atomically, keeps `compose.yml.prev` for `--rollback`, and waits for container health plus a loopback smoke check. Rollback restores images and compose file, not data. Migrations are forward-only.
+- **Limits.** Memory limits are sized for a shared host of about 2 GiB: Postgres 192 MiB, backend 96 MiB, relay 96 MiB, no swap.
+- **Backups.** `backup-postgres.sh` writes `pg_dump -Fc` dumps daily (cron, installed with `deploy.sh --install-backup-cron`), keeps 14 days, and refuses to run below 1 GiB free. `restore-postgres.sh` restores one dump.
+- **CI.** `ci.yml` runs the Rust job always and the macOS and Windows jobs only when their paths change (always on push to `main` and on dispatch). `deploy-stack.yml` builds both images and runs `tests/e2e/compose-stack-sync.sh` when deploy inputs change. Actions are pinned by SHA.
+- **Status (2026-10-14).** Deployed on loopback. Public HTTPS smoke waits for the owner's host Caddy snippet. No email sender exists yet, so the stack runs in staging with dev OTP output and must not serve real users.
 
 ## Data flows
 
@@ -134,11 +197,19 @@ Limits: at most 3 unauthenticated sessions per window, one attempt per source no
 2. Chunk-group CVs (16 KiB groups, blake3 hazmat) let each group be verified as it arrives. The merged tree must equal the offered hash.
 3. Bytes land in `<hash>.part`, which is resumable at 16 KiB boundaries. On completion the data is finished, then exported to the chosen folder with no clobber.
 4. Policy checks run before any transfer: declared size against free space and `max_file_bytes`. CV buffer cap is 64 MiB. Deadline is 120 s plus size / 256 KiB/s, with a 30 s stall timeout.
+5. **Read-ahead** (`read_file_range`, `file/range_reader.rs`). A reader that takes small chunks one after another (the Windows shell reads 256 KiB at a time, one in flight) would otherwise pay one round trip per 4 MiB window. After two sequential reads in a row, up to 4 windows are fetched ahead, and at most 8 windows are held per reader. A first read is never sequential; a seek resets the run; windows behind the reader are dropped. Speculative fetches take a per-peer permit (8 per peer, shared by the peer's readers) and never wait, so a foreground read never queues behind them. Measured at 50 ms RTT: 46 → 105 MiB/s. Random reads are unchanged.
 
 ### 6. Trust reset
 
 1. `reset_account_trust` signs a new seq-0 genesis (this device only) and `PUT`s it with the reset header (fresh auth required, 3 per day; stale login -> `ReauthRequired`). It then replaces the local pin.
 2. Old devices see a different root on their next sync and get `EngineEvent::TrustReset` (service: `AccountEvent::TrustReset { reset_id, devices, device_names }`, `reset_id` = hash of the offered head, so a grown offer is announced again and an old id is `NotFound`). They never auto-accept it: `confirm_trust_reset` pins it (a device that is not in the new list gets `SelfRemoved`, drops its pin and must re-pair), `decline_trust_reset` keeps the old pin. See ADR 012.
+
+### 7. Logout
+
+1. The core takes the refresh token, then signs out locally: session, tokens, pinned device list and presence. `logout()` returns `Ok` after this step, even when the network is down.
+2. One inline revoke attempt (`POST /v1/auth/logout`), capped at 3 s. The backend revokes the whole refresh family, so rotated tokens die with it.
+3. If there is no answer, or the answer is 408, 429 or 5xx, the revoke is retried in the background: 5 s, doubling to 5 min, while the service object lives. Other answers end the retries (401 means already revoked).
+4. Tokens are never persisted by core. If the app quits before a revoke succeeds, the refresh token stays valid until its 30-day expiry (access tokens last 15 minutes).
 
 ## Storage
 
@@ -160,6 +231,7 @@ Limits: at most 3 unauthenticated sessions per window, one attempt per source no
 | `identity.key` | Device signing seed, 0600. Apps pass the 32 bytes as `device_secret` (Keychain or DPAPI). |
 | `history.key` | 32-byte history key, 0600. Apps pass `history_key` from Keychain or DPAPI. |
 | `session.json` | Access and refresh tokens, 0600. |
+| `engine.lock` | Exclusive lock (`File::try_lock`) held while an engine runs. A second engine on the same directory fails to start with `Invalid`. Released on `stop()` or drop; a crash never leaves it held. |
 | `core/history.db` | SQLCipher database (raw 32-byte key, WAL, `secure_delete`). Tables: `items`, `reps`, `files`, `settings`, `trust`, plus the search index. |
 | `core/history.keycheck` | Keyed blake3 tag of the history key. Tells a wrong key apart from a damaged file. |
 | `core/blobs/` | `<hash>` (encrypted) and `<hash>.part` (staging). |
@@ -186,10 +258,11 @@ Defaults (settings): history mode Auto, 30 days, 1 GiB size cap, 50 MiB max clip
 | Backend adds a rogue device | Clients verify the signed chain from a pinned root. The server checks defensively but is not trusted. | A malicious backend can still show a fake code in code mode. The SAS catches this only if the users compare words. QR mode avoids it. |
 | Network MITM during pairing | SPAKE2 or HKDF with nonces, MAC confirm, 36-bit SAS on both devices, explicit consent. | 36-bit SAS. A first connector can burn a window (DoS only). |
 | Untrusted peer connects | Accept gate: only pinned node ids. Live connections for a removed device close with 403. | None known. |
-| Stolen auth tokens | 15 min access tokens, rotating refresh with reuse detection, family revoke on logout or reuse. | A stolen live access token works until it expires (about 15 min). |
+| Stolen auth tokens | 15 min access tokens, rotating refresh with reuse detection, family revoke on logout or reuse. Logout revokes server-side, retrying in the background. | A stolen live access token works until it expires (about 15 min). A refresh token survives an app quit that comes before its revoke reaches the backend (the retry is in memory only). |
 | Account takeover then device-list change | Trust reset and account delete need fresh auth (5 min). Resets are capped at 3 per day. Old devices get `TrustReset`. | An email takeover can still trigger a reset; the user of each old device must confirm or decline it (`confirm_trust_reset` / `decline_trust_reset`). |
 | Disk theft or same-user read of history | SQLCipher with the Keychain/DPAPI key. Blobs encrypted. | Received files exported to user folders are plaintext by design. `.part` staging is plaintext until finish. |
 | Sensitive clip stored | Sender does not store it. `ClipOffer.sensitive` tells the receiver to record nothing; blobs it fetched for that item are removed after use. | Honouring the flag is the receiver's behaviour. A modified receiver can ignore it. |
+| Sensitive pasteboard content sent from the Mac | `SensitiveFilter` skips concealed, transient, auto-generated and denylisted-app copies before any read. Our own writes are not re-sent. | Best effort: apps that do not mark secrets are sent. The denylist does not apply to explicit `⌃⌥C` sends. |
 | Oversized or malicious input | Frame length checked before allocation, `ClipOffer::validate`, file size and CV caps, per-peer token bucket (20/s), receive log budget (32 MiB), shape and name checks. | Clip size limit is user-settable (`max_clip_bytes`, applied live). Other limits are fixed defaults. |
 | Abuse of backend endpoints | Per-IP and per-email OTP limits, per-account pairing and PUT limits, header read timeout, in-flight cap, socket caps. | Limits are in memory and per instance. |
 
@@ -200,10 +273,13 @@ Defaults (settings): history mode Auto, 30 days, 1 GiB size cap, 50 MiB max clip
 - Email delivery is a log sender only.
 - Root of a fresh device's chain is learned only when a chain through the head is seen. An old genesis replayed to a fresh device triggers a reset prompt, not a silent accept.
 - The denylist setting is stored and validated, but the core does not enforce it. Apps must filter before publishing.
-- Windows (phases 03 C#, 04, 05, 13, 14) and the relay deploy (phase 10) are not done.
+- Windows (phases 03 C#, 05, 13, 14) is partial. Phase 10 is deployed on loopback only: public HTTPS smoke is pending, and there is one relay region.
+- Logout revocation is in memory only. A hard guarantee after an app quit needs an additive FFI (`revoke_session`), which is not built.
+- Public relay throughput from Vietnam to the US-East-2 VPS is about 0.1 MiB/s, the same as the raw path. The network is the bottleneck, not the relay.
 
 ## Related docs
 
+- [Deployment guide](./deployment-guide.md): what runs where and the deploy rules
 - [Protocol spec](./protocol-spec.md): wire frames, ALPNs, limits, measured numbers
 - [API](./api.md): backend HTTP and WebSocket contract
 - [FFI contract](./ffi-contract.md): UniFFI surface (contract v2) and error mapping

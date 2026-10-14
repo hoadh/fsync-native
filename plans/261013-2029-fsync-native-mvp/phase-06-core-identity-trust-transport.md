@@ -83,7 +83,8 @@ Data flow: backend presence/WS → discovery addrs → iroh dial → accept gate
 - Deviation: SignedList carries head only, not full chain. Root stays `UNKNOWN_ROOT` until a chain through the head is seen. Replay of an old genesis then prompts a reset.
 - Open: backend keeps last 100 rows per epoch, so a fresh device cannot always get a chain from genesis. Checkpoint mechanism not built.
 - Done 2026-10-14: TrustReset confirm API (M5) in trust manager, service, FFI and CLI (ADR 012). Pending/declined state is in memory only. No new todo ticked: the phase todos above are unchanged.
-- Not measured: "100% branch" coverage (tests exist, branch coverage not run); two-machine code and QR pairing.
+- Not measured: "100% branch" coverage (tests exist, branch coverage not run); QR pairing on two machines.
+- Two-machine code+SAS pairing PASS 2026-10-14 (Track X, Mac↔Win over Tailscale; remove/re-pair OK).
 - SAS is 3 CVCV words (36 bits). Hole-punched direct paths report as `Lan`.
 
 ## Success Criteria

@@ -90,11 +90,11 @@ Global flags: `--api` (env `FSYNC_API`), `--relay` (env `FSYNC_RELAY`), `--force
 | `core/` | Rust crates: `fsync-proto`, `fsync-core`, `fsync-ffi`, `fsync-cli` |
 | `backend/` | `fsync-backend` service and migrations |
 | `apps/macos/Packages/FsyncCoreKit` | Swift package over the xcframework |
-| `apps/windows/` | Placeholder (not started) |
+| `apps/windows/` | Windows app (WinUI 3) and C# bindings |
 | `spikes/iroh-discovery` | Standalone discovery/relay spike (not in the workspace) |
 | `scripts/` | Binding and xcframework build scripts |
 | `tests/e2e/` | End-to-end demo |
-| `deploy/` | Backend Dockerfile and compose; `deploy/relay` is empty |
+| `deploy/` | Production stack (compose, relay, Caddy snippet, scripts); see [deployment guide](./docs/deployment-guide.md) |
 | `docs/` | Documentation and ADRs |
 | `plans/` | Implementation plans and reports |
 

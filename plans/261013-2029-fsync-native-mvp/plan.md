@@ -19,20 +19,19 @@ Specs: layout+ADRs [01](phase-01-repo-scaffold-and-decisions.md) · DeviceList+p
 ## Roles
 A = Rust core | B = backend+DevOps | C = macOS | D = Windows
 
-## Progress (sync 2026-10-14, P0 Rust track on macOS)
-- Complete: 0/16. Partial: 01, 02, 03, 06, 07, 08, 09. Scoped todos ticked: 28/37.
-- Partial = code done for Mac-verifiable criteria. Open: two-machine measurements, Windows/C#, signing, procurement, team sign-off.
-- Gate on final tree (2026-10-14 11:48): fmt, clippy `-D warnings`, workspace tests 253 pass / 0 fail, Swift 8/8, xcframework, e2e PASS. Earlier `devices_reset` PortNotExposed flake did not recur; root cause still open.
-- **Open (P0 exit):** e2e recorded once on final tree, target 3 runs (relay-only stability). Mac-to-Windows run not done.
-- Scope changes: own file/1 instead of iroh-blobs (ADR 007 addendum). History wrong-key no longer auto-resets (explicit `reset_history`). Re-pair after reset via `listed_head` (round 7). M5 TrustReset confirm API done (core, FFI, CLI; ADR 012). macOS reset prompt UI built as library `TrustResetPrompt` (plan 261014-1206), wiring in phase 11. Not built: email notice on reset. mdns-sd fallback deferred.
-- Phase 11 (macOS app shell): Done on Mac, manual visual checks open. Plan: [macos-app-shell-pairing](261014-1235-macos-app-shell-pairing/plan.md). Review 9.0 → 9.5 → 9.6 (0 critical). FsyncMac 89 tests (3 integration skipped by default), CoreKit 8+14, integration PASS, Cargo 253 passed / 1 ignored. Bundle ad-hoc signed, runtime. Deviations in phase 11 file.
-- Phase 12 note: Lan/Relay status needs live connections (phase 11 shows "Online" until sync connects peers). A signed build should verify the Keychain migration.
-- Out of scope this sync (04, 05, 10, 12-16): status unchanged, not synced.
-
-## Progress (sync 2026-10-14, Windows track on Win11 x64, branch windows/phase-03-13)
-- 03 C#: uniffi-bindgen-cs v0.10.0+v0.29.4 works on contract v2; x64 DLL; 9/9 C# contract tests; 10k-callback stress OK; 10 MiB round trip 27 ms (misses 20 ms like Swift; bulk by path/chunks). ADR 008 decides bindgen-cs (no C ABI). ARM64 DLL builds (clang); not executed on ARM64 hardware.
-- 05: automated self-test all pass (filter, listener, cross-process read, shell paste 3 files + 200 MiB, failure mid-file, exit policy) + WinUI 3 tray smoke. ADR 010: lazy paste via virtual files; clear on exit; core needs read-ahead in `read_file_range` (shell reads 256 KiB serially). Open: manual app matrix, real password managers, Win10, ARM64 hardware.
-- 13: solution + WinUI 3 tray app (single instance, DPAPI secrets, onboarding, pairing code/QR/SAS, devices + remove, start with Windows); 35/35 view-model tests; e2e `apps/windows/tests/e2e/pair-with-cli.ps1` PASS (OTP sign-in, code + SAS pairing with fsync-cli, live presence status, clip delivered to the app engine, remove, startup toggle). Found + fixed a core Windows bug (blob `finish` fsync on a read-only handle: Access denied); Rust workspace on Windows 251 pass / 0 fail. Open: pairing with Mac, ARM64 hardware.
+## Progress (sync 2026-10-14 night, tracks A/C/D/X merged)
+- Merged to local main d3435e8, not pushed. Gates: cargo 264/264, clippy+fmt clean; Swift CoreKit 8, FsyncMac 188 (12 integration skipped), integration 12/12; P0 e2e PASS (direct 256 MiB 35.6 MiB/s, relay-only 49.7 MiB/s); dotnet 44/44; Windows cargo 173 pass, 17 fails are Docker-only (env).
+- Complete: 0/16 (11 done on Mac, manual checks open). Partial: 01-10, 12, 13. Pending: 14 (Track B running, untouched), 15, 16.
+- C core hardening (review 9.6, 0 critical): read-ahead ADR 010 (50 ms RTT 46→105 MiB/s); logout revokes refresh token (3 s inline, bg retry, family revoke); `engine.lock`; devices_reset flake fixed; e2e 3/3.
+- D infra (review 9.6): shared VPS cms-node, api-fsync/relay-fsync.10z.one with valid TLS, real client IP via Caddy XFF, nightly backup + restore script. Staging: OTP to log, no provider. CI never run on GitHub.
+- D public two-client e2e: pair (SAS), clip direct 22 ms / relay 802 ms, 16 MiB file direct+relay hash OK. Relay 0.105 MiB/s = raw VPS path (network-bound, not code).
+- A macOS 04+12 (review 9.5): ADR 009 hybrid (eager <20 MiB, lazy larger); NSFilePromiseProvider no-go. Phase 12 implemented, automated only.
+- X Mac↔Win (fsync-cli on both sides) over Tailscale PASS: code+SAS, clip both ways direct+relay, 64 MiB both ways hash OK, remove/re-pair. Win GUI not run; Mac↔Win LAN unreachable. Report: plans/reports/tester-261014-2157-mac-windows-pairing.md.
+- Scope changes: own file/1 not iroh-blobs (ADR 007 addendum); wrong-key history no longer auto-resets (explicit `reset_history`); history copy-back = 200-char text preview only (FFI gap); folders out of MVP; share extension dropped (YAGNI); M5 trust-reset API done (ADR 012); email notice on reset not built.
+- Open core: M1 (unbounded lingering-engine wait holds engine.lock if a handle leaks), M2 (stop() waits 5 s vs 3 s teardown); additive FFI `revoke_session` deferred (user decision).
+- Open apps: 04 manual paste matrix, password managers, privacy alert; 12 manual QA, full-content history copy-back, review medium (sync never starts after failed initial settings load); 13 Win GUI run, LAN path, ARM64 hardware.
+- Open infra: email provider, monitoring/alerts, rollback rehearsal, 2nd relay region, off-box backups + Lightsail snapshots, RAM (~600 MiB free on shared host).
+- Next (owner → done when): A M1/M2 fixed, tests green · C 04/12 manual matrix recorded in ADR 009 · D email sender, alerts, rollback rehearsal · B finish 14, then 15 harness · lead: push after review. **Finish the plan: every open item above must close or be explicitly deferred.**
 
 ## Phases
 | # | Phase | Owner | Wk | Blocked by | Status |
@@ -40,18 +39,18 @@ A = Rust core | B = backend+DevOps | C = macOS | D = Windows
 | 01 | [Repo scaffold + decisions (backend lang, auth, min OS, certs)](phase-01-repo-scaffold-and-decisions.md) | B (+all) | P0 w1 | - | Partial |
 | 02 | [Spike: iroh 1.x discovery/relay/blobs](phase-02-spike-iroh-discovery-relay.md) | A | P0 w1 | 01 | Partial |
 | 03 | [Spike: FFI bindings Swift + C#; FFI contract](phase-03-spike-ffi-bindings.md) | A+D | P0 w2 | 01 | Partial (Swift + C# done; ARM64 not executed) |
-| 04 | [Spike: macOS clipboard privacy + lazy file paste](phase-04-spike-macos-clipboard-lazy-paste.md) | C | P0 w1-3 | 01 | pending |
+| 04 | [Spike: macOS clipboard privacy + lazy file paste](phase-04-spike-macos-clipboard-lazy-paste.md) | C | P0 w1-3 | 01 | Partial (automated done, ADR 009; manual open) |
 | 05 | [Spike: Windows clipboard + virtual-file lazy paste](phase-05-spike-windows-clipboard-lazy-paste.md) | D | P0 w1-3 | 01 | Partial (automated done, ADR 010) |
 | 06 | [Core: identity, trust, transport, pairing](phase-06-core-identity-trust-transport.md) | A | P0 w2-3 | 02 | Partial |
-| 07 | [Core: clip/1 + file/1 protocols](phase-07-core-protocols-clip-file.md) | A | P0 w3-4 | 06 | Partial |
-| 08 | [Core: encrypted history store, FFI surface, CLI harness](phase-08-core-history-ffi-cli.md) | A | P0 w4-6 | 03, 07 | Partial |
-| 09 | [Backend: auth, device registry, pairing codes, presence](phase-09-backend-auth-registry-presence.md) | B | P0 w1-4 | 01 | Partial |
-| 10 | [Infra: relay + backend deploy, CI](phase-10-infra-relay-backend-deploy.md) | B | P0 w3-5 | 09 | pending |
-| 11 | [macOS app: shell, auth, pairing, devices](phase-11-macos-app-shell-pairing.md) | C | P1 w1-5 | 03,04,08,09 | Done on Mac (manual visual checks open) |
-| 12 | [macOS app: clipboard, files, history, settings](phase-12-macos-clipboard-files-history.md) | C | P1 w5-11 | 11 | pending |
-| 13 | [Windows app: shell, auth, pairing, devices](phase-13-windows-app-shell-pairing.md) | D | P1 w1-5 | 03,05,08,09 | Partial (code + tests + e2e vs CLI pass; Mac pairing open) |
-| 14 | [Windows app: clipboard, files, history, settings](phase-14-windows-clipboard-files-history.md) | D | P1 w5-11 | 13 | pending |
-| 15 | [Cross-OS integration + network test matrix](phase-15-integration-testing-cross-os.md) | B lead, all | P1 w2-13 | 10 (harness), 12,14 (full) | pending |
+| 07 | [Core: clip/1 + file/1 protocols](phase-07-core-protocols-clip-file.md) | A | P0 w3-4 | 06 | Partial (read-ahead merged; LAN measures open) |
+| 08 | [Core: encrypted history store, FFI surface, CLI harness](phase-08-core-history-ffi-cli.md) | A | P0 w4-6 | 03, 07 | Partial (P0 exit demo open) |
+| 09 | [Backend: auth, device registry, pairing codes, presence](phase-09-backend-auth-registry-presence.md) | B | P0 w1-4 | 01 | Partial (deployed to staging VPS; email open) |
+| 10 | [Infra: relay + backend deploy, CI](phase-10-infra-relay-backend-deploy.md) | B | P0 w3-5 | 09 | Partial (staging live, public TLS; alerts, rollback, 2nd region open) |
+| 11 | [macOS app: shell, auth, pairing, devices](phase-11-macos-app-shell-pairing.md) | C | P1 w1-5 | 03,04,08,09 | Done on Mac (manual visual checks open; Mac↔Win CLI pairing PASS) |
+| 12 | [macOS app: clipboard, files, history, settings](phase-12-macos-clipboard-files-history.md) | C | P1 w5-11 | 11 | Partial (automated done; manual QA open) |
+| 13 | [Windows app: shell, auth, pairing, devices](phase-13-windows-app-shell-pairing.md) | D | P1 w1-5 | 03,05,08,09 | Partial (e2e + Mac↔Win pairing PASS; GUI run, ARM64 open) |
+| 14 | [Windows app: clipboard, files, history, settings](phase-14-windows-clipboard-files-history.md) | D | P1 w5-11 | 13 | pending (Track B running) |
+| 15 | [Cross-OS integration + network test matrix](phase-15-integration-testing-cross-os.md) | B lead, all | P1 w2-13 | 10 (harness), 12,14 (full) | pending (ad hoc runs only) |
 | 16 | [Release: signing, notarization, auto-update](phase-16-release-distribution.md) | B+C+D | P1 w8-14 | 10, 12, 14 | pending |
 
 ## Parallelism (no shared files across parallel phases)
@@ -65,11 +64,11 @@ Mac = macOS repo (lead/orchestrator). Windows = `ssh dev@waso`, repo `C:\Users\d
 
 | Track | Machine / branch | Work | Owns | Waits on |
 |---|---|---|---|---|
-| A macOS | Mac worktree `macos/phase-04-12` | 04 → 12 | `apps/macos/**`, `spikes/macos-*` | 12 needs 04 verdict |
-| B Windows | Windows `windows/phase-14` | 14 | `apps/windows/**`, `spikes/windows-*` | - (C read-ahead helps) |
-| C Core | Mac worktree `core/hardening` | read-ahead (ADR 010), logout revokes refresh token, `devices_reset` flake, e2e x3 | `core/**`, `scripts/**` | - |
-| D Infra | Mac worktree `infra/phase-10` | 10 on AWS Lightsail VPS | `backend/**`, `deploy/**`, `.github/**`, `tests/e2e/**` | VPS SSH from owner (deploy step) |
-| X Cross-OS | Mac + Windows | Mac ↔ Windows pairing (open item of 11/13) | reports only | - |
+| A macOS | Mac worktree `macos/phase-04-12` (merged) | 04 → 12 | `apps/macos/**`, `spikes/macos-*` | - |
+| B Windows | Windows `windows/phase-14` (running) | 14 | `apps/windows/**`, `spikes/windows-*` | - |
+| C Core | Mac worktree `core/hardening` (merged) | read-ahead, logout revoke, lock, flake, e2e x3 | `core/**`, `scripts/**` | - |
+| D Infra | Mac worktree `infra/phase-10` (merged) | 10 on AWS Lightsail VPS | `backend/**`, `deploy/**`, `.github/**`, `tests/e2e/**` | - |
+| X Cross-OS | Mac + Windows (done, Tailscale) | Mac ↔ Windows pairing/transfer | reports only | - |
 
 Rules:
 - A track edits only its own paths; anything else goes to the owner or a PR the owner reviews.
@@ -94,9 +93,10 @@ Auth = own email OTP · Min OS = macOS 13+, Win 10 22H2+/11 · Recovery = trust 
 
 ## Unresolved questions
 1. Pricing per tier (limits configurable, not tied to tiers in MVP).
-2. Second relay region: US or EU (depends on target market).
-3. Email provider for OTP (SES / Resend / Postmark). Blocks real OTP delivery (backend has `LogSender` only).
-4. Developer ID signing: decided and built (team VE5P5RS83W, `build-fsync-mac-app.sh --sign/--profile`); data-protection Keychain migration verified. Notarization verified (`--notary-profile fsync-notary`). Open: signed launch-at-login check (phase 16).
-5. Core offline `logout()` leaves the refresh token valid server-side (core change needed).
-6. macOS integration script is not in CI (phase 10 to wire it).
+2. Second relay region: SG vs US/EU (depends on target market). Data: Track D from Vietnam to US-East-2 VPS, raw path 0.11 MiB/s = relay 0.105; nearer region is the lever. Supports SG.
+3. Email provider for OTP (SES / Resend / Postmark). Blocks real OTP delivery and prod (staging logs OTP; backend has `LogSender` only).
+4. Developer ID signing: decided and built (team VE5P5RS83W); notarization verified. Open: signed launch-at-login check (phase 16).
+5. Offline `logout()`: partly resolved (inline + bg revoke, review 9.6). Open: quit-before-revoke leaves refresh token valid to 30 d expiry. Decide: add additive FFI `revoke_session` now, or accept for MVP.
+6. macOS integration script not in CI (phase 10 to wire). CI workflows never run on GitHub yet.
 7. Optional Low items from phase 11 review round 3 (LoginModel waits for pending clear; boot awaits `sessionClear`).
+8. Mac↔Win LAN unreachable (Track X used Tailscale). Fix network path or accept Tailscale-only for MVP QA?

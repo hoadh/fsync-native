@@ -6,6 +6,7 @@
 ## Overview
 - Priority: P1 | Status: pending | Effort: harness 2 wk (B, P1 w2-5) + execution 2-3 wk (all, P1 w10-13)
 - Automated CLI-level network matrix (Linux netns + real mac/win runners) + scripted manual QA for UI/clipboard/paste targets. Gate for release.
+- Ad hoc runs 2026-10-14 (not the harness): Track X Mac↔Win over Tailscale (pair, clip, 64 MiB both ways, hash OK); public staging two-client e2e (direct + relay, 16 MiB hash OK); P0 e2e local relay. netns N1-N9, nightly, lab runners not started.
 
 ## Key Insights
 - Network behavior is core-level → automate with `fsync-cli` (headless). Clipboard/paste-target behavior is UI-level → checklist on real machines (hard to automate Finder/Explorer).

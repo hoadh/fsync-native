@@ -4,7 +4,7 @@
 - Design §4 flows 3-6; ADR 009 ([phase-04](phase-04-spike-macos-clipboard-lazy-paste.md)); [phase-07](phase-07-core-protocols-clip-file.md), [phase-08](phase-08-core-history-ffi-cli.md)
 
 ## Overview
-- Priority: P1 | Status: implemented and tested on the automated level (2026-10-14); manual QA (Finder/app paste matrix, real password managers, GUI privacy alert) open | Effort: 5-6 wk (C) — parallel with phase 14
+- Priority: P1 | Status: Partial (implemented, automated gates green on merged main, review 9.5; manual QA open: Finder/app paste matrix, real password managers, GUI privacy alert, Mac↔Win app round trip) | Effort: 5-6 wk (C) — parallel with phase 14
 - Productionize spike: watcher + filters, auto/manual modes, reps mapping (text/rtf/html/png/tiff→png/file URLs), write incoming clips, lazy/eager file paste per ADR 009, drag-drop + Share/"Send to…", history UI, retention settings.
 
 ## Key Insights
@@ -58,8 +58,9 @@ Data flow out: changeCount → read types → SensitiveFilter → Representation
 - [x] History window (search, pin, delete, clear, load more; integration test)
 - [x] Settings (Sync mode + auto-accept files, Privacy denylist, Storage retention/size/max clip/file strategy)
 - [x] Privacy onboarding (explanation + state from `NSPasteboard.accessBehavior`; the real macOS alert is unverified, see ADR 009 open items)
-- [x] Tests (FsyncMac 169 tests/12 integration skipped without backend, 0 failures; integration script 12/12; FsyncCoreKit 8)
+- [x] Tests (FsyncMac 188 tests/12 integration skipped without backend, 0 failures; integration script 12/12 PASS on merged main; FsyncCoreKit 8)
 - [ ] Manual QA checklist (phase 15): Finder/Mail/Messages/Slack/VS Code/Chrome paste, 1Password/Keychain, privacy alert, mac<->win round trip
+- [ ] Review medium: sync stays off after a failed initial settings load (add retry or re-read path)
 - [ ] History copy-back of full content/images/files (blocked on FFI, see Deviations)
 
 ## Deviations

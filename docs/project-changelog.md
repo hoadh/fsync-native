@@ -2,6 +2,51 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-10-14 - Track merge: core hardening, infra phase 10, macOS phases 04 and 12
+
+### Added
+- Core read-ahead in `read_file_range` (`file/range_reader.rs`, `file/seq_run.rs`): after two sequential reads in a row, up to 4 windows of 4 MiB are fetched ahead, with at most 8 windows held per reader. A first read is never sequential. Speculative fetches draw from a per-peer budget of 8 permits (`file/reader_cache.rs`) and never wait, so foreground reads do not queue behind them.
+- Core exclusive data-dir lock: `start()` takes `<data_dir>/engine.lock` (std `File::try_lock`); `stop()` or dropping the service releases it. A second engine on the same directory fails with `Invalid("another fsync engine is already running on this data directory")`. The lock dies with the process, so a crash never blocks the directory.
+- Core logout revocation (`service/revoke.rs`): see Changed.
+- Infra phase 10 (`deploy/`, `.github/workflows/deploy-stack.yml`, `tests/e2e/compose-stack-sync.sh`): production compose stack (Postgres 17, backend, iroh relay) for one VPS behind the host Caddy. Backend and relay publish on loopback only (18080, 18081). Compose network pinned to `FSYNC_SUBNET` (default 172.29.0.0/24). `TRUST_PROXY_HOPS=1` with `TRUSTED_PROXIES` = that subnet + `127.0.0.0/8`. Scripts: `deploy.sh`, `smoke-check.sh`, `backup-postgres.sh`, `restore-postgres.sh`, `gen-env.sh`, `bootstrap-vps.sh` (dedicated VPS only). See [deployment guide](./deployment-guide.md).
+- CI: `ci.yml` path filters for the macOS and Windows jobs (always run on push to `main` and on dispatch). `deploy-stack.yml` builds the images and runs the compose stack end to end when deploy inputs change. Third-party actions are pinned by SHA.
+- macOS phase 04 spike: `spikes/macos-clipboard` (self-test with a child reader process). Decision in [ADR 009](./adr/009-macos-lazy-paste.md).
+- macOS phase 12 app (`apps/macos/FsyncMac`):
+  - Clipboard sync: pasteboard watcher, sensitive filter, representation mapper (text, HTML, RTF, PNG), writer with echo guard, auto and manual modes, "Paste from <device>", `⌃⌥C` sends the clipboard.
+  - History window: search, pin, delete, clear (pinned kept by default), paging of 50.
+  - Settings tabs Sync, Privacy and Storage.
+  - File clips: eager and lazy (`FileClipWriter`, `FileClipStrategy`), `FileFetchService`, `TransfersModel` (progress, cancel), `FilesSync` (incoming offers, Send to, drop on a device row), inbox retention.
+- Tests: core `data_dir_lock.rs`, `logout_revocation.rs`, `file_read_ahead.rs`, a backend harness proxy (`backend_harness/proxy.rs`), and a logout test that revokes the whole token family (`backend/tests/auth_refresh.rs`).
+
+### Changed
+- Logout (core `service/login.rs`, `service/revoke.rs`): local sign-out runs first (tokens, pinned trust, presence) and `logout()` returns `Ok` after it, even when the network is down. The server-side revoke gets one inline attempt capped at 3 s. Transient failures (no answer, 408, 429, 5xx) are retried in the background, starting at 5 s and doubling to 5 min, for as long as the service lives. Other answers (401 = already revoked, other 4xx) end it. A refresh that was in flight cannot store tokens after logout. Core never persists the refresh token, so if the app quits first, the token stays valid until its 30-day expiry.
+- Engine start and stop are serialized (`start_gate`), so concurrent `start` calls cannot race on the lock.
+- `docs/ffi-contract.md` and `docs/api.md` describe the new logout, lock and `on_session_changed` behaviour.
+- Backend test harness: when Docker never publishes the Postgres port (`PortNotExposed`), the container is removed and a new one started (4 attempts). Other errors fail fast. The core harness now shares this helper.
+- Deploy layout: `deploy/` holds the production stack. `deploy/backend/compose.yml` is the older dev-only compose file. `deploy/relay/` is populated.
+- macOS file clips: the default strategy is `hybrid`. Files under 20 MiB are fetched before the clip is written; larger ones are served on paste. Eager bytes per clip are capped at 512 MiB, and anything over the cap is lazy.
+
+### Fixed
+- Core: a file's first read is never treated as sequential, so a header read does not start prefetching.
+- Core: a 401 from a refresh that started before a logout no longer clears tokens (epoch check in `ApiClient`).
+- Deploy: a unique staging dir per deploy, a remote `flock`, atomic `.env` updates, `compose.yml.prev` kept for rollback, and a non-root relay (uid 10001) unless QAD needs the Caddy cert (`RELAY_USER=0`). Review fixes: `max_connections=30`, an OOM warning in smoke checks, readable non-secret files.
+- macOS review round 1: publish queue, privacy recheck before send, settings load before edits, retention, file limits (commit 361568c). Round 2: the newest queued publish is kept, and a copy made during a publish is not lost.
+
+### Verification
+- Read-ahead, 200 MiB file, 256 KiB serial reads, in-process peers: 50 ms RTT 46 → 105 MiB/s. At 0 ms (loopback) there is no regression (about 106 → 110 MiB/s).
+- Local e2e, 256 MiB: direct 35.6 MiB/s, relay-only 49.7 MiB/s.
+- Public relay from Vietnam to the US-East-2 VPS: about 0.1 MiB/s, the same as the raw path. The path is network-bound; the relay is not the bottleneck.
+- Infra: `tests/e2e/compose-stack-sync.sh` passed locally (compose up, HTTPS through a local Caddy, two CLIs, direct and relay clip, 4 MiB file over the relay, backup and restore). Shell and workflow lint are clean. The GitHub workflows have not run yet.
+- Public HTTPS verified 2026-10-14 after the owner applied the Caddy snippet: smoke check, two-client e2e (login, pair with SAS, clip direct 22 ms and relay 802 ms, 16 MiB file direct and relay), and real client IP via `X-Forwarded-For` (spoofed header ignored; per-IP websocket cap enforced).
+- macOS: integration run 12/12 against a real backend, relay and `fsync-cli`. Automated tests green. Manual QA not done.
+
+### Known gaps
+- Logout revocation is in memory only. A hard guarantee after an app quit needs an additive FFI (`revoke_session`); not done.
+- Windows must re-run its 200 MiB shell paste against the new read-ahead (ADR 010 numbers were serial-bound).
+- macOS manual QA open: the Finder, Mail, Slack and VS Code paste matrix for eager and lazy files, real password managers, and the privacy alert on macOS 15.x.
+- macOS history keeps 200-character previews; copy-back works only for text stored in full. Full-content accessor not built.
+- The denylist is applied by the macOS app to automatic sync (explicit send skips it, ADR 009). Core still does not enforce it.
+
 ## 2026-10-14 - Windows: C# bindings (03), clipboard spike (05), app shell (13)
 
 ### Added

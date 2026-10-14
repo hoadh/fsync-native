@@ -7,7 +7,7 @@
 - [macOS app shell + pairing](../261014-1235-macos-app-shell-pairing/plan.md) (sync 2026-10-14)
 
 ## Overview
-- Priority: P1 | Status: Done on Mac (manual visual checks open) | Effort: 4-5 wk (C) — parallel with phase 13
+- Priority: P1 | Status: Done on Mac (manual visual checks open; Mac↔Win CLI pairing PASS via Track X, Tailscale; app-to-app run open, 2026-10-14) | Effort: 4-5 wk (C) — parallel with phase 13
 - SwiftUI `MenuBarExtra` app (LSUIElement), FsyncCoreKit Swift package wrapping generated bindings, login (email OTP), pairing UI (show QR/code, scan/enter code, SAS confirm), devices with status, launch at login.
 
 ## Key Insights
@@ -66,6 +66,7 @@ Data flow: View → EngineBridge (async Task) → FsyncEngine (FFI) → core; co
 
 ## Success Criteria
 - Fresh Mac: login → first device; second Mac/Win (CLI ok) pairs via code with SAS match; status flips LAN/relay/offline within 5 s of change.
+- 2026-10-14: pairing part met via Track X (Mac↔Win, Tailscale, code+SAS). Status flip timing not verified in Track X; LAN path unreachable.
 
 ## Risk Assessment
 | Risk | L x I | Mitigation |
