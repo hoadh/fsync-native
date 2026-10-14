@@ -19,11 +19,14 @@ pub const CLOSE_UNTRUSTED: u32 = 403;
 /// Application close code for connections dropped locally because the peer looks gone.
 pub const CLOSE_STALE: u32 = 410;
 
+/// (opened at, we dialed it, the connection)
+type Live = (Instant, bool, Connection);
+
 pub struct Gate {
     pub(crate) trust: Arc<TrustManager>,
     pub(crate) windows: Arc<PairingWindows>,
     pub(crate) paths: Arc<PathTracker>,
-    live: Mutex<HashMap<(NodeId, usize), (Instant, bool, Connection)>>,
+    live: Mutex<HashMap<(NodeId, usize), Live>>,
 }
 
 impl std::fmt::Debug for Gate {
