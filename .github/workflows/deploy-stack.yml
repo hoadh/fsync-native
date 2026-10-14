@@ -1,0 +1,33 @@
+name: deploy-stack
+# Builds the production images and runs the whole compose stack (Caddy + backend + relay +
+# Postgres) with two fsync-cli devices syncing through it. Only when deploy inputs change.
+on:
+  pull_request:
+    paths: ["deploy/**", "backend/**", "core/**", "Cargo.lock", "tests/e2e/compose-stack-sync.sh", ".github/workflows/deploy-stack.yml"]
+  push:
+    branches: [main]
+    paths: ["deploy/**", "backend/**", "core/**", "Cargo.lock", "tests/e2e/compose-stack-sync.sh", ".github/workflows/deploy-stack.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-stack-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Lint deploy scripts and compose file
+        run: |
+          shellcheck -S warning deploy/scripts/*.sh deploy/relay/entrypoint.sh tests/e2e/compose-stack-sync.sh
+          deploy/scripts/gen-env.sh > "$RUNNER_TEMP/deploy.env"
+          docker compose --env-file "$RUNNER_TEMP/deploy.env" -f deploy/compose.yml config -q
+      - name: Compose stack end to end
+        run: tests/e2e/compose-stack-sync.sh

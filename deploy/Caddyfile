@@ -1,0 +1,20 @@
+# Site blocks for a Caddy that terminates TLS in front of the stack (the host Caddy on the VPS).
+# On a server paste the two blocks with literal hostnames (README lists them); `{$VAR:default}`
+# placeholders below let the local test (compose.local.yml) run this exact file.
+# --- omit this block when pasting into an existing Caddyfile ---
+{
+	{$CADDY_GLOBAL_OPTIONS:}
+}
+# ----------------------------------------------------------------
+
+{$API_HOST:api-fsync.10z.one} {
+	# Presence is a WebSocket; Caddy upgrades it transparently.
+	reverse_proxy {$BACKEND_UPSTREAM:127.0.0.1:18080}
+}
+
+{$RELAY_HOST:relay-fsync.10z.one} {
+	# Relay traffic is a long-lived upgraded connection: never buffer it.
+	reverse_proxy {$RELAY_UPSTREAM:127.0.0.1:18081} {
+		flush_interval -1
+	}
+}

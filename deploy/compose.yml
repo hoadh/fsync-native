@@ -1,0 +1,96 @@
+# Production stack: backend + iroh-relay + Postgres. TLS is terminated by a Caddy that is NOT part
+# of this file (the host Caddy on the VPS; see Caddyfile + README). Everything listens on
+# 127.0.0.1 only; the only optional public port is relay QUIC (udp/7842, off by default).
+#
+#   cd deploy && cp .env.example .env   # or scripts/gen-env.sh > .env
+#   docker compose up -d --build
+# Local testing: add -f compose.local.yml (adds a Caddy and a local CA).
+name: ${COMPOSE_PROJECT_NAME:-fsync}
+
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+services:
+  postgres:
+    <<: *hardening
+    image: postgres:17
+    # Small host (shared, ~2 GiB RAM): keep Postgres lean.
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=40",
+              "-c", "work_mem=2MB", "-c", "maintenance_work_mem=32MB", "-c", "effective_cache_size=128MB"]
+    mem_limit: 192m
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fsync}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-fsync}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    <<: *hardening
+    image: fsync-backend:${FSYNC_TAG:-local}
+    pull_policy: never
+    build:
+      context: ..
+      dockerfile: deploy/backend/Dockerfile
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-fsync}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-fsync}
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY}
+      BIND_ADDR: 0.0.0.0:8080
+      FSYNC_ENV: ${FSYNC_ENV:-production}
+      FSYNC_DEV_MODE: ${FSYNC_DEV_MODE:-0}
+      # Caddy is the one proxy in front; it appends the client address to X-Forwarded-For.
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-172.16.0.0/12}
+      MAX_UNAUTH_WS: ${MAX_UNAUTH_WS:-1000}
+      MAX_UNAUTH_WS_PER_IP: ${MAX_UNAUTH_WS_PER_IP:-10}
+      MAX_IN_FLIGHT: ${MAX_IN_FLIGHT:-512}
+      PRESENCE_TIMEOUT_SECS: ${PRESENCE_TIMEOUT_SECS:-60}
+      RUST_LOG: ${RUST_LOG:-info}
+    read_only: true
+    cap_drop: [ALL]
+    mem_limit: 96m
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-18080}:8080"
+    # Image HEALTHCHECK (curl /health, which also runs SELECT 1) applies.
+
+  relay:
+    <<: *hardening
+    image: fsync-relay:${FSYNC_TAG:-local}
+    pull_policy: never
+    build:
+      context: ./relay
+    environment:
+      RELAY_HOSTNAME: ${RELAY_HOST:?set RELAY_HOST}
+      # 1 = QUIC address discovery on udp/7842 (needs the Caddy-managed cert, see RELAY_CERT_VOLUME).
+      RELAY_QAD: ${RELAY_QAD:-0}
+      RELAY_RX_BYTES_PER_SEC: ${RELAY_RX_BYTES_PER_SEC:-}
+      RUST_LOG: ${RELAY_RUST_LOG:-info}
+    volumes:
+      # Only used when RELAY_QAD=1: Caddy's data dir (host path, e.g.
+      # /var/lib/caddy/.local/share/caddy, or a docker volume). Caddy's keys are root-owned 0600,
+      # so the relay container runs as root (read-only fs, no capabilities, read-only mount).
+      - ${RELAY_CERT_VOLUME:-relay_nocert}:/caddy-data:ro
+    user: "0"
+    mem_limit: 96m
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: [ALL]
+    ports:
+      - "127.0.0.1:${RELAY_HTTP_PORT:-18081}:3340"
+      # Loopback unless QAD is on: then set RELAY_QUIC_BIND=0.0.0.0 and open udp/7842 in the firewall.
+      - "${RELAY_QUIC_BIND:-127.0.0.1}:${RELAY_QUIC_PORT:-7842}:7842/udp"
+
+volumes:
+  pgdata:
+  relay_nocert:

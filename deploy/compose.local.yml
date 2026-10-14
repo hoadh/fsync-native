@@ -1,0 +1,30 @@
+# Local testing overlay: adds a Caddy (local CA) running deploy/Caddyfile in front of the stack
+# and publishes the plain-HTTP backend/relay on loopback so fsync-cli (which only trusts public
+# CAs) can use `--insecure-http`. Never use on a server.
+#   docker compose -p fsync-local --env-file .env.local -f compose.yml -f compose.local.yml up -d --build
+services:
+  caddy:
+    image: caddy:2
+    restart: "no"
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    environment:
+      API_HOST: api.localhost
+      RELAY_HOST: relay.localhost
+      CADDY_GLOBAL_OPTIONS: "local_certs"
+      BACKEND_UPSTREAM: host.docker.internal:${BACKEND_PORT}
+      RELAY_UPSTREAM: host.docker.internal:${RELAY_HTTP_PORT}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    ports:
+      - "127.0.0.1:${LOCAL_HTTPS_PORT}:443"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 443"]
+      interval: 5s
+      retries: 10
+  relay:
+    volumes:
+      - caddy_data:/caddy-data:ro
+    depends_on: [caddy]
+volumes:
+  caddy_data:

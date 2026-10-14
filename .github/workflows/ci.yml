@@ -1,18 +1,26 @@
 name: ci
+# PR + main + manual only: the repo is private and Actions minutes cost money.
 on:
-  push: { branches: [main] }
   pull_request:
+  push: { branches: [main] }
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
 
 jobs:
   rust:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    name: rust (fmt, clippy, tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.99.0
@@ -20,16 +28,55 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      # Backend and core tests start their own throwaway Postgres through testcontainers
+      # (tests/common/pg.rs), so no `services:` block: the runner's Docker is all they need.
+      - run: docker pull postgres:17
       - run: cargo test --workspace
 
-  # Placeholders until phases 11/13 add real app builds.
-  app-macos:
-    runs-on: macos-latest
+  macos:
+    name: macos (swift test)
+    runs-on: macos-15
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - run: echo "macOS app build added in phase 11"
-  app-windows:
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: Swatinem/rust-cache@v2
+      # Universal xcframework + generated Swift; both SwiftPM packages link it.
+      - run: scripts/build-xcframework.sh
+      - run: swift test --package-path apps/macos/Packages/FsyncCoreKit
+      # The 3 integration tests skip unless FSYNC_IT_* is set; see macOS integration note in
+      # plans/261013-2029-fsync-native-mvp/phase-10-infra-relay-backend-deploy.md.
+      - run: swift test --package-path apps/macos/FsyncMac
+
+  windows:
+    name: windows (dotnet test)
     runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - run: echo "Windows app build added in phase 13"
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "8.0.x" }
+      # Vendored OpenSSL (SQLCipher) needs Strawberry Perl (preinstalled, but Git's perl wins on
+      # PATH) and NASM.
+      - name: Toolchain for vendored OpenSSL
+        shell: pwsh
+        run: |
+          choco install nasm -y --no-progress
+          "C:\Program Files\NASM" | Out-File -FilePath $env:GITHUB_PATH -Append
+          "C:\Strawberry\perl\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+      - name: Cache uniffi-bindgen-cs
+        id: bindgen
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/uniffi-bindgen-cs.exe
+          key: uniffi-bindgen-cs-v0.10.0+v0.29.4-${{ runner.os }}
+      - name: Install uniffi-bindgen-cs
+        if: steps.bindgen.outputs.cache-hit != 'true'
+        run: cargo install uniffi-bindgen-cs --git https://github.com/NordSecurity/uniffi-bindgen-cs --tag v0.10.0+v0.29.4 --locked
+      # x64 only: the ARM64 DLL is built in release pipelines, not needed to run the tests.
+      - name: Build core DLL and C# bindings
+        shell: pwsh
+        run: scripts/build-windows-dll.ps1 -Rids win-x64
+      - run: dotnet test apps/windows/Fsync.sln -c Release
