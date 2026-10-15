@@ -6,7 +6,7 @@ Last updated: 2026-10-15. Short entry point. The full runbook is [deploy/README.
 
 | Host | Mode | Public name | Release | Status |
 |------|------|-------------|---------|--------|
-| Ohio `cms-node` (18.223.244.168) | Full: backend, relay, Postgres 17 | `api-fsync.10z.one`, `relay-fsync.10z.one` | `549cc6a3d298` (branch build; rollback target `519ec821e90f`) | Migrations 0001-0003 applied. Real OTP via Gmail SMTP verified 2026-10-15 (204 in 1.8 s). Redeploy from `main` after the merge. |
+| Ohio `cms-node` (18.223.244.168) | Full: backend, relay, Postgres 17 | `api-fsync.10z.one`, `relay-fsync.10z.one` | `f00980db3978` (main, deployed 2026-10-15; rollback target `549cc6a3d298`) | Migrations 0001-0003 applied. Real OTP via Gmail SMTP verified 2026-10-15 (204 in 1.8 s). Public smoke and `probe-health.sh` all ok after deploy. |
 | Singapore Lightsail (52.77.206.192) | Relay only (`--relay-only`) | `relay-sg-fsync.10z.one` | `519ec821e90f` | Docker 29.9 and compose v5.6 installed. `.mode` = `relay-only`. No backend, no Postgres. |
 
 Both hosts are shared with other sites. Their host Caddy files belong to the owner: deploys never edit or reload Caddy.

@@ -20,7 +20,7 @@ Four tracks (core, macOS, Windows, infra) merged into local `main` at `3c405b1`.
 - Windows: the pending revoke is kept in memory only after a successful save. `Dispose` cancels the ticket before closing the gate.
 - Backend test harness: Mailpit HTTP calls retry on transient resets (`backend/tests/common/mailpit.rs`); Postgres start, admin connect and service calls have timeouts.
 - macOS CI: `CliProcess` reports exit only after both pipes drain (1 s grace, then force-drain); no `super` calls in `IntegrationTestCase`.
-- Ohio host runs release `549cc6a3d298` (branch build), with `519ec821e90f` as the rollback target.
+- Ohio host redeployed from main: release `f00980db3978` (rollback target `549cc6a3d298`); public smoke and probe-health ok.
 
 ### Fixed
 - Core: a crashed peer that returns on a new port is reachable in about 2 s (above).
@@ -41,7 +41,7 @@ Four tracks (core, macOS, Windows, infra) merged into local `main` at `3c405b1`.
 - Rollback: a compatible pair (`519ec821e90f` <-> `549cc6a3d298`) rolled back and forward, about 88 s per hop, one failed 0.5 s poll per hop.
 - E2E matrix: `MIB=8 p0 local,sg` both PASS (local 239 s; sg 51 s, about 0.38 MiB/s; clip latency 0.53 s).
 - macOS: `swift test` (FsyncMac) 222 run, 18 skipped, 0 failures; `FsyncCoreKit` green; `mac-it` PASS.
-- Windows: `dotnet test` 155/155 (9 + 47 + 99 across the three test projects); new tests 10x green.
+- Windows: `dotnet test` 155/155 (9 + 47 + 99 across the three test projects); new tests 10x green. After B5: 156/156.
 
 ### Open
 - **GitHub Actions is blocked by billing.** No CI, deploy-stack or health-probe run has started since the block. The last green macOS run predates later changes. Re-dispatch `ci.yml` once unblocked. Until then the hourly probe does not alert.

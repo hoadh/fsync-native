@@ -29,10 +29,10 @@ Manual GUI QA, ARM64 hardware, LAN cabling (S7) and email-provider choice stay w
 # Status
 | Track | Status | Review | Merge |
 |---|---|---|---|
-| A | merged; open: A2 cached-conn fetch retry, A5 mid-run death + relay mesh | 9.5, 0 critical | 3c405b1 (local) |
-| B | merged; open: ARM64, manual QA | 9.5 (B1-B4), B5 9.5 | 3c405b1 (local) |
-| C | merged; open: manual QA run (C4), live-session revoke proof (C1) | 9.6, 0 critical/high | 3c405b1 (local) |
-| D | merged; open: first green GitHub run on final main (billing), prod redeploy from main, DKIM, backup key custody | 9.5, 0 critical/high/medium | 3c405b1 (local) |
+| A | merged; open: A2 cached-conn fetch retry, A5 mid-run death + relay mesh | 9.5, 0 critical | 3c405b1, pushed f00980d |
+| B | merged; open: ARM64, manual QA | 9.5 (B1-B4), B5 9.5 | 3c405b1, pushed f00980d |
+| C | merged; open: manual QA run (C4), live-session revoke proof (C1) | 9.6, 0 critical/high | 3c405b1, pushed f00980d |
+| D | merged; open: first green GitHub run on final main (billing), DKIM, backup key custody | 9.5, 0 critical/high/medium | 3c405b1, pushed f00980d |
 
 Plan status: in-progress. Agent-doable items are done or partial as below. Closure needs: gates re-run after C merge, push, one green GitHub run, owner items.
 
@@ -78,7 +78,7 @@ Plan status: in-progress. Agent-doable items are done or partial as below. Closu
 | NEW: GitHub billing blocks CI; release gate not verifiable on final main | H | Open, owner |
 | NEW: Backup private key only on Mac (`~/.fsync-backup`); losing it makes backups unreadable | H | Open, owner |
 | NEW: Relays do not mesh; peers on disjoint relays cannot connect | H | Open, decision |
-| NEW: cms-node runs branch build 549cc6a3d298, not main | M | Open, lead/D |
+| cms-node ran branch build 549cc6a3d298, not main | M | Closed: redeployed main f00980db3978 |
 | NEW: Local main 3c405b1 not pushed; divergence risk | M | Open, lead |
 | NEW: No DKIM; OTP deliverability at risk | M | Open, owner |
 | NEW: Staging 502 (D rehearsal, 03:08-03:13 local) and C-observed 502 (03:10-03:12 +07) likely the same | L | Unconfirmed |
@@ -92,22 +92,22 @@ Plan status: in-progress. Agent-doable items are done or partial as below. Closu
 | Closed: history copy-back blocked on FFI (A1, B4, C3) | - | Closed |
 
 # Next actions (owner, definition of done)
-1. Lead: re-run gates on 3c405b1 after C merge (cargo, fmt/clippy, swift, mac integration, dotnet on waso). DoD: all green; numbers in MVP plan Progress.
-2. Lead: push main, no force-push. DoD: origin/main = local main; CI dispatched.
+1. DONE (cargo 308/0, swift 222/0 fail, mac-it PASS; dotnet 156/156 on A+B+D, C is macOS-only). Lead: re-run gates on 3c405b1 after C merge (cargo, fmt/clippy, swift, mac integration, dotnet on waso). DoD: all green; numbers in MVP plan Progress.
+2. DONE (2d87845..f00980d; CI run 38662663286 not started: billing). Lead: push main, no force-push. DoD: origin/main = local main; CI dispatched.
 3. Owner: restore GitHub billing and re-dispatch CI on pushed main. DoD: one run with rust, macOS and Windows green; then tick phase 10 CI and verify D2.
-4. Lead or D: redeploy cms-node from main, drop branch build. DoD: `/health` ok at main sha; `deploy/operations.md` followed.
+4. DONE (f00980db3978, public smoke + probe-health ok). Lead or D: redeploy cms-node from main, drop branch build. DoD: `/health` ok at main sha; `deploy/operations.md` followed.
 5. Owner: copy `~/.fsync-backup/fsync-backup-secret.asc` to password manager. DoD: owner confirms entry exists.
 6. Owner: enable DKIM in Google Admin, publish `google._domainkey` TXT. DoD: record resolves; then decide DMARC tightening.
 7. Owner: pick `BACKUP_PING_URL` or accept log-only. DoD: decision written in phase 10.
 8. Owner: run manual QA (macOS checklist; Windows phase 14 list); ARM64 run. DoD: Result column filled; failed rows filed to owners.
 9. Owner, optional: `FSYNC_REAL_REFRESH` live revoke run. DoD: `RealBackendRevokeTests` passes with live token, or sign-off to defer.
 10. Track A, or owner sign-off to defer: file/rep dead-cached-conn retry; A5 mid-run death on real relays; relay mesh decision. DoD: test added, or deferral signed off in MVP plan.
-11. Lead: `docs/ffi-contract.md` "Additive since v2" lists `history_item_reps` and `EngineAlreadyRunning`; roadmap and changelog updated. DoD: entries present; docs impact stated.
+11. DONE (415904a). Lead: `docs/ffi-contract.md` "Additive since v2" lists `history_item_reps` and `EngineAlreadyRunning`; roadmap and changelog updated. DoD: entries present; docs impact stated.
 12. Backend owner (MVP role B): 10k WS load test, Postgres TLS before remote DB, phase 15 netns N1/N2/N5. DoD: each green or deferred with sign-off.
 13. Owner: S7 LAN cabling, or sign off Tailscale-only. DoD: decision recorded in MVP plan.
 
 # Unresolved questions
-1. B5: what is its scope vs the plan's item list? Lead to confirm.
+1. B5 (answered): eager zero-budget race fix in Windows ClipboardService (CI "engine not started"), regression test added, CI windows job green run 38636795483.
 2. Is the C-observed 502 (03:10-03:12 +07) the same incident as the D rehearsal outage? Likely; unconfirmed.
 3. Is `FSYNC_ENV=production` with dev mode off on cms-node? Still unverified.
 4. Postgres TLS: no evidence this round. Status?

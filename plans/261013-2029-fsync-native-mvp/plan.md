@@ -28,7 +28,7 @@ Roles: A = Rust core | B = backend+DevOps | C = macOS | D = Windows
 - Open, must close or be explicitly deferred with owner sign-off:
   - Manual QA: macOS checklist (`plans/reports/qa-checklist-261015-macos-manual.md`); Win GUI matrix (14); Mac↔Win GUI pairing; privacy alert; password managers.
   - S7 LAN re-test (cabling) or Tailscale-only sign-off. ARM64 hardware (03, 13, 14).
-  - Infra: first green GitHub CI on final main; verify alerts after push; `BACKUP_PING_URL` decision; backup key to password manager; redeploy cms-node from main (runs branch build 549cc6a3d298); staging/prod split; backend-deploy workflow; RAM (~600 MiB free).
+  - Infra: first green GitHub CI on final main; verify alerts after push; `BACKUP_PING_URL` decision; backup key to password manager; staging/prod split; backend-deploy workflow; RAM (~600 MiB free).
   - Email: DKIM not found (SPF ok, DMARC p=none). Owner enables in Google Admin.
   - Backend: 10k WS load test; Postgres TLS before remote DB.
   - Core (A): file/rep fetch retry on dead cached conn; A5 mid-run relay death; relay-mesh decision; `docs/ffi-contract.md` additive entries (lead); M1/M2 engine.lock (phase 08).
