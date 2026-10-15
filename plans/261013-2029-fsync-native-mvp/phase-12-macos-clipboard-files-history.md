@@ -4,7 +4,7 @@
 - Design §4 flows 3-6; ADR 009 ([phase-04](phase-04-spike-macos-clipboard-lazy-paste.md)); [phase-07](phase-07-core-protocols-clip-file.md), [phase-08](phase-08-core-history-ffi-cli.md)
 
 ## Overview
-- Priority: P1 | Status: Partial (implemented, automated gates green on merged main, review 9.5; manual QA open: Finder/app paste matrix, real password managers, GUI privacy alert, Mac↔Win app round trip; relay list + pending revoke live in phase 11) | Effort: 5-6 wk (C) — parallel with phase 14
+- Priority: P1 | Status: Partial (implemented, automated gates green, review 9.6 round 2; review-medium and copy-back done; manual QA open: Finder/app paste matrix, real password managers, GUI privacy alert, Mac↔Win app round trip; relay list + pending revoke live in phase 11; merged local main 3c405b1, not pushed) | Effort: 5-6 wk (C) — parallel with phase 14
 - Productionize spike: watcher + filters, auto/manual modes, reps mapping (text/rtf/html/png/tiff→png/file URLs), write incoming clips, lazy/eager file paste per ADR 009, drag-drop + Share/"Send to…", history UI, retention settings.
 
 ## Key Insights
@@ -59,14 +59,13 @@ Data flow out: changeCount → read types → SensitiveFilter → Representation
 - [x] Settings (Sync mode + auto-accept files, Privacy denylist, Storage retention/size/max clip/file strategy)
 - [x] Privacy onboarding (explanation + state from `NSPasteboard.accessBehavior`; the real macOS alert is unverified, see ADR 009 open items)
 - [x] Tests (FsyncMac 188 tests/12 integration skipped without backend, 0 failures; integration script 12/12 PASS on merged main; FsyncCoreKit 8)
-- [ ] Manual QA checklist (phase 15): Finder/Mail/Messages/Slack/VS Code/Chrome paste, 1Password/Keychain, privacy alert, mac<->win round trip
-- [ ] Review medium: sync stays off after a failed initial settings load (add retry or re-read path)
-- [ ] History copy-back of full content/images/files (blocked on FFI, see Deviations)
+- [ ] Manual QA checklist (phase 15): Finder/Mail/Messages/Slack/VS Code/Chrome paste, 1Password/Keychain, privacy alert, mac<->win round trip (checklist: plans/reports/qa-checklist-261015-macos-manual.md; owner runs it)
+- [x] Review medium: sync stays off after a failed initial settings load (fixed caed6cc/b66f1d3, merged ca6d57d; `ClipboardStartAfterFailedLoadTests`; verified round 2)
+- [x] History copy-back of full content/images/files (round 2 C3: text/HTML/RTF/PNG via `history_item_reps`; file clips have no copy icon)
 
 ## Deviations
 - Files live under `FsyncMac/Sources/FsyncMacCore/{Clipboard,Files,Features/History,Settings}` and `FsyncMacUI/{Menu,History,Settings,Devices}`, not the phase's Architecture tree; lazy/eager writers are one `FileClipWriter` (+ `FileClipStrategy`, `InboxDirectory`, `FileFetchService`, `TransfersModel`, `FilesSync`).
 - Hotkey is Carbon Ctrl-Opt-C, fixed (no customization UI).
-- History copy-back restores only the 200-char text preview: core history stores previews, no content accessor (FFI gap, see report).
 - Sensitive-filtered clips are skipped entirely (never sent, never in history).
 - Folders are out of the MVP (files arrive flat); drop accepts plain files only.
 - `FileClipStrategy` is stored in UserDefaults (key `fileClipStrategy`), editable in Settings > Storage.
@@ -75,11 +74,16 @@ Data flow out: changeCount → read types → SensitiveFilter → Representation
 - `run-fsync-mac-integration.sh` runs test classes in two groups with a backend restart in between (dev backend allows 20 OTP codes/hour/IP) and filters on the new classes.
 
 - Round 2 (review): settings are read off the main actor and clipboard sync starts only after a successful
-  read (writes are refused until then). History copy-back is offered only for text stored in full (the core
-  keeps a 200-char preview). Auto-accept capped at 1 GiB per offer, pending offers capped at 20, cancel aborts
+  read (writes are refused until then). History copy-back restores full content (round 2 C3). Auto-accept capped at 1 GiB per offer, pending offers capped at 20, cancel aborts
   the rest of an offer, paste timeout 180 s. Inbox cleanup runs at start, on retention change and daily, and
   applies the byte cap. Publishing is serialized with the newest copy queued, and the pasteboard changeCount
   is re-checked before read and before send.
+
+## Round 2 (2026-10-15, Track C, branch macos/round-2, merged local main 3c405b1)
+- C2: review-medium verified fixed (ca6d57d). C3: copy-back with full content; `HistoryItem.canCopyBack` replaces the preview heuristic; ErrorText `EngineAlreadyRunning` (typed, no reset offered) + boot test with second instance.
+- C4: manual QA checklist written (`plans/reports/qa-checklist-261015-macos-manual.md`, 7 sections, ~60 rows; ADR 009 questions at end). Not yet run.
+- C5: Swift 6.1 CI fixes (Xcode 16.4 runner): `CliEvent` Sendable, `CliProcess` pipe drain/teardown, no `super` in setUp/tearDown. Local: swift 222 run / 18 skipped / 0 fail (track alone); mac-it PASS. Review 8.5 → 9.6, 0 critical/high. GitHub macOS job last green on run 38638772422 (pre-refactor); re-run blocked by billing.
+- Open: echo check in integration test would miss an engine that dedupes identical content (unit test covers guard). Failed `writeObjects` leaves pasteboard empty (inherent to NSPasteboard).
 
 ## Success Criteria
 - Text/rich/image round-trip mac↔mac & mac↔win; Finder paste of remote file (lazy or eager per ADR); 0 concealed items synced in filter test suite; idle CPU < 0.5%.

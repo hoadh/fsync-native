@@ -4,7 +4,7 @@
 - Design §2 History, §4 flow 6; [phase-03](phase-03-spike-ffi-bindings.md) contract v0; [phase-07](phase-07-core-protocols-clip-file.md)
 
 ## Overview
-- Priority: P0 | Status: Partial | Effort: 1.5-2 wk (A; +3-5 d history encryption; likely spills into P1 w1)
+- Priority: P0 | Status: Partial (P0 exit demo open; round 2 A1-A5 landed; A2 gap and A5 partial, see Implementation Notes) | Effort: 1.5-2 wk (A; +3-5 d history encryption; likely spills into P1 w1)
 - SQLite history (local only), retention job, settings; implement FFI contract v0 for real; CLI harness used by tests + manual QA.
 
 ## Key Insights
@@ -81,6 +81,13 @@ core/fsync-cli/src/{main.rs, cmd_login.rs, cmd_pair.rs, cmd_clip.rs, cmd_send.rs
 - Not done under this todo set: macOS app prompt UI for the reset event (phase 11/12).
 - Not done: CI does not publish bindings or xcframework artifacts (no such job in `ci.yml`). P0 exit demo ran on one Mac only (loopback, 256 MiB, not 1 GiB). The mac-to-Windows run is not done.
 - Not verified: x86_64 xcframework slice is linked but never executed.
+- Round 2 (Track A, 2026-10-15, core/round-2, merged local main 3c405b1; review 9.5, 0 critical; cargo 308/0 on merged main):
+  - A1 additive FFI `history_item_reps(item_id) -> Vec<Rep>` (Swift `historyItemReps`; C# regen). Unblocks copy-back on Mac (C3) and Windows (B4). Contract stays v2. `docs/ffi-contract.md` "Additive since v2" must list it (lead; open).
+  - A2 redial ~2 s after a peer restarts (was 15-30 s). Test `tests/dial_after_restart.rs`. Open: file/rep fetch on a dead cached connection still has no retry (clip send does).
+  - A3 `FsyncError::EngineAlreadyRunning` (unit variant, LAST in enum, uniffi index 14). Replaces string matching in Win/Mac apps. Also list in ffi-contract (open, as A1).
+  - A4 timeouts on Postgres start (240 s), admin connect (5 s/try), service calls (90 s), logout_revocation status HTTP (10 s). logout_revocation hang not reproduced (12 runs ok); now fails loudly. Real flake was backend mailpit HTTP reset, fixed.
+  - A5 connect-time failover verified (`tests/relay_failover.rs`). Mid-run relay death: unverified (test removed; in-process relays lack QAD). Relays do not mesh: peers whose only reachable relays differ cannot connect (open decision).
+  - Still open from this phase: M1/M2 (engine.lock lingering wait, stop timeout), P0 exit demo (1 GiB LAN + relay), FFI/CI artifact publishing.
 
 ## Success Criteria
 - P0 exit: CLI mac↔win pair/clip/send works LAN and `--force-relay`; CI publishes bindings artifacts; retention tests pass.

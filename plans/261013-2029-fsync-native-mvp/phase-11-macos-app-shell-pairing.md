@@ -91,3 +91,8 @@ Data flow: View → EngineBridge (async Task) → FsyncEngine (FFI) → core; co
 - `TrustResetPrompt` library exists in `apps/macos/Packages/FsyncCoreKit` (see `plans/261014-1206-macos-trust-reset-prompt/plan.md`).
 - Wire: `EngineDelegateAdapter` → `model.handle(event)` on the main actor; route `.removedNeedsPairing` to the pairing flow.
 - Unverified: `confirmationDialog` rendering. Check manually in the app.
+
+## Round 2 (2026-10-15, Track C1)
+- `RealBackendRevokeTests` (gated by `FSYNC_REAL_API`, optional `FSYNC_REAL_REFRESH`) PASS vs staging: unknown token → 204 → `.revoked`, Keychain entry deleted; unreachable host → `.kept` then `.dropped` on 5th failure.
+- Live revoked session (server dead + 401 on refresh) proven on the local backend only (`PendingRevokeIntegrationTests`, mac-it PASS). Deployed backend cannot issue a test session (OTP by Gmail, no test path). Owner can close the gap with an owner refresh token (never print it).
+- Phase 11 Low items (open question 7 in MVP plan) untouched this round.

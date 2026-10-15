@@ -51,6 +51,7 @@ Data flow: View → ViewModel → EngineBridge → FsyncEngine (FFI) → core; e
 - [x] Run at login (HKCU Run, --background)
 - [x] Tests (dotnet 144/144 on merged main 2026-10-15: CoreBindings 9, Interop 47, App 88; tests/e2e/pair-with-cli.ps1 PASS)
 - [x] S5: regenerated C# bindings, `FSYNC_RELAY` comma list, DPAPI pending revoke (7cc8cfd, review 8.8→9.5)
+- Round 2 (B1, 2026-10-15, merged local main 3c405b1): S5 lows fixed. Pending revoke is set in memory only after a successful Save; `WithoutAnEngineSignOutRevokesDirectly` flake fixed (15x green).
 - [ ] Win app GUI pairing run with Mac (Track X did not run the GUI)
 - [ ] ARM64 hardware run
 

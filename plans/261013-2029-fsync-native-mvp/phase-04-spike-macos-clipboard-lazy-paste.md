@@ -53,11 +53,11 @@ Hybrid allowed: lazy for Finder-compatible path, eager for small (< 20 MiB) file
 
 ## Todo List
 - [x] Watcher + sensitive filter (`spikes/macos-clipboard`, self-test)
-- [ ] Privacy alert test (2 macOS versions): `accessBehavior` API read and documented behavior recorded; alert itself needs a GUI session and macOS 15.x (open, human)
+- [ ] Privacy alert test (2 macOS versions): `accessBehavior` API read and documented behavior recorded; alert itself needs a GUI session and macOS 15.x (open, human; rows 1.1-1.7 in `plans/reports/qa-checklist-261015-macos-manual.md`)
 - [~] Lazy promise test matrix: cross-process reader checks done (lazy file-url provider works, NSFilePromiseProvider does not); Finder / Mail / Messages / Slack / VS Code / Chrome open (human, `--offer`)
 - [x] Polling CPU measurement (0.05% at 300 ms, 0.02% adaptive; measured with getrusage, not Instruments)
 - [x] ADR 009 (`docs/adr/009-macos-lazy-paste.md`)
-- [ ] Real password managers (1Password, Keychain, Safari autofill) captured as concealed (open, human)
+- [ ] Real password managers (1Password, Keychain, Safari autofill) captured as concealed (open, human; rows 5.1-5.7 in `plans/reports/qa-checklist-261015-macos-manual.md`)
 
 ## Deviations
 - Spike is a SwiftPM library + console self-test (reads cross a real process boundary via a child process), not a SwiftUI menubar app; `--offer` is the manual paste harness.

@@ -4,8 +4,9 @@
 - Design §7 success metrics; [phase-08](phase-08-core-history-ffi-cli.md) CLI harness; [phase-10](phase-10-infra-relay-backend-deploy.md) staging; apps [12](phase-12-macos-clipboard-files-history.md), [14](phase-14-windows-clipboard-files-history.md)
 
 ## Overview
-- Priority: P1 | Status: pending | Effort: harness 2 wk (B, P1 w2-5) + execution 2-3 wk (all, P1 w10-13)
+- Priority: P1 | Status: in progress (harness skeleton only; netns N1-N9 not started) | Effort: harness 2 wk (B, P1 w2-5) + execution 2-3 wk (all, P1 w10-13)
 - Automated CLI-level network matrix (Linux netns + real mac/win runners) + scripted manual QA for UI/clipboard/paste targets. Gate for release.
+- Round 2 (2026-10-15, D7): `tests/e2e/run-matrix.sh` (scenario `p0`, relays local + sg) PASS: local 239 s, sg 51 s (~0.38 MiB/s, clip 0.53 s), MIB=8, watchdog and signal forwarding verified. Only the p0 scenario exists; none of the todo items below are done. Manual QA rows: `plans/reports/qa-checklist-261015-macos-manual.md` (macOS only).
 - Ad hoc runs 2026-10-14 (not the harness): Track X Mac↔Win over Tailscale (pair, clip, 64 MiB both ways, hash OK); public staging two-client e2e (direct + relay, 16 MiB hash OK); P0 e2e local relay. netns N1-N9, nightly, lab runners not started.
 
 ## Key Insights

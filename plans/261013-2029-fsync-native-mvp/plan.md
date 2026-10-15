@@ -18,41 +18,43 @@ Source: [brainstorm report](../reports/brainstorm-261013-2029-cross-platform-cli
 Specs: layout+ADRs [01](phase-01-repo-scaffold-and-decisions.md) · DeviceList+pair/1 [06](phase-06-core-identity-trust-transport.md) · clip/1+file/1 [07](phase-07-core-protocols-clip-file.md) · FFI [03](phase-03-spike-ffi-bindings.md) · API [09](phase-09-backend-auth-registry-presence.md) · test matrix [15](phase-15-integration-testing-cross-os.md)
 Roles: A = Rust core | B = backend+DevOps | C = macOS | D = Windows
 
-## Progress (sync 2026-10-15, main 461dd57 on origin)
-- Done 10-15: S1 Gmail SMTP OTP sender + 450/24 h cap (real OTP in inbox). S2 relay-only mode, SG relay live. S3/S4 core `relay_urls` + `revoke_session`, macOS pending revoke (bb412e8). S5 Windows wiring (7cc8cfd). S6 two-relay e2e PASS. Windows phase 14 merged (37e0430). Detail: [SG/revoke plan](../261014-2314-smtp-sg-relay-revoke-session/plan.md).
-- Gates on main: cargo 300/0; fmt+clippy clean; swift FsyncMac 208 (14 integration skipped) 0 fail; mac integration PASS; xcframework rebuilt; dotnet 144/144 (waso).
-- Blocked: S7 LAN (owner cabling). Tailscale = accepted fallback.
-- Phases: done 11 (Mac), 14 (done w/ concerns); partial 01-10, 12, 13; pending 15, 16.
-- Scope changes: Gmail SMTP as OTP sender (transactional provider still advised before real traffic); SG chosen as 2nd relay; `revoke_session` pulled into MVP (was deferred); release builds must pass both relay URLs.
-- Open, must close or be explicitly deferred:
-  - Manual QA: Mac+Win GUI matrices (04, 12, 13, 14), Mac↔Win pairing via GUI, privacy alert, password managers.
-  - LAN re-test (S7, owner cabling).
-  - Infra: first GitHub CI run (Win job unverified); monitoring/alerts; rollback rehearsal; off-box backups + snapshots; staging/prod split; backend-deploy workflow; RAM (~600 MiB free on shared host).
-  - Backend: 10k WS load test; Postgres TLS before remote DB; SPF/DKIM/DMARC status unverified.
-  - Core (A): history full-content accessor (blocks copy-back on Mac 12, Win 14); ~30 s dial timeout after peer restart; typed engine.lock error. (M1/M2 + phase 12 review medium fixed in ca6d57d.)
-  - Apps: ARM64 hardware (03, 13, 14); phase 12 review-medium item unchecked in file; phase 11 Low items (Q7).
-  - Release 16: signed launch-at-login check. Phase 15 harness not built.
-  - Flakes: backend smtp_mailpit (1 fail under load, 8/8 on rerun); Postgres container start (core); Win `WithoutAnEngineSignOutRevokesDirectly` (review L2).
-- Next (owner → done when): A dial fix, history accessor, tests green · C manual matrix in ADR 009, S4 retry verified · D Win GUI run, ARM64 build run, alerts, rollback rehearsal · B first green CI run, 15 harness, 16 · S7 LAN re-test when cabled, or owner signs off Tailscale-only · lead: push after review. **Finish the plan: every open item must close or be explicitly deferred with owner sign-off.**
+## Progress (sync 2026-10-15, local main 3c405b1, NOT pushed)
+- Round 2 hardening merged to local main 3c405b1: [four-track plan](../261015-0410-four-track-hardening/plan.md). Closure needs: gates re-run after C, push, one green GitHub CI run, owner items.
+- Done 10-15: S1 Gmail SMTP OTP (450/24 h cap); S2 SG relay-only, S6 two-relay e2e PASS; S3/S4 `revoke_session` + pending revoke (mac bb412e8, Win 7cc8cfd); Win phase 14 merged (37e0430). Round 2 landed: A1-A5 core (A2 gap, A5 partial), B1-B5 Windows, C1-C5 macOS (C1 partial), D1-D7 infra (D1/D2 unverified on GitHub).
+- Gates on merged main, pre-C: cargo 308/0; fmt+clippy clean; swift 208 (14 skipped) 0 fail; mac integration PASS; dotnet waso 156/156. Track C alone: swift 222 (18 skipped) 0 fail. Post-C gates: lead re-running.
+- Blocked: S7 LAN (owner cabling); Tailscale accepted fallback. GitHub Actions blocked by billing (owner).
+- Phases: done 11 (Mac), 14 (w/ concerns); partial 01-10, 12, 13; in progress 15 (harness skeleton); pending 16.
+- Scope changes: Gmail SMTP as OTP sender (transactional provider still advised); SG second relay; `revoke_session` in MVP; release builds pass both relay URLs; relays do not mesh (documented limit); A4 logout hang fail-loud, root cause not reproduced; A5 mid-run relay test dropped; D2 alerts = GitHub Actions probe, not a monitoring stack.
+- Open, must close or be explicitly deferred with owner sign-off:
+  - Manual QA: macOS checklist (`plans/reports/qa-checklist-261015-macos-manual.md`); Win GUI matrix (14); Mac↔Win GUI pairing; privacy alert; password managers.
+  - S7 LAN re-test (cabling) or Tailscale-only sign-off. ARM64 hardware (03, 13, 14).
+  - Infra: first green GitHub CI on final main; verify alerts after push; `BACKUP_PING_URL` decision; backup key to password manager; redeploy cms-node from main (runs branch build 549cc6a3d298); staging/prod split; backend-deploy workflow; RAM (~600 MiB free).
+  - Email: DKIM not found (SPF ok, DMARC p=none). Owner enables in Google Admin.
+  - Backend: 10k WS load test; Postgres TLS before remote DB.
+  - Core (A): file/rep fetch retry on dead cached conn; A5 mid-run relay death; relay-mesh decision; `docs/ffi-contract.md` additive entries (lead); M1/M2 engine.lock (phase 08).
+  - Apps/release: phase 11 Low items (Q7); C1 live-session revoke proof (owner `FSYNC_REAL_REFRESH`, optional); phase 16 signed launch-at-login check.
+  - Phase 15: netns N1-N9, security cases, cross-OS runners, metrics (not started).
+  - Closed 10-15: smtp_mailpit flake (D6); Win `WithoutAnEngineSignOut` flake (B1); ~30 s dial after restart (A2); history copy-back blocked on FFI (A1, B4, C3); rollback rehearsal (D3); off-box backups (D4).
+- Next: four-track plan "Next actions" (13 items, owners, definition of done). **Finish the plan: every open item must close or be explicitly deferred with owner sign-off.**
 
 ## Phases
 | # | Phase | Owner | Wk | Blocked by | Status |
 |---|---|---|---|---|---|
 | 01 | [Repo scaffold + decisions](phase-01-repo-scaffold-and-decisions.md) | B (+all) | P0 w1 | - | Partial |
 | 02 | [Spike: iroh discovery/relay/blobs](phase-02-spike-iroh-discovery-relay.md) | A | P0 w1 | 01 | Partial |
-| 03 | [Spike: FFI bindings Swift + C#; contract](phase-03-spike-ffi-bindings.md) | A+D | P0 w2 | 01 | Partial (Swift+C# done; ARM64 not run; additive relay_urls, revoke_session) |
+| 03 | [Spike: FFI bindings Swift + C#; contract](phase-03-spike-ffi-bindings.md) | A+D | P0 w2 | 01 | Partial (Swift+C# done; ARM64 not run; additive relay_urls, revoke_session, history_item_reps, EngineAlreadyRunning) |
 | 04 | [Spike: macOS clipboard + lazy file paste](phase-04-spike-macos-clipboard-lazy-paste.md) | C | P0 w1-3 | 01 | Partial (automated; ADR 009; manual open) |
 | 05 | [Spike: Windows clipboard + virtual-file paste](phase-05-spike-windows-clipboard-lazy-paste.md) | D | P0 w1-3 | 01 | Partial (automated; ADR 010) |
 | 06 | [Core: identity, trust, transport, pairing](phase-06-core-identity-trust-transport.md) | A | P0 w2-3 | 02 | Partial |
 | 07 | [Core: clip/1 + file/1](phase-07-core-protocols-clip-file.md) | A | P0 w3-4 | 06 | Partial (read-ahead merged; LAN measures open) |
-| 08 | [Core: history, FFI, CLI harness](phase-08-core-history-ffi-cli.md) | A | P0 w4-6 | 03, 07 | Partial (P0 exit demo open) |
+| 08 | [Core: history, FFI, CLI harness](phase-08-core-history-ffi-cli.md) | A | P0 w4-6 | 03, 07 | Partial (round 2 A1-A5; P0 exit demo open) |
 | 09 | [Backend: auth, registry, presence](phase-09-backend-auth-registry-presence.md) | B | P0 w1-4 | 01 | Partial (Gmail SMTP live; 10k WS load test open) |
-| 10 | [Infra: relay + backend deploy, CI](phase-10-infra-relay-backend-deploy.md) | B | P0 w3-5 | 09 | Partial (2 relays live incl. SG; alerts, rollback, CI on GitHub open) |
+| 10 | [Infra: relay + backend deploy, CI](phase-10-infra-relay-backend-deploy.md) | B | P0 w3-5 | 09 | Partial (2 relays live; rollback rehearsed, off-box backups live; alerts unverified on GitHub; prod split open) |
 | 11 | [macOS app: shell, auth, pairing, devices](phase-11-macos-app-shell-pairing.md) | C | P1 w1-5 | 03,04,08,09 | Done on Mac (manual visual checks open) |
-| 12 | [macOS app: clipboard, files, history](phase-12-macos-clipboard-files-history.md) | C | P1 w5-11 | 11 | Partial (automated done; manual QA open) |
+| 12 | [macOS app: clipboard, files, history](phase-12-macos-clipboard-files-history.md) | C | P1 w5-11 | 11 | Partial (automated, copy-back done; manual QA open) |
 | 13 | [Windows app: shell, auth, pairing](phase-13-windows-app-shell-pairing.md) | D | P1 w1-5 | 03,05,08,09 | Partial (GUI run, LAN, ARM64 open) |
-| 14 | [Windows app: clipboard, files, history](phase-14-windows-clipboard-files-history.md) | D | P1 w5-11 | 13 | Done w/ concerns (merged 37e0430; manual QA, ARM64 open) |
-| 15 | [Cross-OS integration + network test matrix](phase-15-integration-testing-cross-os.md) | B lead, all | P1 w2-13 | 10, 12, 14 | Pending (ad hoc runs only) |
+| 14 | [Windows app: clipboard, files, history](phase-14-windows-clipboard-files-history.md) | D | P1 w5-11 | 13 | Done w/ concerns (merged 37e0430; round 2 on main; manual QA, ARM64 open) |
+| 15 | [Cross-OS integration + network test matrix](phase-15-integration-testing-cross-os.md) | B lead, all | P1 w2-13 | 10, 12, 14 | In progress (D7 harness skeleton; netns not started) |
 | 16 | [Release: signing, notarization, auto-update](phase-16-release-distribution.md) | B+C+D | P1 w8-14 | 10, 12, 14 | Pending (Developer ID + notarization done) |
 
 ## Ownership and merge rules
@@ -65,19 +67,13 @@ Roles: A = Rust core | B = backend+DevOps | C = macOS | D = Windows
 - Code files < 200 lines. Wire formats versioned by ALPN (`fsync/clip/1`, `fsync/file/1`, `fsync/pair/1`); never mutate v1, add v2.
 - No plaintext clipboard/file bytes touch backend or relay.
 
-## Future (no phase files)
-- P2: per-device targeting, folders/very large transfers, UX polish, OAuth, recovery key, relay usage caps.
-- P3: billing, plan-tier relay caps, teams/orgs, Linux/iOS/Android.
-
-## Resolved decisions (validation S1)
-Auth = own email OTP · Min OS = macOS 13+, Win 10 22H2+/11 · Recovery = trust reset + re-pair · Telemetry = opt-in crash only · History encrypted at rest · Relay = 2 regions (SG + US/EU; SG live, US/EU = Ohio relay-fsync.10z.one) · Limits = defaults · Windows UI = WinUI 3
+## Future and resolved (no phase files)
+- Future: P2 per-device targeting, folders/large transfers, UX polish, OAuth, recovery key, relay caps; P3 billing, plan-tier caps, teams/orgs, Linux/iOS/Android.
+- Resolved (S1): own email OTP · macOS 13+, Win 10 22H2+/11 · trust reset + re-pair · opt-in crash telemetry · history encrypted at rest · 2 relay regions (SG + US/EU) · default limits · WinUI 3.
 
 ## Unresolved questions
-1. Pricing per tier (limits configurable, not tied to tiers in MVP). Open.
-2. ~~Second relay region~~ Resolved 2026-10-14: Singapore (Lightsail, relay-only), deployed 2026-10-15 at relay-sg-fsync.10z.one, e2e PASS (S6).
-3. ~~Email provider for OTP~~ Resolved 2026-10-15: Gmail SMTP (Workspace sender), cap 450/24 h, real OTP inbox confirmed. Follow-up: transactional provider before real traffic.
-4. Developer ID signing built (team VE5P5RS83W), notarization verified. Open: signed launch-at-login check (phase 16).
-5. ~~Offline `logout()`~~ Resolved 2026-10-15: additive `revoke_session` added (S3/S4); pending revoke on quit on macOS (bb412e8) and Windows (7cc8cfd).
-6. macOS integration script not in CI; CI workflows never run on GitHub yet (phase 10).
-7. Optional Low items from phase 11 review round 3 (LoginModel waits for pending clear; boot awaits `sessionClear`).
-8. Mac↔Win LAN unreachable (separate ISP routers). Deferred by owner (S7 blocked on cabling). Tailscale accepted as fallback until then.
+1. Pricing per tier (limits configurable, not tied to tiers in MVP).
+2. Transactional email provider before real traffic (Gmail SMTP is interim).
+3. Signed launch-at-login check (phase 16); macOS integration script not in CI (phase 10).
+4. Mac↔Win LAN unreachable; Tailscale fallback until S7 (owner).
+5. Seven open technical questions are in the four-track plan (B5 scope, relay mesh, 502 incident link, FSYNC_ENV on cms-node, Postgres TLS, Windows QA doc, dead-cached-conn retry).

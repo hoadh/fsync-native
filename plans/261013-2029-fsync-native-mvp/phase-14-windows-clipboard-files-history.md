@@ -4,7 +4,7 @@
 - Design §4 flows 3-6; ADR 010 ([phase-05](phase-05-spike-windows-clipboard-lazy-paste.md)); [phase-07](phase-07-core-protocols-clip-file.md), [phase-08](phase-08-core-history-ffi-cli.md); ADR 013 (decisions of this phase)
 
 ## Overview
-- Priority: P1 | Status: done with concerns (merged to main 37e0430, 2026-10-15; Windows 11 x64: code, unit tests and e2e pass; open: manual QA checklist, ARM64 hardware, core findings below) | Effort: 5-6 wk (D) — parallel with phase 12
+- Priority: P1 | Status: done with concerns (merged to main 37e0430; round 2 B1-B4 merged to local main 3c405b1, not pushed; Windows 11 x64: code, unit tests and e2e pass; open: manual QA checklist, ARM64 hardware) | Effort: 5-6 wk (D) — parallel with phase 12
 - Productionize spike: listener + filters, auto/manual, format mapping, delayed-render writer, virtual-file paste (or eager per ADR 010), drag-drop + Explorer "Send to", history, settings.
 
 ## Key Insights
@@ -140,20 +140,28 @@ not regenerated). Changes (ADR 013 §4-§14):
   from a peer, so it is covered by the e2e eager step (happy path) and by code review, not by a unit test.
   E2E `clipboard-with-cli.ps1` 13/13 and `pair-with-cli.ps1` 9/9, twice each.
 
+## Round 2 (Track B, branch windows/round-2, 2026-10-15; merged local main 3c405b1)
+- B1 (S5 lows): SecretStore pending revoke set in memory only after a successful Save (`FailedSaveLeavesNoPendingRevokeInMemory`); `WithoutAnEngineSignOutRevokesDirectly` flake fixed (lock + count), 15x green.
+- B2: `CancelStartedTransferTests` (5) over a scripted `IFsyncEngine`. Pins app bookkeeping only; core cleanup of a cancelled partial file is still e2e only.
+- B3 (phase 14 L1/L2): eager branch on Task.Run; Dispose cancels the ticket before closing the gate; IsDisposed guard in WriteAsync.
+- B4: merged core round 2 (baa46dd); bindings regenerated on waso, DLL rebuilt. History copy-back now loads full content for stored items via `HistoryItemReps` (eager up to 256 KB, lazy above; unconvertible reps skipped; a newer write cancels the wait). Engine lock detected by typed `FsyncException.EngineAlreadyRunning` (string matching removed).
+- B5: eager zero-budget race fix (test `Round2Tests.EagerBudgetCoversStartingTheTransfers`); Windows CI job green on run 38636795483 (lead-reported). Scope of B5 vs plan item list: unconfirmed.
+- Tests: waso dotnet 156/156 on merged main (lead-reported; branch run 155/155: CoreBindings 9, Interop 47, App 99). Review 9.5, 0 critical/high.
+- Still open: ARM64 hardware run; manual QA (no Windows checklist file exists yet; `qa-checklist-261015-macos-manual.md` is macOS only).
+
 ## Deviations
 - Clipboard owner is a dedicated STA thread, not the UI thread (ADR 013 §1): delayed renders block on `fetch_rep`.
 - One Settings page with General / Privacy / Storage sections instead of three pages; Transfers live on a "Files" page
   (also the Send-to device picker); the "flyout" drop target is the device list in the main window.
-- History Copy works only for clips received while the app runs: the FFI has no call to read a stored item's
-  content (owner A: add e.g. `history_item(id)` / `fetch_history_rep`). Own copies and older items show Copy disabled.
+- History Copy (resolved round 2, B4 + core A1): stored items copy full content via `history_item_reps`. Files-only items are copyable only if offered this session.
 - Pull retry: a pull that fails with a network error is retried once after 20 s, and failed pulls get a Retry button
-  (mitigation for the core issue below).
+  (kept as defence; the core dial issue below is fixed in A2, ~2 s redial).
 - E2E harness: `tests/e2e/E2eHost.psm1` (shared with `pair-with-cli.ps1`), local iroh relay always started (as in
   `p0-exit-demo.sh`), Postgres from `FSYNC_E2E_PG_BIN` when docker is unavailable; `FSYNC_DOWNLOAD_DIR` env.
 - Main window widened to 720 px so the five top-level tabs do not overflow into "More".
 
 ## Findings for other tracks
-- **Core (owner A), dial to a restarted peer:** after this device has talked to peer P, and P's process restarts
+- **Core (owner A), dial to a restarted peer (RESOLVED round 2, A2: redial ~2 s; file/rep fetch on a dead cached connection still has no retry, open):** after this device has talked to peer P, and P's process restarts
   (same node id, new port), dials to P time out (`network: dial timed out`, 10 s) for ~30 s; a pull started 30-60 s
   later works. Reproduced with the app: W1 publishes to `devA clip watch`, the watch process exits, `devA send` (new
   process) pushes to W1, W1's `fetch_file_to` dial times out (100% in 4 runs). Not seen CLI ↔ CLI when the receiver
@@ -191,4 +199,4 @@ not regenerated). Changes (ADR 013 §4-§14):
 - `app.log` (data dir) holds names, sizes, counts and states only: no clipboard content, no tokens.
 
 ## Next Steps
-- Phase 15, 16. Owner A: history content API, dial-after-restart fix, read-ahead. Track X: Mac ↔ Windows clipboard.
+- Phase 15, 16. Owner A items done: history content API (A1), dial-after-restart (A2), read-ahead (earlier). Open: Win manual QA, ARM64, Mac ↔ Windows GUI round trip (owner).

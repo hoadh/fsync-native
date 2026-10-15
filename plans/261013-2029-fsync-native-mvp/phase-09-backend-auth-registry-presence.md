@@ -85,7 +85,8 @@ Data flow: client → axum → auth middleware → repo (sqlx) → Postgres; dev
 - Hardening from reviews: TRUSTED_PROXIES CIDR list, trust reset needs auth under 5 min, WS closes at access-token expiry (4401).
 - Open: Postgres TLS not enabled (add sqlx `tls-rustls` before a remote DB). No global TCP connection cap (proxy responsibility).
 - Done 2026-10-15 (S1): `SmtpSender` (lettre, rustls) to Gmail SMTP (smtp.gmail.com:587 STARTTLS, App Password). Env `EMAIL_*`/`SMTP_*`. Prod refuses `log` sender. `OTP_DAILY_SEND_CAP` 450/24 h (migration 0003). Review 9.6, deployed cms-node release 519ec821e90f, real OTP received (owner). Transactional provider still advised before real traffic.
-- Flake: smtp_mailpit test failed once under load, 8/8 on rerun.
+- Flake: smtp_mailpit test failed once under load, 8/8 on rerun. Fixed round 2 (D6 + A4): Mailpit `wait_ready`, polling `messages_to`, retry on transient HTTP reset; 8/8 and full workspace pass.
+- Round 2 (2026-10-15): `GET /health/otp` 503 on cap (D2). Mail auth check (D5, read-only): SPF ok, DMARC p=none, DKIM not found.
 - Flake `PortNotExposed` (any test binary that starts Postgres): root cause found 2026-10-14. About 1 in 20-30 container starts under Docker Desktop load, the container runs and postgres is ready but Docker never publishes the port (`docker inspect`: `"5432/tcp": []`, permanent; the start itself then takes ~6 s). Waiting does not help (old retry, 12 s probe). Fix: `backend/tests/common/pg.rs` `start_with_port` retries only on `PortNotExposed` for 2 s, then removes the container and starts a new one (up to 4). 60 consecutive starts: 2 hits, both recovered on attempt 2. core `backend_harness` now shares this helper.
 - Deployed 2026-10-14 (Track D): `api-fsync.10z.one` behind host Caddy; client IP from X-Forwarded-For of trusted proxy only (spoofed XFF ignored, per-IP cap verified).
 - Not done: 10k idle WS load test (<1 GiB RAM target).
