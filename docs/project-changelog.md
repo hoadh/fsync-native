@@ -2,6 +2,20 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-10-15 - LAN-first path selection and macOS history device names
+
+### Added
+- Core: LAN-first iroh path selection (`net/lan_first_path_selector.rs`, `net/local_subnets.rs`, `net/subnet_cache.rs`, installed in `node_builder.rs`). Tiers: LAN, then other direct (VPN or hole punch), then relay. RTT orders paths only inside a tier. The LAN test is generic (on-link subnets of physical, up, gatewayed interfaces); no vendor ranges. See [system architecture](./system-architecture.md#path-selection-lan-first).
+- Deps: `netdev` 0.46 (`gateway` feature).
+- macOS: history rows show the sender's device name ("another device" when unknown), matching Windows.
+
+### Changed
+- iroh is pinned at `=1.3.0` with `unstable-custom-transports`. Re-check the selector on upgrade.
+
+### Verification
+- Same-LAN Tailscale runs were 34–56% slower than plain LAN ([throughput report](../plans/reports/tester-261015-2130-tailscale-vs-lan-throughput.md)). Live check: 256 MiB each way over LAN with Tailscale up, 58 and 64 MiB/s.
+- Core unit tests cover tier ordering, switch margin, IPv6 bias, subnet classification and cache refresh.
+
 ## 2026-10-15 - macOS app fixes: first launch, This Mac status, popover anchor, history refresh
 
 ### Fixed

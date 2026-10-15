@@ -70,7 +70,7 @@ Mac-side logic lives in `FsyncMacCore/Clipboard`, `Files`, `Settings` and `Featu
 
 ### History and settings
 
-- `HistoryModel` pages 50 items, with search, pin, delete and clear (pinned items kept by default). History keeps 200-character previews; copy-back works only for text stored in full.
+- `HistoryModel` pages 50 items, with search, pin, delete and clear (pinned items kept by default). Rows show the sender's device name from `PeerText.deviceName(peer:in:)` ("another device" when unknown), as on Windows. History keeps 200-character previews; copy-back works only for text stored in full.
 - `ClipSettingsModel` loads settings off the main actor. Edits are refused until the load succeeds. Defaults: auto mode, 30-day retention, 1 GiB size cap, 50 MiB max clip, auto-accept off. Settings are stored by the core.
 
 ## Repository crates
@@ -91,7 +91,7 @@ Mac-side logic lives in `FsyncMacCore/Clipboard`, `Files`, `Settings` and `Featu
 | `service/` | `FsyncService`: the facade apps call. Login, account, pairing (both sides), devices, clip publish, file send/fetch, history, settings, events to one delegate thread. |
 | `engine/` | Orchestration below the facade: outbox, placement of inline vs spilled reps, shared state, history hooks. |
 | `api/` | Backend HTTP and WebSocket client: token refresh, device-list sync, pairing create and lookup, presence session (`Hello` on relay readiness and address change, 20 s heartbeat, backoff). |
-| `net/` | iroh node builder and `Node`: accept gate (only pinned devices), discovery fed from presence (trusted peers only), path tracking (`Lan` / `Relay`), dialer. |
+| `net/` | iroh node builder and `Node`: accept gate (only pinned devices), discovery fed from presence (trusted peers only), path tracking (`Lan` / `Relay`), dialer, LAN-first `PathSelector` (see [Path selection](#path-selection-lan-first)). |
 | `pair/` | `fsync/pair/1`: SPAKE2 (code mode) or HKDF (QR mode), MAC confirm, 3-word SAS, pairing window with admission limits. |
 | `trust/` | Pinned device-list head and root, chain ingest, reset detection and confirmation, trust stores (`SqliteTrustStore` in history, `FileTrustStore` for CLI/tests). |
 | `clip/` | `fsync/clip/1`: send and receive, echo guard, offer validation, per-peer rate limit, received-offer log. |
@@ -121,6 +121,23 @@ Mac-side logic lives in `FsyncMacCore/Clipboard`, `Files`, `Settings` and `Featu
   - Presence: in-memory hub, one bounded queue per socket (drop on full). Membership is rechecked before a socket registers and before `peers` is sent.
   - Rate limits and the unauthenticated-socket cap are in memory, so they reset on restart and do not span instances.
 - Deployment: `deploy/backend/Dockerfile` (build context = repo root). The production stack is `deploy/compose.yml` (see [deployment topology](#deployment-topology)); `deploy/backend/compose.yml` is the older dev-only file. Config comes from env; see [api](./api.md#config-env).
+
+## Path selection (LAN first)
+
+`net/lan_first_path_selector.rs` replaces iroh's default RTT-only path choice with a custom `PathSelector` (installed in `node_builder.rs`). Tiers decide first, lower is better:
+
+| Tier | Path | Rank |
+|------|------|------|
+| `Lan` | Remote IP is on an on-link subnet of this machine | 1 |
+| `Direct` | Any other direct IP path (VPN, routed private net, hole punch) | 2 |
+| `Relay` | Through the relay server | 3 |
+
+- **Inside a tier**: iroh's biased RTT (IPv6 gets −3 ms). A switch needs a 5 ms RTT margin. **Across tiers** the switch is immediate.
+- **LAN test is generic.** `net/local_subnets.rs` counts an interface as LAN when it is up, physical (`netdev` `is_physical()`), not loopback or point-to-point, not tunnel/PPP, and has a gateway. Its subnets are the only LAN criterion. No vendor or Tailscale ranges are used.
+- **Snapshot off the hot path.** `net/subnet_cache.rs` re-reads interfaces every 5 s in the background. `select()` never blocks on it.
+- **Failure mode.** A wrong LAN verdict only degrades to iroh's default RTT ordering. Known misses: a full-tunnel VPN whose adapter looks physical and owns the default gateway counts as LAN; `fe80::` peers match a LAN link-local `/64`.
+- **Why.** On one LAN, Tailscale ran 34–56% slower than plain LAN (see [the throughput report](../plans/reports/tester-261015-2130-tailscale-vs-lan-throughput.md)). fsync already encrypts end to end (QUIC/TLS 1.3, pinned node keys), so LAN gives up no security. Verified live: 256 MiB each way over LAN with Tailscale up, 58 and 64 MiB/s.
+- **Pins.** `iroh = "=1.3.0"` with `unstable-custom-transports` (the `PathSelector` API is unstable). `netdev` 0.46 with the `gateway` feature. Re-check both on any iroh or netdev upgrade.
 
 ## Relay
 

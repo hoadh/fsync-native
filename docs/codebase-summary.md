@@ -1,6 +1,6 @@
 # Codebase Summary
 
-Last updated: 2026-10-14. Repo map for the P0 Rust track, the production deploy stack, and the macOS app (clipboard, files, history, settings). Architecture is in [system-architecture.md](./system-architecture.md); standards in [code-standards.md](./code-standards.md).
+Last updated: 2026-10-15. Repo map for the P0 Rust track, the production deploy stack, and the macOS app (clipboard, files, history, settings). Architecture is in [system-architecture.md](./system-architecture.md); standards in [code-standards.md](./code-standards.md).
 
 ## Repo Map
 
@@ -49,7 +49,7 @@ Generated and local (not source): `target/` (Cargo), `build/` (script output: `f
 | `file` | File transfer (resume, ranges, locks, policy). Read-ahead: `range_reader` (4 MiB windows, prefetch), `seq_run` (sequential-read detection), `reader_cache` (LRU of readers, per-peer prefetch budget of 8) |
 | `history` | SQLCipher history DB, keycheck, backups, retention |
 | `identity` | Node identity keys |
-| `net` | iroh endpoint, relay URL and path handling |
+| `net` | iroh endpoint, relay URL and path handling. `lan_first_path_selector` (custom iroh `PathSelector`: LAN, then other direct, then relay), `local_subnets` (on-link LAN subnets from physical, up, gatewayed interfaces), `subnet_cache` (5 s background refresh, never blocks `select()`) |
 | `pair` | Pairing windows, SPAKE2/HKDF initiator and responder steps |
 | `service` | `FsyncService` facade (login, pairing, devices, clips, transfers, history, presence). `lifecycle` (start/stop, `engine.lock`), `revoke` (logout revocation with background retry) |
 | `settings` | User settings and validation |
