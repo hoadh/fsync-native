@@ -5,12 +5,15 @@ pub mod dialer;
 pub mod discovery;
 pub mod frames;
 pub mod gate;
+pub mod lan_first_path_selector;
+pub mod local_subnets;
 pub mod node;
 mod node_addrs;
 mod node_builder;
 mod pair_handler;
 pub mod path_state;
 pub mod relays;
+pub mod subnet_cache;
 
 pub use dialer::Dialer;
 pub use discovery::Discovery;

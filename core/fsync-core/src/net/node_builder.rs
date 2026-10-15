@@ -3,6 +3,7 @@
 use super::{
     discovery::Discovery,
     gate::{Gate, Gated},
+    lan_first_path_selector::LanFirstPathSelector,
     node::Node,
     node_addrs::spawn_feed,
     pair_handler::PairHandler,
@@ -77,7 +78,8 @@ impl NodeBuilder {
         let mut eb = Endpoint::builder(presets::Minimal)
             .secret_key(self.identity.iroh_secret())
             .relay_mode(mode)
-            .address_lookup(lookup.clone());
+            .address_lookup(lookup.clone())
+            .path_selector(Arc::new(LanFirstPathSelector::default()));
         if self.relay_only {
             eb = eb.clear_ip_transports();
         }

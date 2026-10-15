@@ -22,7 +22,9 @@ url.workspace = true
 uuid.workspace = true
 getrandom = "0.4"
 futures-util = "0.3"
-iroh = "1.3"
+# Pinned: the LAN-first path selector uses iroh's unstable PathSelector API.
+iroh = { version = "=1.3.0", features = ["unstable-custom-transports"] }
+netdev = { version = "0.46", default-features = false, features = ["gateway"] }
 n0-watcher = "1"
 iroh-mdns-address-lookup = "0.6"
 spake2 = "0.4"
