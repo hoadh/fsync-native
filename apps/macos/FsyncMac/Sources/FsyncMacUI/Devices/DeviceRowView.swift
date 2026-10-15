@@ -20,8 +20,12 @@ struct DeviceRowView: View {
                 Text(verbatim: detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 4)
-            Circle().fill(color).frame(width: 8, height: 8).accessibilityHidden(true)
-            Text(label).font(.caption).foregroundStyle(.secondary)
+            // The engine has no connection to itself, so this Mac's status is always "offline";
+            // "This Mac" under the name says enough.
+            if !device.isSelf {
+                Circle().fill(color).frame(width: 8, height: 8).accessibilityHidden(true)
+                Text(label).font(.caption).foregroundStyle(.secondary)
+            }
             if let onSend, !device.isSelf, device.online {
                 Button("Send files…") { if let urls = FilePicker.chooseFiles() { onSend(urls) } }
                     .buttonStyle(.borderless).font(.caption)

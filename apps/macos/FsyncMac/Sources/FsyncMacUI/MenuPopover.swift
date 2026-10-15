@@ -42,6 +42,7 @@ public struct MenuPopover: View {
         }
         .padding(14)
         .frame(width: 280)
+        .background(MenuWindowTopAnchor())
     }
 
     private var statusText: String {

@@ -21,7 +21,9 @@ public final class HistoryModel: ObservableObject {
     private let engine: FsyncEngineProtocol
     private let pageSize: UInt32
     private var cursor: String?
-    private var generation = 0
+    /// Bumped by every reload; tests read it to see that a reload was asked for.
+    private(set) var generation = 0
+    private var refreshQueued = false
 
     public init(engine: FsyncEngineProtocol, pageSize: UInt32 = HistoryModel.defaultPageSize) {
         self.engine = engine
@@ -37,15 +39,29 @@ public final class HistoryModel: ObservableObject {
         await load(append: false, generation: mine)
     }
 
+    /// Re-reads the list after new items arrived, keeping as many rows as are loaded now so the user's
+    /// place survives. Calls made in the same turn (one clip raises several events) share one read.
+    public func refresh() async {
+        guard !refreshQueued else { return }
+        refreshQueued = true
+        let seen = generation
+        await Task.yield()
+        refreshQueued = false
+        guard seen == generation else { return }  // a reset or reload ran meanwhile
+        generation += 1
+        cursor = nil
+        await load(append: false, generation: generation, limit: max(pageSize, UInt32(clamping: items.count)))
+    }
+
     public func loadMore() async {
         guard hasMore, !isLoading else { return }
         await load(append: true, generation: generation)
     }
 
-    private func load(append: Bool, generation mine: Int) async {
+    private func load(append: Bool, generation mine: Int, limit: UInt32? = nil) async {
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let from = append ? cursor : nil
-        let limit = pageSize
+        let limit = limit ?? pageSize
         isLoading = true
         let result = await EngineCall.run(engine) {
             try $0.history(query: text.isEmpty ? nil : text, cursor: from, limit: limit)

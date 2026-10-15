@@ -11,10 +11,19 @@ extension EngineBridge {
             if ErrorText.requiresSignIn(error) { requireSignIn() } else if let text = ErrorText.message(for: error, context: .general) {
                 banner = text
             }
-        case .remoteClip(let item): clipSync?.enqueue(item)
+        case .remoteClip(let item):
+            clipSync?.enqueue(item)
+            refreshHistory()  // the engine recorded the item before this event
         case .transfer(let event): transfers?.handle(event)
-        case .incomingFiles(let offer): Task { await filesSync?.receive(offer: offer) }
+        case .incomingFiles(let offer):
+            Task { await filesSync?.receive(offer: offer) }
+            refreshHistory()
         }
+    }
+
+    /// Reloads the history list so an open (or reopened) history window shows new items.
+    public func refreshHistory() {
+        Task { [weak self] in await self?.historyModel?.refresh() }
     }
 
     private func handle(_ event: AccountEvent) {

@@ -21,6 +21,8 @@ public final class FilesSync: ObservableObject {
     private let downloads: URL
     private let autoAccept: () -> Bool
     private var running = false
+    /// Called after files were offered to a device (the engine recorded them in history).
+    var onSent: (() -> Void)?
 
     public init(engine: FsyncEngineProtocol, fetcher: FileFetchService, downloads: URL = FilesSync.defaultDownloads(),
                 autoAccept: @escaping () -> Bool) {
@@ -73,7 +75,12 @@ public final class FilesSync: ObservableObject {
         let paths = urls.filter(\.isFileURL).map(\.path)
         guard running, !paths.isEmpty else { return }
         let result = await EngineCall.run(engine) { try $0.sendFiles(nodeId: nodeId, paths: paths) }
-        if case .failure(let error) = result { message = ErrorText.message(for: error, context: .general) } else { message = nil }
+        switch result {
+        case .failure(let error): message = ErrorText.message(for: error, context: .general)
+        case .success:
+            message = nil
+            onSent?()
+        }
     }
 
     public func dismissMessage() { message = nil }

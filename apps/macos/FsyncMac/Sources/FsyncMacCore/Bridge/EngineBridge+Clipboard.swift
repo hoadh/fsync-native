@@ -23,6 +23,11 @@ extension EngineBridge {
         $phase.sink { [weak self] phase in
             MainActor.assumeIsolated { self?.phaseChanged(for: phase) }
         }.store(in: &modelSubscriptions)
+        // Clips this Mac sent or applied, and files it sent, are new history rows.
+        sync.$activity.dropFirst().sink { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshHistory() }
+        }.store(in: &modelSubscriptions)
+        files.onSent = { [weak self] in self?.refreshHistory() }
     }
 
     /// Runs on every successful settings load or edit. The first successful load while `.ready` starts
@@ -67,7 +72,7 @@ extension EngineBridge {
         clipSync?.start()
         if hotkey?.register() == false { clipSync?.report("The shortcut \(HotkeyManager.sendClipboardLabel) is used by another app.") }
         startInboxCleanup()
-        Task { [weak self] in await self?.historyModel?.reload() }
+        refreshHistory()
     }
 
     /// Downloaded clip files follow the history retention (days and size); runs now and then daily.

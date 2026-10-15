@@ -59,6 +59,8 @@ struct FsyncMacApp: App {
     }
 
     private func showHistory() {
+        // SwiftUI keeps a closed window's view alive, so its `.task` does not run again on reopen.
+        bridge.refreshHistory()
         openWindow(id: "history")
         NSApp.activate(ignoringOtherApps: true)
     }

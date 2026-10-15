@@ -2,6 +2,17 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-10-15 - macOS app fixes: first launch, This Mac status, popover anchor, history refresh
+
+### Fixed
+- macOS: the app window stayed on "Starting fsync…" and Sign In did nothing at first launch. `MenuBarExtra`'s `.onReceive(bridge.$phase)` fires in `willSet`, so the window opened with the stale phase. Opening is now deferred one main-queue turn (`FsyncMacApp.swift`, commit `4111ee2`).
+- macOS: the "This Mac" row showed "Offline" in the main window and the menubar popover. The core has no connection to itself, so the row now hides status for the self device (matches Windows "This PC").
+- macOS: the menubar popover drifted below its icon after its content shrank. The `MenuBarExtra` window resizes keeping its bottom-left origin; new `MenuWindowTopAnchor` keeps the top edge fixed.
+- macOS: the clipboard history window stayed empty or stale while Windows showed items. History loaded once at start and SwiftUI kept the closed window's view alive. It now refreshes on received and sent clips/files and when the window opens. Refreshes in one turn are coalesced and keep the rows already loaded (the engine caps a read at 200 rows).
+
+### Verification
+- macOS: Core `swift test` 228 run, 18 skipped, 0 failures; UI 9/9. 9 new regression tests (including `EngineBridgeHistoryRefreshTests` and `MenuWindowTopAnchorTests`).
+
 ## 2026-10-15 - Hardening round 2: redial, copy-back accessors, health probe, off-box backups, rollback guard
 
 Four tracks (core, macOS, Windows, infra) merged into local `main` at `3c405b1`. Round-2 reports: `plans/reports/fullstack-developer-261015-0425-core-round-2.md`, `-0330-windows-round-2.md`, `-0301-macos-round-2.md`, `-0450-infra-round-2.md`.
