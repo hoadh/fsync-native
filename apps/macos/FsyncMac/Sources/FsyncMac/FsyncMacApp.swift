@@ -20,7 +20,14 @@ struct FsyncMacApp: App {
                     switch phase {
                     case .signedOut, .needsPairing, .bootFailed:
                         autoOpened = true
-                        showMain()
+                        // `$phase` fires in willSet: opening now would render the old phase and the
+                        // window would miss this change. Open on the next turn, once the value is
+                        // stored, unless it was already replaced by `.ready` (no window needed).
+                        // Not `$phase.receive(on:)`: this label re-subscribes on every body update,
+                        // which drops a queued delivery, so the window would never open.
+                        DispatchQueue.main.async {
+                            if bridge.phase != .ready { showMain() }
+                        }
                     case .ready: autoOpened = true  // a returning user needs no window
                     case .booting: break
                     }
