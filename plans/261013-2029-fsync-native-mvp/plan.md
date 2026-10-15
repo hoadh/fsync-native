@@ -18,16 +18,16 @@ Source: [brainstorm report](../reports/brainstorm-261013-2029-cross-platform-cli
 Specs: layout+ADRs [01](phase-01-repo-scaffold-and-decisions.md) · DeviceList+pair/1 [06](phase-06-core-identity-trust-transport.md) · clip/1+file/1 [07](phase-07-core-protocols-clip-file.md) · FFI [03](phase-03-spike-ffi-bindings.md) · API [09](phase-09-backend-auth-registry-presence.md) · test matrix [15](phase-15-integration-testing-cross-os.md)
 Roles: A = Rust core | B = backend+DevOps | C = macOS | D = Windows
 
-## Progress (sync 2026-10-15, local main 3c405b1, NOT pushed)
+## Progress (sync 2026-10-15, main e536ce7, pushed)
 - Round 2 hardening merged to local main 3c405b1: [four-track plan](../261015-0410-four-track-hardening/plan.md). Closure needs: gates re-run after C, push, one green GitHub CI run, owner items.
 - Done 10-15: S1 Gmail SMTP OTP (450/24 h cap); S2 SG relay-only, S6 two-relay e2e PASS; S3/S4 `revoke_session` + pending revoke (mac bb412e8, Win 7cc8cfd); Win phase 14 merged (37e0430). Round 2 landed: A1-A5 core (A2 gap, A5 partial), B1-B5 Windows, C1-C5 macOS (C1 partial), D1-D7 infra (D1/D2 unverified on GitHub).
 - Gates on merged main, pre-C: cargo 308/0; fmt+clippy clean; swift 208 (14 skipped) 0 fail; mac integration PASS; dotnet waso 156/156. Track C alone: swift 222 (18 skipped) 0 fail. Post-C gates: lead re-running.
-- Blocked: S7 LAN (owner cabling); Tailscale accepted fallback. GitHub Actions blocked by billing (owner).
+- S7 LAN done 10-15: Mac↔Win same LAN verified; core now LAN-first (ccc1a31, generic interface rule, no Tailscale dependency); Mac history shows device names (2d3d2d5). Blocked: GitHub Actions billing (owner).
 - Phases: done 11 (Mac), 14 (w/ concerns); partial 01-10, 12, 13; in progress 15 (harness skeleton); pending 16.
 - Scope changes: Gmail SMTP as OTP sender (transactional provider still advised); SG second relay; `revoke_session` in MVP; release builds pass both relay URLs; relays do not mesh (documented limit); A4 logout hang fail-loud, root cause not reproduced; A5 mid-run relay test dropped; D2 alerts = GitHub Actions probe, not a monitoring stack.
 - Open, must close or be explicitly deferred with owner sign-off:
   - Manual QA: macOS checklist (`plans/reports/qa-checklist-261015-macos-manual.md`); Win GUI matrix (14); Mac↔Win GUI pairing; privacy alert; password managers.
-  - S7 LAN re-test (cabling) or Tailscale-only sign-off. ARM64 hardware (03, 13, 14).
+  - ARM64 hardware (03, 13, 14). UI "On LAN" label still means any direct path.
   - Infra: first green GitHub CI on final main; verify alerts after push; `BACKUP_PING_URL` decision; backup key to password manager; staging/prod split; backend-deploy workflow; RAM (~600 MiB free).
   - Email: DKIM not found (SPF ok, DMARC p=none). Owner enables in Google Admin.
   - Backend: 10k WS load test; Postgres TLS before remote DB.
