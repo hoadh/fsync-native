@@ -41,8 +41,8 @@ struct FsyncMacApp: App {
         }
 
         Window("Clipboard history", id: "history") {
-            if let history = bridge.historyModel, bridge.phase == .ready {
-                HistoryView(history: history, sync: bridge.clipSync)
+            if let history = bridge.historyModel, let devices = bridge.devicesModel, bridge.phase == .ready {
+                HistoryView(history: history, devices: devices, sync: bridge.clipSync)
             } else {
                 Text("Sign in to see your history.").padding(40)
             }

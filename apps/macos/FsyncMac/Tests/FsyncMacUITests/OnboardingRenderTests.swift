@@ -118,7 +118,7 @@ final class OnboardingRenderTests: XCTestCase {
         try render(SyncSettingsView(settings: clip).frame(width: 420, height: 220), "settings sync")
         try render(PrivacySettingsView(settings: clip).frame(width: 420, height: 280), "settings privacy")
         try render(StorageSettingsView(settings: clip).frame(width: 420, height: 160), "settings storage")
-        try render(HistoryView(history: HistoryModel(engine: engine), sync: nil), "history empty")
+        try render(HistoryView(history: HistoryModel(engine: engine), devices: DevicesModel(engine: engine) {}, sync: nil), "history empty")
         try render(AccountSettingsView(bridge: bridge).frame(width: 420, height: 160), "settings account")
     }
 }

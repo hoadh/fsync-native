@@ -4,6 +4,8 @@ import SwiftUI
 
 struct HistoryRowView: View {
     let item: HistoryItem
+    /// Resolved by the caller from the device list (see `PeerText.deviceName`).
+    let peerName: String
     let onCopy: (() -> Void)?
     let onPin: () -> Void
     let onDelete: () -> Void
@@ -26,7 +28,7 @@ struct HistoryRowView: View {
     }
 
     private var caption: String {
-        let who = item.outgoing ? "Sent" : "From \(PeerText.sanitize(item.peer ?? "another device"))"
+        let who = item.outgoing ? "Sent" : "From \(peerName)"
         let when = Date(timeIntervalSince1970: Double(item.createdMs) / 1000).formatted(.relative(presentation: .named))
         let size = ByteCountFormatter.string(fromByteCount: Int64(item.totalSize), countStyle: .file)
         return "\(who) · \(when) · \(size)"

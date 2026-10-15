@@ -5,12 +5,15 @@ import SwiftUI
 /// The clipboard history window: search, copy again, pin, delete, clear.
 public struct HistoryView: View {
     @ObservedObject private var history: HistoryModel
+    /// Live device list: rows show device names, and a rename shows up without reloading history.
+    @ObservedObject private var devices: DevicesModel
     private let sync: ClipboardSync?
     @State private var search = ""
     @State private var confirmClear = false
 
-    public init(history: HistoryModel, sync: ClipboardSync?) {
+    public init(history: HistoryModel, devices: DevicesModel, sync: ClipboardSync?) {
         self.history = history
+        self.devices = devices
         self.sync = sync
     }
 
@@ -33,6 +36,7 @@ public struct HistoryView: View {
                     ForEach(history.items, id: \.id) { item in
                         HistoryRowView(
                             item: item,
+                            peerName: PeerText.deviceName(peer: item.peer, in: devices.devices),
                             onCopy: copy(item),
                             onPin: { Task { await history.setPinned(item.id, !item.pinned) } },
                             onDelete: { Task { await history.delete(item.id) } })
