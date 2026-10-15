@@ -128,7 +128,8 @@ Mac-side logic lives in `FsyncMacCore/Clipboard`, `Files`, `Settings` and `Featu
 - Production relays: `deploy/relay/` builds an image from `iroh-relay` 1.3.0 (pinned to `Cargo.lock`). Two regions, each published on loopback `18081` behind its host's Caddy (no buffering: `flush_interval -1`):
   - US-East-2 (Ohio): `relay-fsync.10z.one`, in the full compose stack with the backend.
   - ap-southeast-1 (Singapore): `relay-sg-fsync.10z.one`, relay-only host (`deploy.sh --relay-only`), no backend or Postgres.
-- **Clients use both relays.** The macOS and Windows apps pass both URLs (`relay_urls`, comma-separated in `FSYNC_RELAY` or `--relay`). The core merges them into one iroh `RelayMap` (`net/relays.rs`); the endpoint probes all of them and picks the home relay by latency, and moves it when the network changes. A device reports its current home relay in presence. A peer that cannot reach one relay can use the other.
+- **Clients use both relays.** The macOS and Windows apps pass both URLs (`relay_urls`, comma-separated in `FSYNC_RELAY` or `--relay`). The core merges them into one iroh `RelayMap` (`net/relays.rs`); the endpoint probes all of them and picks the home relay by latency, and moves it when the network changes. A device reports its current home relay in presence.
+- **Relay failover, what is verified.** Connect-time failover: with one of two relays unreachable, peers still connect (`core/fsync-core/tests/relay_failover.rs`). Mid-run relay death (the home relay dies while connected): **not verified**. The in-process test relays lack QUIC address discovery, so iroh never re-homed within 45 s. **Relays do not mesh:** two peers whose only reachable relays differ cannot connect to each other.
 - The backend runs only in Ohio.
 - QUIC address discovery (QAD, udp/7842) is off by default. With `RELAY_QAD=1` the relay needs the Caddy-managed certificate for its own hostname, mounted alone.
 - For local runs and the e2e demo, `spikes/iroh-discovery` starts an in-process `iroh-relay` in HTTP dev mode (`relay [port]`).
@@ -157,11 +158,13 @@ internet --443--> host Caddy (owner-managed)
 - **DNS.** Both hostnames must be DNS-only (not proxied). The relay needs long-lived upgraded connections and UDP. Behind a proxy, per-IP limits would bucket by the proxy address.
 - **Ports.** Nothing is published beyond loopback except the optional QAD port.
 - **Images.** Built on the operator machine for `linux/amd64` (cross-compiled; no Rust compile under emulation), then shipped with `docker save | docker load` only for tags the host lacks. Releases are git-sha tags; the host keeps the current and the previous release.
-- **Deploy.** `deploy.sh` takes a remote `flock`, stages into a unique directory, rewrites `.env` atomically, keeps `compose.yml.prev` for `--rollback`, and waits for container health plus a loopback smoke check. Rollback restores images and compose file, not data. Migrations are forward-only.
+- **Deploy.** `deploy.sh` takes a remote `flock`, stages into a unique directory, rewrites `.env` atomically, keeps `compose.yml.prev` for `--rollback`, and waits for container health plus a loopback smoke check. Rollback restores images and compose file, not data. Migrations are forward-only, so `--rollback` first runs `scripts/rollback-guard.sh`: it refuses a target release whose migrations do not include the database's current max version (`--force-rollback` overrides it, after reading the script). A rehearsal without this guard crash-looped the backend on a release that predates migration 0003.
+- **Health probe.** `.github/workflows/health-probe.yml` runs `deploy/scripts/probe-health.sh` hourly. It checks `api /health`, `/health/otp` (404 is a warning on old releases), both relays' `/healthz`, and certificate expiry (>= 14 days). A failed run is the alert. It runs only while GitHub Actions is enabled.
+- **Off-box backups.** Nightly at 03:15 on the app host: `pg_dump`, gpg encryption with a public key on the host, then sftp upload to the Singapore backup host, whose upload-only user cannot delete stored files. Ingest runs there every 10 min; retention 30 days, minimum 3 files. The private key is held off both hosts. Failure is visible only in the host's `backup.log` unless `BACKUP_PING_URL` is set. Restore: [deploy/operations.md](../deploy/operations.md).
 - **Limits.** Memory limits are sized for a shared host of about 2 GiB: Postgres 192 MiB, backend 96 MiB, relay 96 MiB, no swap.
-- **Backups.** `backup-postgres.sh` writes `pg_dump -Fc` dumps daily (cron, installed with `deploy.sh --install-backup-cron`), keeps 14 days, and refuses to run below 1 GiB free. `restore-postgres.sh` restores one dump.
-- **CI.** `ci.yml` runs the Rust job always and the macOS and Windows jobs only when their paths change (always on push to `main` and on dispatch). `deploy-stack.yml` builds both images and runs `tests/e2e/compose-stack-sync.sh` when deploy inputs change. Actions are pinned by SHA.
-- **Status (2026-10-15).** Ohio runs the full stack behind host Caddy (public HTTPS, release `519ec821e90f`, migrations 0001-0003). OTP email goes out through Gmail SMTP, verified 2026-10-15. Singapore runs the relay only (release `519ec821e90f`, `.mode` = `relay-only`).
+- **Local backups.** `backup-postgres.sh` writes `pg_dump -Fc` dumps (14 days, refuses below 1 GiB free); the nightly cron runs it through `backup-offsite.sh` (see Health probe and Off-box backups above). `restore-postgres.sh` restores one dump.
+- **CI.** `ci.yml` runs the Rust job always and the macOS and Windows jobs only when their paths change (always on push to `main` and on dispatch). `deploy-stack.yml` builds both images and runs `tests/e2e/compose-stack-sync.sh` when deploy inputs change. Actions are pinned by SHA. **GitHub Actions is currently blocked by billing:** the latest macOS-round runs never started, so no workflow (CI, deploy-stack, health probe) runs until it is unblocked.
+- **Status (2026-10-15).** Ohio runs the full stack behind host Caddy (public HTTPS, migrations 0001-0003). Its release is `549cc6a3d298`, a branch build with `519ec821e90f` as the rollback target; redeploy from `main` after merge. OTP email goes out through Gmail SMTP, verified 2026-10-15. Singapore runs the relay only (release `519ec821e90f`, `.mode` = `relay-only`).
 - **Relay-only mode.** `deploy.sh --relay-only` ships only the relay image and `compose.relay-only.yml`. It writes `.mode` on every deploy, so a full deploy cannot land on that host and a relay-only deploy cannot replace a full stack.
 
 ## Data flows
@@ -219,6 +222,15 @@ Limits: at most 3 unauthenticated sessions per window, one attempt per source no
 2. One inline revoke attempt (`POST /v1/auth/logout`), capped at 3 s. The backend revokes the whole refresh family, so rotated tokens die with it.
 3. If there is no answer, or the answer is 408, 429 or 5xx, the revoke is retried in the background: 5 s, doubling to 5 min, while the service object lives. Other answers end the retries (401 means already revoked).
 4. Tokens are never persisted by core. `logout_confirmed()` reports whether the revoke settled. If the app quits first, the host keeps a pending revoke (macOS Keychain, Windows DPAPI) and calls the engine-free `revoke_session` at the next launch; it is dropped after 5 failed launches or 30 days. See [FFI contract](./ffi-contract.md#hard-logout-after-quit-host-pattern).
+
+### 8. Redial after a peer restarts
+
+A peer that crashes and comes back with the same node id on a new port used to stay unreachable for 15-30 s: iroh kept a stale selected path while old connections were still alive, so new handshakes went to the dead path until idle timeout.
+
+1. The first dial attempt has a 2 s budget (`net/dialer.rs`, `FIRST_ATTEMPT`).
+2. On stall, outbound same-ALPN connections opened by the shared `Dialer` are closed as stale (`Gate::close_stale`, code 410). Other ALPNs are left alone.
+3. The dial retries with the current addresses (`Discovery::addr_for`). Measured: about 2 s. Covered by `core/fsync-core/tests/dial_after_restart.rs` (crash, graceful restart, ALPN scoping).
+4. Gap: the file and rep fetch paths do not retry on a dead cached connection. Clip send does.
 
 ## Storage
 
@@ -279,6 +291,8 @@ Defaults (settings): history mode Auto, 30 days, 1 GiB size cap, 50 MiB max clip
 ## Known gaps
 
 - Presence and rate-limit state is per instance. The backend is single-instance.
+- Relay: mid-run failover (home relay dies while connected) is unverified; relays do not mesh, so peers on disjoint relays cannot connect ([Relay](#relay)).
+- Redial: file and rep fetches do not retry on a dead cached connection (clip send does) ([Redial](#8-redial-after-a-peer-restarts)).
 - No Postgres TLS (`tls-rustls` not enabled in sqlx).
 - Email: Gmail SMTP is the only real sender. Gmail's consumer limit (about 500 recipients per day) is enforced by `OTP_DAILY_SEND_CAP` (450 per rolling 24 h). A transactional provider is needed before real traffic (only the `SMTP_*` values change).
 - Root of a fresh device's chain is learned only when a chain through the head is seen. An old genesis replayed to a fresh device triggers a reset prompt, not a silent accept.

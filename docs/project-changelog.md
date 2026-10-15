@@ -2,6 +2,58 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-10-15 - Hardening round 2: redial, copy-back accessors, health probe, off-box backups, rollback guard
+
+Four tracks (core, macOS, Windows, infra) merged into local `main` at `3c405b1`. Round-2 reports: `plans/reports/fullstack-developer-261015-0425-core-round-2.md`, `-0330-windows-round-2.md`, `-0301-macos-round-2.md`, `-0450-infra-round-2.md`.
+
+### Added
+- FFI (contract stays 2, additive): `FsyncEngine.history_item_reps(item_id)` (Swift `historyItemReps(itemId:)`) returns the full content of a history item for copy-back. `FsyncError::EngineAlreadyRunning` is a typed unit variant (was `Invalid` text). See [FFI contract](./ffi-contract.md#additive-since-v2-no-version-bump).
+- macOS: full-content copy-back from History (`ClipboardSync.copyBack`, `HistoryItem.canCopyBack`); typed engine-lock message.
+- Windows: History Copy loads full content (eager up to 256 KB, lazy above; unconvertible reps skipped); lock error caught by type, string matching removed.
+- Backend: `GET /health/otp` (200 `ok`, 503 `otp cap reached`). See [api](./api.md#auth).
+- Deploy: `deploy/scripts/probe-health.sh` and hourly `.github/workflows/health-probe.yml`; `deploy/scripts/rollback-guard.sh` with `deploy.sh --force-rollback`; nightly encrypted off-box backups (Ohio to Singapore, upload-only, 30-day retention) with a restore drill; `tests/e2e/run-matrix.sh`. Runbook: [deployment guide](./deployment-guide.md), [deploy/operations.md](../deploy/operations.md).
+- Tests: core `dial_after_restart.rs`; macOS hermetic `CliProcessTests`, `RealBackendRevokeTests` (gated), `ClipboardStartAfterFailedLoadTests`; Windows `CancelStartedTransferTests`, `FailedSaveLeavesNoPendingRevokeInMemory`.
+
+### Changed
+- Core redial: after a peer restarts on a new port (same node id), the redial takes about 2 s instead of 15-30 s. The first dial attempt has a 2 s budget; on stall, stale outbound same-ALPN connections are closed and the dial retries with current addresses. See [system architecture](./system-architecture.md#8-redial-after-a-peer-restarts).
+- Relay failover is documented as verified for connect time only. Mid-run relay death is unverified, and relays do not mesh (peers on disjoint relays cannot connect).
+- Windows: the pending revoke is kept in memory only after a successful save. `Dispose` cancels the ticket before closing the gate.
+- Backend test harness: Mailpit HTTP calls retry on transient resets (`backend/tests/common/mailpit.rs`); Postgres start, admin connect and service calls have timeouts.
+- macOS CI: `CliProcess` reports exit only after both pipes drain (1 s grace, then force-drain); no `super` calls in `IntegrationTestCase`.
+- Ohio host runs release `549cc6a3d298` (branch build), with `519ec821e90f` as the rollback target.
+
+### Fixed
+- Core: a crashed peer that returns on a new port is reachable in about 2 s (above).
+- macOS: sync stays off after a failed initial settings load (`caed6cc`). Swift 6.1 CI compile errors fixed (`CliEvent` is Sendable).
+- Windows: `Dispose` cancels the in-flight write before closing the gate; `WriteAsync` is a no-op after dispose.
+- Infra: CI Rust job no longer dies with `ld` SIGBUS (debuginfo off, free-disk step in `ci.yml`).
+
+### Incident: rollback rehearsal on the Ohio host (2026-10-15)
+- While rehearsing `deploy.sh --rollback`, the rollback target `d9e5e9b7ef77` predated migration 0003. The database was already at 3, so the backend crash-looped (sqlx: "migration 3 was previously applied but is missing").
+- Impact: `api-fsync.10z.one` returned 502 for about 5 minutes (about 03:08-03:13, +07) until the owner rolled forward. The macOS app saw the same 502 and kept its pending revoke, as designed.
+- Fix: `rollback-guard.sh` refuses targets whose migrations lack the database's max version (verified against `d9e5e9b7ef77`). `--force-rollback` overrides it.
+- The outage came from the rehearsal itself, not from a bug in a shipped release. Data was not touched by the rollback (images and compose file only).
+
+### Verification
+- Core track: `cargo test --workspace` 307 passed, 0 failed, 2 ignored; fmt and clippy `-D warnings` clean; build-xcframework OK; reviewer 9.5/10.
+- Infra track: `cargo test --workspace` 301 passed, 0 failed; shellcheck clean; reviewer 9.5/10. The health-probe workflow can be verified only after the merge and once Actions is unblocked.
+- Backups: shipments and prune test on the Singapore host; restore drill on a Mac in throwaway `postgres:17` containers (decrypt, `pg_restore`, row counts match live: accounts 1, device_lists 1, history 2, refresh_tokens 2, migrations 3).
+- Rollback: a compatible pair (`519ec821e90f` <-> `549cc6a3d298`) rolled back and forward, about 88 s per hop, one failed 0.5 s poll per hop.
+- E2E matrix: `MIB=8 p0 local,sg` both PASS (local 239 s; sg 51 s, about 0.38 MiB/s; clip latency 0.53 s).
+- macOS: `swift test` (FsyncMac) 222 run, 18 skipped, 0 failures; `FsyncCoreKit` green; `mac-it` PASS.
+- Windows: `dotnet test` 155/155 (9 + 47 + 99 across the three test projects); new tests 10x green.
+
+### Open
+- **GitHub Actions is blocked by billing.** No CI, deploy-stack or health-probe run has started since the block. The last green macOS run predates later changes. Re-dispatch `ci.yml` once unblocked. Until then the hourly probe does not alert.
+- Windows CI dispatch `38635166526` failed in `EagerBudgetCoversStartingTheTransfers` (before the round-2 fixes). Not re-run in CI.
+- **DKIM is missing for `10z.one`.** No DKIM record at common selectors (checked read-only with `dig`). Mail passes DMARC via SPF alignment only, and DMARC is `p=none`. Owner: enable DKIM in Google Admin, publish the `google._domainkey` TXT, review DMARC reports, then tighten the policy.
+- Backup failures are visible only in `backup.log` unless `BACKUP_PING_URL` is set. Owner decision: set it or accept log-only. The backup private key must be in the owner's password manager; losing it makes off-box copies unreadable.
+- Probe cadence: hourly runs use about 720 of 2000 free private-repo minutes a month.
+- Core: mid-run relay failover unverified; file and rep fetches do not retry on a dead cached connection.
+- macOS live-token revoke run (`RealBackendRevokeTests` with `FSYNC_REAL_REFRESH`) needs an owner refresh token; the local-backend proof stands meanwhile. Manual GUI QA for macOS and Windows is still open.
+- Hard logout: a host never launched again keeps its refresh token until expiry (30 days). Unchanged.
+- Redeploy the Ohio host from `main` after the merge.
+
 ## 2026-10-15 - OTP email over SMTP, relay-only deploy, Singapore relay, Windows phase 14, multiple relays, hard logout
 
 ### Added

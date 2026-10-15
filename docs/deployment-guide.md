@@ -6,7 +6,7 @@ Last updated: 2026-10-15. Short entry point. The full runbook is [deploy/README.
 
 | Host | Mode | Public name | Release | Status |
 |------|------|-------------|---------|--------|
-| Ohio `cms-node` (18.223.244.168) | Full: backend, relay, Postgres 17 | `api-fsync.10z.one`, `relay-fsync.10z.one` | `519ec821e90f` | Migrations 0001-0003 applied. Real OTP via Gmail SMTP verified 2026-10-15 (204 in 1.8 s). |
+| Ohio `cms-node` (18.223.244.168) | Full: backend, relay, Postgres 17 | `api-fsync.10z.one`, `relay-fsync.10z.one` | `549cc6a3d298` (branch build; rollback target `519ec821e90f`) | Migrations 0001-0003 applied. Real OTP via Gmail SMTP verified 2026-10-15 (204 in 1.8 s). Redeploy from `main` after the merge. |
 | Singapore Lightsail (52.77.206.192) | Relay only (`--relay-only`) | `relay-sg-fsync.10z.one` | `519ec821e90f` | Docker 29.9 and compose v5.6 installed. `.mode` = `relay-only`. No backend, no Postgres. |
 
 Both hosts are shared with other sites. Their host Caddy files belong to the owner: deploys never edit or reload Caddy.
@@ -32,8 +32,10 @@ Clip and file bytes never reach the backend or Postgres. The relay sees cipherte
 | `deploy/Caddyfile` | Site blocks for the host Caddy (reference copy) |
 | `deploy/.env.example` | Full-stack settings and their defaults; no secrets |
 | `deploy/relay-only.env.example` | Relay-only settings; no secrets |
-| `deploy/scripts/` | `deploy.sh`, `smoke-check.sh`, `backup-postgres.sh`, `restore-postgres.sh`, `gen-env.sh`, `bootstrap-vps.sh` |
+| `deploy/scripts/` | `deploy.sh`, `smoke-check.sh`, `rollback-guard.sh`, `probe-health.sh`, `backup-postgres.sh`, `backup-offsite.sh`, `backup-ingest.sh`, `restore-postgres.sh`, `gen-env.sh`, `bootstrap-vps.sh` |
+| `.github/workflows/health-probe.yml` | Hourly external health probe (blocked while Actions is unavailable) |
 | `tests/e2e/compose-stack-sync.sh` | Local run of the whole stack with Docker |
+| `tests/e2e/run-matrix.sh` | Runs the e2e scenarios over relay configs and prints one table |
 
 ## Common Commands
 
@@ -43,14 +45,67 @@ Replace `<ssh-target>` with the host you deploy to. Keep env files out of git.
 # Full stack (Ohio)
 deploy/scripts/gen-env.sh api-fsync.10z.one relay-fsync.10z.one > fsync.env
 deploy/scripts/deploy.sh <ssh-target> --env-file fsync.env
-deploy/scripts/deploy.sh <ssh-target> --rollback
+deploy/scripts/deploy.sh <ssh-target> --rollback          # refuses unsafe targets (see Rollback)
+deploy/scripts/deploy.sh <ssh-target> --force-rollback    # only after reading rollback-guard.sh
 
 # Relay-only (Singapore)
 cp deploy/relay-only.env.example relay-sg.env
 deploy/scripts/deploy.sh <ssh-target> --relay-only --env-file relay-sg.env
 
+deploy/scripts/probe-health.sh           # external probe, same checks as the hourly workflow
 tests/e2e/compose-stack-sync.sh          # local verification
+tests/e2e/run-matrix.sh --scenarios p0,stack --relays local,us,sg   # e2e matrix (--list for names)
 ```
+
+## Health Probe
+
+`health-probe.yml` runs `probe-health.sh` hourly (17 past the hour) and on dispatch. Checks: `api-fsync.10z.one/health`,
+`/health/otp`, `relay-fsync` and `relay-sg-fsync` `/healthz`, and every certificate with at least 14 days left.
+A failed scheduled run is the alert (GitHub notifies the owner of the cron line). Scheduled runs can be delayed.
+
+- `/health/otp`: `200 ok`, or `503 otp cap reached` while `OTP_DAILY_SEND_CAP` sends happened in the last 24 h.
+  The probe then fails every hour until the window frees up. A release without the endpoint returns 404: the probe only warns.
+- The backend also logs `global OTP send cap reached` on every refused start (`docker compose logs backend | grep "OTP send cap"`).
+
+## Rollback
+
+`deploy.sh --rollback` swaps back to the previous release's images and `compose.yml`. It does not touch data.
+Before swapping, `scripts/rollback-guard.sh` refuses any target whose migrations do not include the database's
+current max version. Without this, sqlx refuses to start the older backend ("migration 3 was previously applied but is missing")
+and the API returns 502 until a roll-forward.
+
+On 2026-10-15 a rehearsal on the Ohio host did exactly that: rolling back to a release that predates migration 0003 took the
+public API down for about 5 minutes (about 03:08-03:13, +07). The guard was added after that. `--force-rollback` skips the check and
+is only for a target you have verified by hand.
+
+A safe pair was rehearsed: `519ec821e90f` <-> `549cc6a3d298`. Each hop took about 88 s; an external 0.5 s poll saw one failed poll per hop.
+
+## Off-Box Backups and Restore
+
+The app host runs `/etc/cron.d/fsync-backup` at 03:15. It runs `backup-offsite.sh`: `pg_dump`, gpg encryption, then an
+sftp upload to the Singapore backup host. That host's upload-only user cannot delete or replace stored backups; `backup-ingest.sh`
+moves uploads into a store the upload user cannot enter, with 30-day retention and a minimum of 3 files. The encryption key is
+public on the app host. The private key lives only in the owner's password manager (and on the owner's workstation under
+`~/.fsync-backup/`, mode 600). Losing it makes the off-box copies unreadable.
+
+Failures are visible only in `backup.log` unless `BACKUP_PING_URL` is set in `.backup/offsite.env` (a dead-man's-switch URL, keep it mode 600).
+
+Restore drill (any machine with Docker; production is never touched). Copy one file from the store, then:
+
+```bash
+docker run -d --name restore-db -e POSTGRES_PASSWORD=x -e POSTGRES_DB=restore -v "$PWD:/r" postgres:17
+docker exec restore-db sh -c 'export GNUPGHOME=$(mktemp -d); gpg --batch --import /r/<private-key>.asc &&
+  gpg --batch -d -o /tmp/r.dump /r/<backup>.dump.gpg && pg_restore -U postgres -d restore --no-owner /tmp/r.dump'
+docker exec restore-db psql -U postgres -d restore -c 'select count(*) from accounts'; docker rm -f -v restore-db
+```
+
+Full steps and host provisioning: [deploy/operations.md](../deploy/operations.md). Last drill (2026-10-15, Mac): decrypt, `pg_restore` and row counts matched live.
+
+## E2E Matrix
+
+`tests/e2e/run-matrix.sh` runs scenarios `p0` (two CLI devices: pair, clip, file direct and forced relay) and `stack`
+(the compose stack, once) over relay configs `local`, `us`, `sg`, or an https URL. Each cell has a time limit. It is not CI: `us` and `sg`
+are production relays. Last recorded run (MiB=8, `p0`, `local,sg`): both PASS (local 239 s, sg 51 s, sg about 0.38 MiB/s).
 
 ## Rules That Are Easy to Miss
 
@@ -58,8 +113,8 @@ tests/e2e/compose-stack-sync.sh          # local verification
 - **The owner applies the host Caddy snippet.** `deploy.sh` never edits or reloads Caddy. Public HTTPS checks (`--public-smoke`) fail until it is in place.
 - **Mode guard.** `deploy.sh` records `relay-only` or `full` in `<dir>/.mode`. It refuses `--relay-only` on a full host (it would remove the stack) and refuses a full deploy on a relay-only host.
 - **OTP email is Gmail SMTP.** Production refuses to start until `SMTP_USERNAME`, `SMTP_PASSWORD` and `SMTP_FROM` are set (see `deploy/README.md`, "OTP email"). `OTP_DAILY_SEND_CAP` (default 450 per rolling 24 h) keeps the stack under the Gmail limit; use a transactional provider before real traffic. Alert on the backend log line `global OTP send cap reached`: sign-in is refused for everyone until the window frees up.
-- **Migrations are forward-only.** Rollback restores the previous images and `compose.yml`, not the database. Keep migrations backward compatible.
-- **Backups.** `backup-postgres.sh` runs daily when installed with `deploy.sh --install-backup-cron` (full stack only). Copy dumps off the host and enable provider snapshots; both live on the same disk otherwise.
+- **Migrations are forward-only.** Rollback restores the previous images and `compose.yml`, not the database. `rollback-guard.sh` refuses targets that predate the current migration; keep migrations backward compatible anyway.
+- **Backups.** Nightly off-box copies run once `.backup/offsite.env` exists (see Off-Box Backups). Local dumps stay on the same disk for 14 days; enable provider snapshots too. A failed night is silent unless `BACKUP_PING_URL` is set.
 - **Rotating `JWT_SIGNING_KEY`** signs every user out.
 
 ## Client Release Builds
