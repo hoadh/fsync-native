@@ -87,7 +87,7 @@ core/fsync-cli/src/{main.rs, cmd_login.rs, cmd_pair.rs, cmd_clip.rs, cmd_send.rs
   - A3 `FsyncError::EngineAlreadyRunning` (unit variant, LAST in enum, uniffi index 14). Replaces string matching in Win/Mac apps. Also list in ffi-contract (open, as A1).
   - A4 timeouts on Postgres start (240 s), admin connect (5 s/try), service calls (90 s), logout_revocation status HTTP (10 s). logout_revocation hang not reproduced (12 runs ok); now fails loudly. Real flake was backend mailpit HTTP reset, fixed.
   - A5 connect-time failover verified (`tests/relay_failover.rs`). Mid-run relay death: unverified (test removed; in-process relays lack QAD). Relays do not mesh: peers whose only reachable relays differ cannot connect (open decision).
-  - Still open from this phase: M1/M2 (engine.lock lingering wait, stop timeout), P0 exit demo (1 GiB LAN + relay), FFI/CI artifact publishing.
+  - Still open from this phase: P0 exit demo (1 GiB LAN + relay), FFI/CI artifact publishing.
 
 ## Success Criteria
 - P0 exit: CLI mac↔win pair/clip/send works LAN and `--force-relay`; CI publishes bindings artifacts; retention tests pass.
