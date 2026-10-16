@@ -14,15 +14,31 @@ use std::sync::Arc;
 impl Inner {
     /// The backend cannot be reached: a device that already pinned a list that includes it keeps
     /// working from that list (paired peers connect without the backend). Presence retries on its
-    /// own once the backend is back. Any other failure, or a device with nothing pinned, is an error.
+    /// own once the backend is back. Fail-closed: only a plain unreachable error qualifies (not
+    /// TLS, bad bodies or HTTP statuses), only while the list was confirmed within the last
+    /// `MAX_AGE_SECS`, and never for a device with nothing pinned.
     fn offline_fallback(self: &Arc<Self>, e: CoreError) -> SvcResult<AccountState> {
-        let unreachable = matches!(e, CoreError::Net(_) | CoreError::Http(_));
-        if unreachable && self.trust.list().is_some() && self.trust.is_trusted(&self.me()) {
-            tracing::warn!("backend unreachable, using the cached device list: {e}");
-            self.restart_presence()?;
-            return Ok(AccountState::Ready);
+        if self.trust.list().is_none() || !self.trust.is_trusted(&self.me()) {
+            return Err(e.into());
         }
-        Err(e.into())
+        let now = super::list_freshness::unix_now();
+        match self.list_freshness.offline_ok(&e, now) {
+            Some(age) => {
+                let days = age / 86_400;
+                tracing::warn!(
+                    "backend unreachable, using the cached device list (last confirmed {days} d ago): {e}"
+                );
+                self.restart_presence()?;
+                Ok(AccountState::Ready)
+            }
+            None if matches!(e, CoreError::Unreachable(_)) => {
+                tracing::warn!(
+                    "stale device list: not confirmed for over 7 days, refusing to start offline: {e}"
+                );
+                Err(e.into())
+            }
+            None => Err(e.into()),
+        }
     }
 
     pub(super) async fn ensure_account(self: &Arc<Self>) -> SvcResult<AccountState> {
@@ -46,6 +62,7 @@ impl Inner {
                 match self.api.put_device_list(&signed, None).await {
                     Ok(_) => {
                         self.trust.pin_genesis(&signed)?;
+                        self.list_freshness.stamp();
                         self.restart_presence()?;
                         return Ok(AccountState::Created);
                     }
@@ -67,6 +84,7 @@ impl Inner {
             if !self.trust.is_trusted(&self.me()) {
                 return Ok(AccountState::NeedsPairing);
             }
+            self.list_freshness.stamp();
             self.restart_presence()?;
             return Ok(AccountState::Ready);
         }

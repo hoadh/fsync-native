@@ -7,6 +7,7 @@ mod limits;
 mod lists;
 mod presence;
 mod presence_session;
+mod reachability;
 mod tls;
 mod ws_util;
 

@@ -78,6 +78,7 @@ impl Inner {
             Err(e) => return Err(e.into()),
         }
         sync_device_list(&self.api, &self.trust).await?;
+        self.list_freshness.stamp();
         Ok(())
     }
 }

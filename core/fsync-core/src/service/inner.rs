@@ -81,6 +81,8 @@ pub(super) struct Inner {
     pub revokes: Mutex<Vec<AbortOnDrop>>,
     /// First retry delay of a queued revocation.
     pub revoke_base: Mutex<std::time::Duration>,
+    /// When the pinned list was last confirmed with the backend (offline-start bound).
+    pub list_freshness: super::list_freshness::ListFreshness,
 }
 
 pub(super) fn lock<T>(m: &Mutex<T>) -> SvcResult<MutexGuard<'_, T>> {
@@ -128,6 +130,7 @@ impl Inner {
             cfg.allow_insecure_http,
         )?);
         trust.set_self(identity.node_id())?;
+        let list_freshness = super::list_freshness::ListFreshness::new(&cfg.data_dir);
         let inner = Self {
             cfg,
             identity,
@@ -146,6 +149,7 @@ impl Inner {
             pairing: Mutex::default(),
             revokes: Mutex::default(),
             revoke_base: Mutex::new(super::revoke::DEFAULT_BASE),
+            list_freshness,
         };
         Ok((inner, events))
     }

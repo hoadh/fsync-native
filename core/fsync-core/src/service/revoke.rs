@@ -23,7 +23,7 @@ pub(super) const DEFAULT_BASE: Duration = Duration::from_secs(5);
 fn transient(e: &CoreError) -> bool {
     match e {
         CoreError::Api(a) => a.status >= 500 || a.status == 408 || a.status == 429,
-        CoreError::Http(_) => true,
+        CoreError::Http(_) | CoreError::Unreachable(_) => true,
         _ => false,
     }
 }

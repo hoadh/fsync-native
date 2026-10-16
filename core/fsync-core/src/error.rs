@@ -72,6 +72,10 @@ pub enum CoreError {
     Net(String),
     #[error("http transport: {0}")]
     Http(String),
+    /// The backend could not be reached (connect refused/reset/unreachable, DNS, timeout). Kept
+    /// apart from `Http` (TLS, bad or oversized body), which may mean a forged backend.
+    #[error("http transport: {0}")]
+    Unreachable(String),
     #[error("websocket: {0}")]
     Ws(String),
     #[error("history database: {0}")]

@@ -21,6 +21,7 @@ mod history_reps;
 mod inner;
 mod lifecycle;
 mod lingering_hold;
+mod list_freshness;
 mod login;
 mod pairing;
 mod pairing_control;
