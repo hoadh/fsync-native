@@ -3,21 +3,19 @@
 //! Core-only and separate from [`crate::PathState`], which is mirrored over FFI and stays
 //! Offline | Lan | Relay. Sampled on demand from the connections' selected paths; no state.
 
-use super::local_subnets::LocalSubnets;
-use iroh::{TransportAddr, endpoint::Connection};
+use super::{
+    lan_first_path_selector::{Tier, tier_of},
+    local_subnets::LocalSubnets,
+};
+use iroh::{
+    TransportAddr,
+    endpoint::{Connection, transports::Addr},
+};
 
-/// Lower is better, so `min` over connections is the best one.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum PathTier {
-    /// Remote IP is on one of our on-link subnets, or on this host (loopback).
-    Lan,
-    /// Any other direct IP path: overlay VPN, routed private network, internet hole-punch.
-    Direct,
-    /// Through the relay server.
-    Relay,
-}
+/// The path selector's tier (Lan < Direct < Relay, lower is better, so `min` is the best one).
+pub use super::lan_first_path_selector::Tier as PathTier;
 
-impl PathTier {
+impl Tier {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Lan => "lan",
@@ -27,15 +25,14 @@ impl PathTier {
     }
 }
 
-/// Tier of one path address. Same rule as the path selector, except loopback counts as `Lan`
-/// (the selector never sees it as a candidate on a real network, but two nodes on one host do).
+/// Tier of one path address: the selector's rule, plus loopback counts as `Lan` (a real network
+/// never offers it as a candidate, but two nodes on one host do).
 pub fn tier_of_addr(addr: &TransportAddr, lan: &LocalSubnets) -> PathTier {
     match addr {
-        TransportAddr::Ip(sa) if sa.ip().to_canonical().is_loopback() || lan.contains(sa.ip()) => {
-            PathTier::Lan
-        }
-        TransportAddr::Relay(_) => PathTier::Relay,
-        _ => PathTier::Direct,
+        TransportAddr::Ip(sa) if sa.ip().to_canonical().is_loopback() => Tier::Lan,
+        TransportAddr::Ip(sa) => tier_of(&Addr::Ip(*sa), lan),
+        TransportAddr::Relay(_) => Tier::Relay,
+        _ => Tier::Direct,
     }
 }
 

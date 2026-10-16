@@ -3,7 +3,7 @@
 
 use super::{convert::node_id_of, path_state::PathTracker};
 use crate::{pair::PairingWindows, trust::TrustManager};
-use fsync_proto::{ALPN_PAIR, NodeId};
+use fsync_proto::{ALPN_FILE, ALPN_PAIR, NodeId};
 use iroh::{
     endpoint::Connection,
     protocol::{AcceptError, ProtocolHandler},
@@ -103,13 +103,34 @@ impl Gate {
             .collect()
     }
 
-    /// Close the inbound connections from `peer` opened before `before`. A peer that crashed leaves
-    /// connections that look alive; iroh keeps routing to the dead path while any exist, so they
-    /// would block a redial to its new address. A live peer simply reconnects.
-    pub fn close_stale_inbound(&self, peer: &NodeId, before: Instant) {
+    /// Received-bytes marks of the inbound connections from `peer`, for [`Self::close_inbound_except_active_pulls`].
+    pub fn inbound_rx_marks(&self, peer: &NodeId) -> Vec<(usize, u64)> {
+        let Ok(g) = self.live.lock() else {
+            return vec![];
+        };
+        g.iter()
+            .filter(|((p, _), (_, outbound, _))| p == peer && !*outbound)
+            .map(|((_, sid), (_, _, c))| (*sid, c.stats().udp_rx.bytes))
+            .collect()
+    }
+
+    /// Used only when a redial to `peer` stalled after its handshake on the cached connection
+    /// already failed: close the inbound connections from `peer`, except a `file/1` pull that is
+    /// moving data (it received bytes since `marks`; closing it would fail a healthy download).
+    /// Measured with a crashed and restarted peer: iroh keeps the stale path while ANY connection
+    /// to the peer exists, silent or fresh, so a narrower set does not unblock the redial. The
+    /// cost is that the peer's clip/presence connections reconnect on next use.
+    pub fn close_inbound_except_active_pulls(&self, peer: &NodeId, marks: &[(usize, u64)]) {
         let Ok(g) = self.live.lock() else { return };
-        for ((p, _), (opened, outbound, conn)) in g.iter() {
-            if !*outbound && p == peer && *opened < before {
+        for ((p, sid), (_, outbound, conn)) in g.iter() {
+            if *outbound || p != peer {
+                continue;
+            }
+            let moving = conn.alpn() == ALPN_FILE
+                && marks
+                    .iter()
+                    .any(|(s, b)| s == sid && conn.stats().udp_rx.bytes != *b);
+            if !moving {
                 conn.close(CLOSE_STALE.into(), b"stale");
             }
         }

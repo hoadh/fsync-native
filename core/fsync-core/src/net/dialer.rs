@@ -94,12 +94,14 @@ impl Dialer {
     async fn dial_with_recovery(&self, peer: &NodeId, alpn: &'static [u8]) -> Result<Connection> {
         let started = tokio::time::Instant::now();
         let started_std = std::time::Instant::now();
+        let marks = self.gate.inbound_rx_marks(peer);
         let addr = self.discovery.addr_for(peer)?;
         match tokio::time::timeout(FIRST_ATTEMPT, self.ep.connect(addr, alpn)).await {
             Ok(res) => return res.map_err(CoreError::net),
             Err(_) => {
                 self.forget(peer, alpn);
                 self.gate.close_stale(peer, alpn, started_std);
+                self.gate.close_inbound_except_active_pulls(peer, &marks);
             }
         }
         let left = DIAL_TIMEOUT.saturating_sub(started.elapsed());
@@ -117,13 +119,21 @@ impl Dialer {
         }
     }
 
-    /// A reused connection to `peer` turned out dead (the peer crashed or moved): drop it and its
-    /// stale inbound siblings so the next `connect` dials the peer's current address.
-    pub fn abandon(&self, peer: &NodeId, alpn: &'static [u8], conn: &Connection) {
-        self.forget(peer, alpn);
-        conn.close(0u32.into(), b"dead path");
-        self.gate
-            .close_stale_inbound(peer, std::time::Instant::now());
+    /// A reused connection looked dead to one caller: stop handing it out, but only if it is still
+    /// the cached one (a concurrent caller may already have replaced it). It is closed only when it
+    /// received nothing at all since `rx_before` (byte count taken before the caller's request):
+    /// streams in flight on a healthy shared connection always receive data or acks, so those
+    /// fetches are never cut off. A silent one is dead and would keep iroh routing to its path.
+    pub fn abandon(&self, peer: &NodeId, alpn: &'static [u8], conn: &Connection, rx_before: u64) {
+        if let Ok(mut g) = self.conns.lock()
+            && g.get(&(*peer, alpn))
+                .is_some_and(|c| c.stable_id() == conn.stable_id())
+        {
+            g.remove(&(*peer, alpn));
+        }
+        if conn.stats().udp_rx.bytes == rx_before {
+            conn.close(0u32.into(), b"dead path");
+        }
     }
 
     fn cached(&self, peer: &NodeId, alpn: &'static [u8]) -> Option<Connection> {

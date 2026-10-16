@@ -20,7 +20,7 @@ const RTT_SWITCHING_MIN: Duration = Duration::from_millis(5);
 
 /// Lower is better.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum Tier {
+pub enum Tier {
     /// Remote IP is on one of our on-link subnets.
     Lan,
     /// Any other direct IP path: overlay VPN, routed private network, internet hole-punch.

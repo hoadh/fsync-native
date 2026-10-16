@@ -15,7 +15,8 @@ use iroh::endpoint::RecvStream;
 use std::{sync::Arc, time::Duration};
 
 /// Limit for the handshake on a cached connection, which may be dead after a peer crash.
-const FIRST_ATTEMPT: Duration = Duration::from_secs(2);
+/// Generous enough for a slow relay (about 0.4 MiB/s, high RTT) or a sender busy with other streams.
+const FIRST_ATTEMPT: Duration = Duration::from_secs(5);
 
 /// A transfer stalls (error, not hang) after this long without progress.
 pub const STALL: Duration = Duration::from_secs(30);
@@ -55,14 +56,22 @@ async fn handshake(
 ) -> Result<(FetchResp, RecvStream)> {
     let (conn, reused) = dialer.connect_reporting_reuse(peer, ALPN_FILE).await?;
     let limit = if reused { FIRST_ATTEMPT } else { STALL };
+    let rx_before = conn.stats().udp_rx.bytes;
     match request(&conn, req, limit).await {
-        Err(CoreError::Net(_) | CoreError::Transfer(TransferError::Timeout)) if reused => {
-            dialer.abandon(peer, ALPN_FILE, &conn);
+        // Dead = silence past the deadline, or the connection itself is closed. Any other error
+        // (stream refused, protocol) says the path works and is not retried.
+        Err(e) if reused && is_dead_path(&conn, &e) => {
+            dialer.abandon(peer, ALPN_FILE, &conn, rx_before);
             let conn = dialer.connect(peer, ALPN_FILE).await?;
             request(&conn, req, STALL).await
         }
         r => r,
     }
+}
+
+fn is_dead_path(conn: &iroh::endpoint::Connection, e: &CoreError) -> bool {
+    matches!(e, CoreError::Transfer(TransferError::Timeout))
+        || (matches!(e, CoreError::Net(_)) && conn.close_reason().is_some())
 }
 
 async fn request(

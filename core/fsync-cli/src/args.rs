@@ -61,7 +61,8 @@ pub enum Cmd {
     },
     #[command(subcommand)]
     Clip(ClipCmd),
-    /// Push files or folders to one paired device.
+    /// Push files or folders to one paired device. The `sent` line has `via` (Lan/Relay) and `path`
+    /// (lan, direct, relay or null: best live path tier).
     Send {
         /// Hex node id or device name.
         node: String,
@@ -70,7 +71,8 @@ pub enum Cmd {
         #[arg(long, default_value_t = 30)]
         wait: u64,
     },
-    /// Wait for pushed files and download them.
+    /// Wait for pushed files and download them. In the `fetched` line `path` is the saved file, so
+    /// the network path tier is `path_tier` (lan, direct, relay or null).
     Fetch {
         #[arg(long, default_value = ".")]
         out: PathBuf,
