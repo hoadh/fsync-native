@@ -3,7 +3,7 @@
 # (cache volumes), wires the namespaces, starts backend + relay, pairs A and B once, then runs the
 # scenarios in order and writes the metrics JSON to /out.
 #
-# Env: MIB, NETNS_SCENARIOS (csv, default all), DATABASE_URL, RUN_ID, GIT_SHA, SKIP_BUILD=1, QUARANTINE (csv ids)
+# Env: MIB, NETNS_SCENARIOS (csv, default all), DATABASE_URL, RUN_ID, GIT_SHA, SKIP_BUILD=1, QUARANTINE (csv ids), NETNS_STRICT=1 (quarantined gating scenario fails the run)
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 E2E="$(cd "$HERE/.." && pwd)"
@@ -57,7 +57,7 @@ SCN="n1:n1-lan:1 n2:n2-wan-down:1 n5:n5-force-relay:1 n3:n3-full-cone:1 n3b:n3b-
 WANT=",${NETNS_SCENARIOS:-n1,n2,n5,n3,n3b,n4,n7,n9,n6,n8,sec},"
 QUAR=",${QUARANTINE:-},"
 ROWS="$WORK/rows"; : >"$ROWS"
-overall=0
+overall=0; QGATING=""
 for entry in $SCN; do
   id="${entry%%:*}"; rest="${entry#*:}"; stem="${rest%%:*}"; gating="${rest##*:}"
   [[ "$WANT" == *",$id,"* ]] || continue
@@ -78,19 +78,28 @@ for entry in $SCN; do
     pkill -P "$wd" 2>/dev/null; kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
     [[ $rc -gt 128 ]] && rc=1
   fi
-  for p in $(cat "$PIDFILE"); do kill "$p" 2>/dev/null || true; done
+  while read -r p; do kill "$p" 2>/dev/null || true; done <"$PIDFILE"
   cli_kill
   backend_up || { log "backend was down after $id: restarting"; backend_start; }
   wan_up r-lan; wan_up r-a; wan_up r-b
   nat_mode r-lan masq; nat_mode r-a masq; nat_mode r-b masq; use_pair lan
-  case $rc in 0) res=PASS;; 77) res=SKIP;; 78) res=QUARANTINED;; *) res=FAIL;; esac
+  hosts_reset   # a scenario that moved a host address (N6) must not leak into the next one
+  case "$rc" in 0) res=PASS;; 77) res=SKIP;; 78) res=QUARANTINED;; *) res=FAIL;; esac
   [[ $res == FAIL && $gating == 1 ]] && overall=1
+  [[ $res == QUARANTINED && $gating == 1 ]] && QGATING="${QGATING:+$QGATING }$id"
   printf '%s\t%s\t%s\t%s\n' "$id" "$res" "$gating" "$((SECONDS - s0))" >>"$ROWS"
   log "=== $id -> $res ($((SECONDS - s0))s)"; tail -3 "$WORK/scn-$id.log" | sed 's/^/    /'
 done
 
 DUR=$((SECONDS - T0))
-python3 -I "$HERE/metrics-write.py" "$WORK" "/out/netns-result.json" "$RUN_ID" "${GIT_SHA:-unknown}" "$MIB" "$DUR" "$BUILD_S" || overall=1
+STRICT_FLAG="${NETNS_STRICT:-0}"
+python3 -I "$HERE/metrics-write.py" "$WORK" "/out/netns-result.json" "$RUN_ID" "${GIT_SHA:-unknown}" "$MIB" "$DUR" "$BUILD_S" "$STRICT_FLAG" || overall=1
 echo "---- scenarios (wall ${DUR}s, build ${BUILD_S}s)"
 cat "$ROWS"
+count_of() { awk -F'\t' -v r="$1" '$2 == r {n++} END {print n + 0}' "$ROWS"; }
+echo "---- summary: PASS=$(count_of PASS) FAIL=$(count_of FAIL) QUARANTINED=$(count_of QUARANTINED) SKIP=$(count_of SKIP)"
+if [[ -n "$QGATING" ]]; then
+  echo "!!!! WARNING: gating scenarios QUARANTINED (not exercised, not passing): $QGATING"
+  if [[ "$STRICT_FLAG" == 1 ]]; then echo "!!!! NETNS_STRICT=1: failing the run"; overall=1; fi
+fi
 exit "$overall"

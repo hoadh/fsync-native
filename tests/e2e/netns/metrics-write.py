@@ -1,6 +1,6 @@
 """Assemble the netns matrix metrics JSON from the per-scenario files the runner leaves in WORK.
 
-usage: metrics-write.py WORK OUT RUN_ID GIT_SHA MIB DURATION_S BUILD_S
+usage: metrics-write.py WORK OUT RUN_ID GIT_SHA MIB DURATION_S BUILD_S [STRICT]
 Inputs: WORK/rows (id, result, gating, secs; tab separated), WORK/m-<id>.tsv (key, value rows).
 """
 import json
@@ -21,7 +21,7 @@ def num(v):
 def scenario(work, sid, result, gating, secs):
     s = {"id": sid, "result": result, "gating": gating == "1", "secs": int(secs), "path_expected": None,
          "path_observed": None, "bytes": {}, "clip_latency_s": None, "file_secs": None, "mib_s": None,
-         "sha_ok": None, "cli_path": None, "notes": []}
+         "sha_ok": None, "cli_path": None, "cli_path_tier": None, "notes": []}
     path = os.path.join(work, f"m-{sid}.tsv")
     for line in open(path) if os.path.exists(path) else []:
         k, _, v = line.rstrip("\n").partition("\t")
@@ -43,11 +43,15 @@ def scenario(work, sid, result, gating, secs):
 
 def main():
     work, out, run_id, sha, mib, dur, build = sys.argv[1:8]
+    strict = len(sys.argv) > 8 and sys.argv[8] == "1"
     rows = [l.rstrip("\n").split("\t") for l in open(os.path.join(work, "rows")) if l.strip()]
     doc = {"run_id": run_id, "git_sha": sha, "mib": int(mib),
            "docker": {"cpus": os.cpu_count(), "mem_gb": round(int(open("/proc/meminfo").readline().split()[1]) / 1048576, 1)},
            "duration_s": int(dur), "build_s": int(build),
-           "scenarios": [scenario(work, *r) for r in rows]}
+           "strict": strict, "scenarios": [scenario(work, *r) for r in rows]}
+    res = [s["result"] for s in doc["scenarios"]]
+    doc["counts"] = {k: res.count(k) for k in ("PASS", "FAIL", "QUARANTINED", "SKIP")}
+    doc["quarantined_gating"] = [s["id"] for s in doc["scenarios"] if s["result"] == "QUARANTINED" and s["gating"]]
     with open(out, "w") as f:
         json.dump(doc, f, indent=2)
     print(f"metrics written: {out}")

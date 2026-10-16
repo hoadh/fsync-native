@@ -75,8 +75,12 @@ path_round() {
   metric_add path_expected "$expect"; metric_add path_observed "$seen"
   metric_add bytes_relay "$relay"; metric_add bytes_wan_a "$wan_a"
   metric_add bytes_wan_b "$wan_b"; metric_add bytes_host_a "$host_a"
-  local cp; cp="$(jfield "$WORK/round-$label/send.out" sent path)"
-  [[ -n "$cp" ]] && metric_add cli_path "$cp"
+  # Informational only (the byte counters above are authoritative). Absent on CLIs that do not emit
+  # `path` on sent / `path_tier` on fetched: the JSON keeps null then.
+  local cp ct
+  cp="$(jfield "$WORK/round-$label/send.out" sent path)"; ct="$(jfield "$WORK/round-$label/fetch.out" fetched path_tier)"
+  if [[ -n "$cp" ]]; then metric_add cli_path "$cp"; fi
+  if [[ -n "$ct" ]]; then metric_add cli_path_tier "$ct"; fi
   PATH_SEEN="$seen"; PATH_RELAY_BYTES="$relay"
   [[ "$expect" == "-" ]] || assert_eq "$seen" "$expect" "[$label] observed path"
 }

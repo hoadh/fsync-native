@@ -15,6 +15,8 @@ scenario_n7() {
   if cli A clip put --text "while-offline" --wait 5 >"$dir/put-off.out" 2>"$dir/put-off.err"; then
     fail "clip put reported delivery while B was stopped"
   fi
+  # the refusal must be the product's "peer offline" error, not a crash or an unrelated failure
+  grep -q "peer is offline" "$dir/put-off.err" || fail "clip put failed with an unexpected error: $(head -c 300 "$dir/put-off.err")"
   cli B clip watch --json --count 1 --timeout 10 >"$dir/b-back.out" 2>"$dir/b-back.err" &
   local w=$!; track "$w"
   wait_for '"event":"ready"' "$dir/b-back.out" 60
@@ -34,6 +36,7 @@ try: d=json.loads(open('$WORK/devs.json').read().strip().splitlines()[-1])
 except Exception: d=[]
 print(next((str(x['online']).lower() for x in d if x['name']=='devB'),'none'))")"
     [[ "$v" == "$want" ]] && return 0
+    sleep 0.5
   done
   fail "devB online=$v after ${secs}s, wanted $want"
 }

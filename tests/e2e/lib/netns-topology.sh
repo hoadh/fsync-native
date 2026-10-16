@@ -109,6 +109,21 @@ nat_mode() {
   esac
 }
 
+# hosts_reset: put every host back on its built address + default route (N6 moves h-la's address).
+# Only touches a host whose eth0 differs from the built state.
+hosts_reset() {
+  local h ns ip
+  for h in h-la:192.168.10.10 h-lb:192.168.10.11 h-na:10.1.0.10 h-nb:10.2.0.10; do
+    ns="${h%%:*}"; ip="${h#*:}"
+    if [[ "$(nsx "$ns" ip -4 -o addr show dev eth0 | awk '{print $4}')" != "$ip/24" ]]; then
+      log "reset address of $ns to $ip"
+      nsx "$ns" ip addr flush dev eth0
+      nsx "$ns" ip addr add "$ip/24" dev eth0
+      nsx "$ns" ip route replace default via "${ip%.*}.1"
+    fi
+  done
+}
+
 wan_down() { nsx "$1" ip link set wan down; }
 wan_up() { nsx "$1" ip link set wan up; }
 
