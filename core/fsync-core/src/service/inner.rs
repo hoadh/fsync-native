@@ -70,6 +70,8 @@ pub(super) struct Inner {
     pub store: Arc<dyn BlobStore>,
     pub account: Arc<Mutex<Option<Uuid>>>,
     pub live: Mutex<Live>,
+    /// Our own background holder of `engine.lock` after a `stop` with a leaked engine handle.
+    pub lingering: super::lingering_hold::LingeringHold,
     /// Serializes `start` so concurrent calls cannot race on the data-dir lock.
     pub start_gate: tokio::sync::Mutex<()>,
     pub peers: Mutex<HashMap<NodeId, PeerSeen>>,
@@ -137,6 +139,7 @@ impl Inner {
             store,
             account,
             live: Mutex::default(),
+            lingering: Default::default(),
             start_gate: tokio::sync::Mutex::new(()),
             peers: Mutex::default(),
             xfers: Mutex::default(),

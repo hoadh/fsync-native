@@ -20,6 +20,7 @@ mod history_api;
 mod history_reps;
 mod inner;
 mod lifecycle;
+mod lingering_hold;
 mod login;
 mod pairing;
 mod pairing_control;
