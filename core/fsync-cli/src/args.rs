@@ -67,7 +67,8 @@ pub enum Cmd {
         /// Hex node id or device name.
         node: String,
         paths: Vec<String>,
-        /// Seconds to wait for the peer to come online.
+        /// Seconds to keep retrying while the peer is offline; it must also start pulling within
+        /// this (at least 10 s).
         #[arg(long, default_value_t = 30)]
         wait: u64,
     },
