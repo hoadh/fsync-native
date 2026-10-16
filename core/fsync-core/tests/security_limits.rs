@@ -48,7 +48,7 @@ fn text(origin: fsync_proto::NodeId, s: &str) -> ClipOffer {
 async fn send_offers(from: &EngPeer, to: &EngPeer, offers: &[ClipOffer]) {
     let conn = from.node().connect(&to.nid(), ALPN_CLIP).await.unwrap();
     for o in offers {
-        let mut tx = conn.open_uni().await.unwrap();
+        let (mut tx, _rx) = conn.open_bi().await.unwrap();
         tx.write_all(&encode_frame(o).unwrap()).await.unwrap();
         tx.finish().unwrap();
     }

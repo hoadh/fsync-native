@@ -38,10 +38,14 @@ pub fn put(c: &Ctx, text: &str, wait: u64) -> Result<()> {
         let p = c.svc.publish_clip(clip)?;
         if !p.delivered.is_empty() {
             emit(
-                json!({"event": "published", "item_id": p.item_id, "delivered": p.delivered,
+                json!({"event": "published", "item_id": p.item_id, "delivered": p.delivered, "refused": p.refused,
                 "attempts": attempt, "settle_ms": settle_ms, "first_publish_ms": first_publish_ms}),
             );
             return Ok(());
+        }
+        // Every peer that did not take it no longer trusts us: retrying cannot help.
+        if p.failed.is_empty() && !p.refused.is_empty() {
+            bail!(FsyncError::NotPaired);
         }
         if attempt == MAX_ATTEMPTS || Instant::now() >= end {
             break;

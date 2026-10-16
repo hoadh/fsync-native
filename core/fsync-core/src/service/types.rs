@@ -86,8 +86,12 @@ pub struct Published {
     pub item_id: String,
     /// Nothing was sent: the content equals what we just applied from a peer.
     pub echo: bool,
+    /// Peers that accepted the offer.
     pub delivered: Vec<String>,
+    /// Offline, unreachable, or dropped the offer (rate limit, invalid).
     pub failed: Vec<String>,
+    /// Peers that no longer trust this device (it was removed or reset there).
+    pub refused: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

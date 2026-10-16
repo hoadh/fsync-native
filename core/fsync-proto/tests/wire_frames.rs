@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 #[test]
 fn alpns() {
-    assert_eq!(ALPN_CLIP, b"fsync/clip/1");
+    assert_eq!(ALPN_CLIP, b"fsync/clip/2");
     assert_eq!(ALPN_FILE, b"fsync/file/1");
     assert_eq!(ALPN_PAIR, b"fsync/pair/1");
 }

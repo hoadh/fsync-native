@@ -86,6 +86,10 @@ pub enum CoreError {
     Store(String),
     #[error("not trusted: {0}")]
     NotTrusted(String),
+    /// The peer closed the connection with `CLOSE_UNTRUSTED`: it no longer trusts us (it removed
+    /// or reset this device). Distinct from `Net` (offline / unreachable).
+    #[error("peer no longer trusts this device")]
+    PeerRefused,
     #[error("session expired: log in again")]
     AuthExpired,
     #[error("invalid input: {0}")]

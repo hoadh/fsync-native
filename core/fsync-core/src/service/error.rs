@@ -48,9 +48,11 @@ impl From<CoreError> for FsyncError {
     fn from(e: CoreError) -> Self {
         match e {
             CoreError::Transfer(TransferError::Integrity) => Self::Integrity,
-            CoreError::Transfer(TransferError::Denied) | CoreError::NotTrusted(_) => {
-                Self::NotPaired
-            }
+            // `PeerRefused`: the other device unpaired us. Same app outcome as a local "not
+            // paired": the device must be paired again, so no new FFI variant.
+            CoreError::Transfer(TransferError::Denied)
+            | CoreError::NotTrusted(_)
+            | CoreError::PeerRefused => Self::NotPaired,
             CoreError::Transfer(t) => Self::Network(t.to_string()),
             CoreError::TooLarge { .. } => Self::TooLarge,
             CoreError::Pair(PairError::Rejected) => Self::Cancelled,

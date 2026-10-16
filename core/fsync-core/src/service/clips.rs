@@ -49,12 +49,14 @@ fn outcome(o: PublishOutcome) -> Published {
             echo: true,
             delivered: vec![],
             failed: vec![],
+            refused: vec![],
         },
         PublishOutcome::Sent(p) => Published {
             item_id: p.item_id.to_string(),
             echo: false,
             delivered: p.delivered.iter().map(|n| n.to_string()).collect(),
             failed: p.failed.iter().map(|n| n.to_string()).collect(),
+            refused: p.refused.iter().map(|n| n.to_string()).collect(),
         },
     }
 }
@@ -119,6 +121,10 @@ impl Inner {
                 "push was suppressed as an echo".into(),
             ));
         };
+        if p.refused.contains(&node) {
+            // The peer no longer trusts us: not offline, re-pairing is needed.
+            return Err(FsyncError::NotPaired);
+        }
         if !p.delivered.contains(&node) {
             return Err(FsyncError::PeerOffline);
         }
@@ -134,7 +140,7 @@ impl FsyncService {
     }
 
     /// Sends files/folders to one paired device ("Send to..."); progress and completion arrive
-    /// as `Send` transfer events for the returned id. `PeerOffline` if it did not take the offer.
+    /// as `Send` transfer events for the returned id. `NotPaired` if the peer no longer trusts us, `PeerOffline` if it did not take the offer.
     pub fn send_files(&self, node_id: &str, paths: Vec<String>) -> SvcResult<u64> {
         self.run(self.inner.send_files(node_id, paths))
     }

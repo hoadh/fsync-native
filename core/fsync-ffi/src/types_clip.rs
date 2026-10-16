@@ -129,7 +129,9 @@ impl From<svc::Published> for Published {
             item_id: p.item_id,
             echo: p.echo,
             delivered: p.delivered,
-            failed: p.failed,
+            // The app record has no `refused` list (no FFI churn; no app reads these lists):
+            // a refusing peer counts as not delivered.
+            failed: p.failed.into_iter().chain(p.refused).collect(),
         }
     }
 }
