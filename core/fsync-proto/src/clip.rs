@@ -1,4 +1,4 @@
-//! clip/1 frames: sender announces, receiver pulls.
+//! clip/2 frames: sender announces, receiver pulls.
 
 use crate::names::validate_file_name;
 pub use crate::names::validate_rel_path;
@@ -6,7 +6,16 @@ use crate::{error::ProtoError, node_id::NodeId};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub const ALPN_CLIP: &[u8] = b"fsync/clip/1";
+/// clip/2: one bi stream per offer. The sender writes one `ClipOffer` frame and the receiver
+/// answers with one `CLIP_ACK_*` byte, so "delivered" means the receiver processed the offer
+/// (clip/1 only had a transport ack on a uni stream and could not tell a refusal).
+pub const ALPN_CLIP: &[u8] = b"fsync/clip/2";
+/// Receiver validated and kept the offer (a duplicate also counts).
+pub const CLIP_ACK_ACCEPTED: u8 = 1;
+/// Receiver dropped the offer: per-peer rate limit.
+pub const CLIP_ACK_RATE_LIMITED: u8 = 2;
+/// Receiver dropped the offer: invalid, too large or unreadable.
+pub const CLIP_ACK_REJECTED: u8 = 3;
 pub const ALPN_FILE: &[u8] = b"fsync/file/1";
 pub const ALPN_PAIR: &[u8] = b"fsync/pair/1";
 pub const CLIP_VERSION: u8 = 1;

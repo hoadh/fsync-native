@@ -81,8 +81,10 @@ pub struct PublishOpts {
 pub struct Published {
     pub item_id: Uuid,
     pub delivered: Vec<NodeId>,
-    /// Offline or unreachable within the send timeout.
+    /// Offline, unreachable within the send timeout, or it dropped the offer (rate limit, invalid).
     pub failed: Vec<NodeId>,
+    /// The peer no longer trusts us (closed the connection with 403): re-pairing is needed.
+    pub refused: Vec<NodeId>,
 }
 
 #[derive(Clone, Debug)]

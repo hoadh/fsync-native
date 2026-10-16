@@ -1,4 +1,4 @@
-//! clip/1 over real iroh endpoints on loopback.
+//! clip/2 over real iroh endpoints on loopback.
 
 mod common;
 
@@ -52,7 +52,7 @@ async fn raw_send(from: &EngPeer, to: &EngPeer, offer: &ClipOffer) {
         .connect(&to.nid(), ALPN_CLIP)
         .await
         .expect("connect");
-    let mut tx = conn.open_uni().await.unwrap();
+    let (mut tx, _rx) = conn.open_bi().await.unwrap();
     tx.write_all(&encode_frame(offer).unwrap()).await.unwrap();
     tx.finish().unwrap();
     // Let the receiver read before the connection can drop.

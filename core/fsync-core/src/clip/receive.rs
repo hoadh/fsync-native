@@ -1,4 +1,4 @@
-//! Receiver side of clip/1: validate, dedupe, arm the echo guard, tell the app.
+//! Receiver side of clip/2: validate, dedupe, arm the echo guard, tell the app.
 
 use super::{
     echo_guard::set_hash,
@@ -8,14 +8,14 @@ use crate::{
     engine::Shared,
     error::{CoreError, Result},
     events::{EngineEvent, OfferRef},
-    net::convert::node_id_of,
+    net::{convert::node_id_of, gate::CLOSE_UNTRUSTED},
 };
 use fsync_proto::{
-    ClipKind, ClipOffer, NodeId,
+    CLIP_ACK_ACCEPTED, CLIP_ACK_RATE_LIMITED, CLIP_ACK_REJECTED, ClipKind, ClipOffer, NodeId,
     frame::{MAX_FRAME_LEN, decode_frame},
 };
 use iroh::{
-    endpoint::Connection,
+    endpoint::{Connection, SendStream},
     protocol::{AcceptError, ProtocolHandler},
 };
 use std::{sync::Arc, time::Duration};
@@ -77,13 +77,28 @@ impl std::fmt::Debug for ClipHandler {
     }
 }
 
+/// Tell the sender what became of its offer. Best effort: a sender that went away needs nothing.
+async fn ack(mut tx: SendStream, status: u8) {
+    if tx.write_all(&[status]).await.is_ok() {
+        let _ = tx.finish();
+    }
+}
+
 impl ProtocolHandler for ClipHandler {
     async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
         let from = node_id_of(&conn);
-        while let Ok(mut rx) = conn.accept_uni().await {
+        while let Ok((tx, mut rx)) = conn.accept_bi().await {
+            // Trust can be withdrawn while this connection lives (the enforcer closes it
+            // asynchronously): re-check per offer so a removed peer is refused with 403 before
+            // any processing, never acked.
+            if !self.0.trust.is_trusted(&from) {
+                conn.close(CLOSE_UNTRUSTED.into(), b"removed");
+                break;
+            }
             if !self.0.offer_rate.allow(from) {
                 tracing::debug!("offer from {from} dropped: rate limit");
                 let _ = rx.stop(0u32.into());
+                ack(tx, CLIP_ACK_RATE_LIMITED).await;
                 continue;
             }
             let sh = self.0.clone();
@@ -94,11 +109,16 @@ impl ProtocolHandler for ClipHandler {
                     Ok(Ok(raw)) => sh.on_offer(from, &raw).await,
                     _ => Err(CoreError::Net("offer stream failed".into())),
                 };
+                let status = match &res {
+                    Ok(()) => CLIP_ACK_ACCEPTED,
+                    Err(_) => CLIP_ACK_REJECTED,
+                };
                 if let Err(e) = res {
                     // Never include content; the peer id suffices to debug.
                     sh.events
                         .error(format!("rejected clip offer from {from}: {e}"));
                 }
+                ack(tx, status).await;
             });
         }
         Ok(())
