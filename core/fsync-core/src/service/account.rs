@@ -84,7 +84,6 @@ impl Inner {
             if !self.trust.is_trusted(&self.me()) {
                 return Ok(AccountState::NeedsPairing);
             }
-            self.list_freshness.stamp();
             self.restart_presence()?;
             return Ok(AccountState::Ready);
         }

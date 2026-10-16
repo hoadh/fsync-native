@@ -131,6 +131,8 @@ impl Inner {
         )?);
         trust.set_self(identity.node_id())?;
         let list_freshness = super::list_freshness::ListFreshness::new(&cfg.data_dir);
+        let stamper = list_freshness.clone();
+        trust.set_on_synced(move || stamper.stamp());
         let inner = Self {
             cfg,
             identity,

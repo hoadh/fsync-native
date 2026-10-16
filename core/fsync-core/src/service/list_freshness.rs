@@ -4,19 +4,27 @@
 //! and only for a plain "cannot reach it" error.
 //!
 //! Kept in its own small file (`list-synced-at`, unix seconds) so the trust store format is
-//! untouched.
+//! untouched. `TrustManager` calls `stamp` after every successful backend sync (one choke point).
 
-use crate::{error::CoreError, fs_util::write_private_atomic};
+use crate::{error::CoreError, fs_util::write_private_atomic, history::DB_FILE};
 use std::{
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 
-const FILE: &str = "list-synced-at";
+pub(super) const FILE: &str = "list-synced-at";
 /// Longest an unconfirmed list may be used offline.
 pub(super) const MAX_AGE_SECS: u64 = 7 * 24 * 3600;
+/// A stamp further ahead of the clock than this is not believable (clock jump, tampering).
+pub(super) const MAX_SKEW_SECS: u64 = 5 * 60;
 
-pub(super) struct ListFreshness(PathBuf);
+#[derive(Clone)]
+pub(super) struct ListFreshness {
+    stamp_file: PathBuf,
+    /// The history database, which holds the pinned list: its mtime starts the age clock of an
+    /// install that predates the stamp file.
+    db_file: PathBuf,
+}
 
 pub(super) fn unix_now() -> u64 {
     SystemTime::now()
@@ -26,39 +34,60 @@ pub(super) fn unix_now() -> u64 {
 
 impl ListFreshness {
     pub(super) fn new(data_dir: &Path) -> Self {
-        Self(data_dir.join(FILE))
+        Self {
+            stamp_file: data_dir.join(FILE),
+            db_file: data_dir.join(DB_FILE),
+        }
     }
 
     /// Record that the list was just confirmed. A failed write only shortens the offline window,
     /// so it is logged, not fatal.
     pub(super) fn stamp(&self) {
-        if let Err(e) = write_private_atomic(&self.0, unix_now().to_string().as_bytes()) {
+        if let Err(e) = write_private_atomic(&self.stamp_file, unix_now().to_string().as_bytes()) {
             tracing::warn!("could not record the device list sync time: {e}");
         }
     }
 
-    /// `None`: never recorded (older install) or unreadable.
-    pub(super) fn last(&self) -> Option<u64> {
-        std::fs::read_to_string(&self.0).ok()?.trim().parse().ok()
+    /// The recorded confirmation time. `None`: never recorded, unreadable, or dated more than
+    /// `MAX_SKEW_SECS` into the future (not believable, so it must not read as "just now").
+    pub(super) fn last(&self, now: u64) -> Option<u64> {
+        let t: u64 = std::fs::read_to_string(&self.stamp_file)
+            .ok()?
+            .trim()
+            .parse()
+            .ok()?;
+        (t <= now.saturating_add(MAX_SKEW_SECS)).then_some(t)
+    }
+
+    /// Start of the age clock: the stamp, else (install older than the stamp file) the mtime of
+    /// the history database, else nothing, which fails closed. The fallback never grants a fresh
+    /// window: a legacy install is as old as its database file, and a future-dated mtime is
+    /// refused like a future stamp.
+    fn clock_start(&self, now: u64) -> Option<u64> {
+        self.last(now).or_else(|| {
+            let t = std::fs::metadata(&self.db_file)
+                .ok()?
+                .modified()
+                .ok()?
+                .duration_since(UNIX_EPOCH)
+                .ok()?
+                .as_secs();
+            (t <= now.saturating_add(MAX_SKEW_SECS)).then_some(t)
+        })
     }
 
     /// Whether the cached list may be used now after `err`. Returns the age in seconds of the
-    /// last confirmation when it may. An install with no record starts its clock here.
+    /// last confirmation when it may.
     pub(super) fn offline_ok(&self, err: &CoreError, now: u64) -> Option<u64> {
-        let last = match self.last() {
-            Some(l) => l,
-            None => {
-                self.stamp();
-                now
-            }
-        };
-        age_if_allowed(err, last, now)
+        age_if_allowed(err, self.clock_start(now)?, now)
     }
 }
 
 /// The policy: only a plain unreachable-backend error, and only within `MAX_AGE_SECS`.
-/// TLS or certificate failures, bad or oversized bodies and any HTTP status never qualify.
-fn age_if_allowed(err: &CoreError, last: u64, now: u64) -> Option<u64> {
+/// TLS or certificate failures, bad or oversized bodies and any HTTP status never qualify. That
+/// includes 502/503/504 from a proxy in front of the backend: they stay `CoreError::Api` and fail
+/// closed, because an intercepting proxy can answer exactly those.
+pub(super) fn age_if_allowed(err: &CoreError, last: u64, now: u64) -> Option<u64> {
     if !matches!(err, CoreError::Unreachable(_)) {
         return None;
     }
@@ -67,56 +96,5 @@ fn age_if_allowed(err: &CoreError, last: u64, now: u64) -> Option<u64> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::error::ApiError;
-
-    const DAY: u64 = 24 * 3600;
-
-    fn unreachable() -> CoreError {
-        CoreError::Unreachable("connection refused".into())
-    }
-
-    #[test]
-    fn unreachable_within_the_bound_is_allowed() {
-        assert_eq!(age_if_allowed(&unreachable(), 100, 100 + DAY), Some(DAY));
-        assert!(age_if_allowed(&unreachable(), 0, MAX_AGE_SECS).is_some());
-    }
-
-    #[test]
-    fn past_the_bound_is_refused() {
-        assert_eq!(age_if_allowed(&unreachable(), 0, MAX_AGE_SECS + 1), None);
-    }
-
-    #[test]
-    fn suspicious_errors_are_never_allowed() {
-        let api = CoreError::Api(ApiError {
-            status: 503,
-            code: "x".into(),
-            message: String::new(),
-        });
-        for e in [
-            CoreError::Http("error sending request".into()),
-            CoreError::Http("bad response body: eof".into()),
-            CoreError::Http("response too large".into()),
-            CoreError::Net("x".into()),
-            api,
-            CoreError::AuthExpired,
-        ] {
-            assert_eq!(age_if_allowed(&e, 10, 11), None, "{e:?}");
-        }
-    }
-
-    #[test]
-    fn stamp_round_trips_and_a_missing_record_starts_the_clock() {
-        let dir = tempfile::tempdir().unwrap();
-        let f = ListFreshness::new(dir.path());
-        assert_eq!(f.last(), None);
-        assert_eq!(f.offline_ok(&unreachable(), unix_now()), Some(0));
-        let first = f.last().expect("clock started");
-        std::fs::write(dir.path().join(FILE), "garbage").unwrap();
-        assert_eq!(f.last(), None);
-        f.stamp();
-        assert!(f.last().unwrap() >= first);
-    }
-}
+#[path = "list_freshness_tests.rs"]
+mod tests;
