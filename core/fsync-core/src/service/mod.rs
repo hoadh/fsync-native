@@ -25,6 +25,7 @@ mod login;
 mod pairing;
 mod pairing_control;
 mod pairing_events;
+mod path_tier;
 mod presence;
 mod revoke;
 mod revoke_session;

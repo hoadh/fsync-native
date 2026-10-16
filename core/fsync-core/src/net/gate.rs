@@ -92,6 +92,17 @@ impl Gate {
         }
     }
 
+    /// Live connections (either direction) to `peer`.
+    pub fn connections_of(&self, peer: &NodeId) -> Vec<Connection> {
+        let Ok(g) = self.live.lock() else {
+            return vec![];
+        };
+        g.iter()
+            .filter(|((p, _), _)| p == peer)
+            .map(|(_, (_, _, c))| c.clone())
+            .collect()
+    }
+
     /// Close the inbound connections from `peer` opened before `before`. A peer that crashed leaves
     /// connections that look alive; iroh keeps routing to the dead path while any exist, so they
     /// would block a redial to its new address. A live peer simply reconnects.

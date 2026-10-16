@@ -7,6 +7,8 @@ use super::{
     node_addrs::{AddrFeed, addrs_of},
     node_builder::NodeBuilder,
     path_state::PathTracker,
+    path_tier::{PathTier, connection_tier},
+    subnet_cache::SubnetCache,
 };
 use crate::{
     error::{CoreError, Result},
@@ -29,6 +31,7 @@ pub struct Node {
     pub(super) windows: Arc<PairingWindows>,
     pub(super) gate: Arc<Gate>,
     pub(super) paths: Arc<PathTracker>,
+    pub(super) subnets: SubnetCache,
     pub(super) enforcer: tokio::task::JoinHandle<()>,
     pub(super) feed: AddrFeed,
     pub(super) feeder: tokio::task::JoinHandle<()>,
@@ -88,6 +91,17 @@ impl Node {
 
     pub fn path_state(&self, peer: &NodeId) -> PathState {
         self.paths.state(peer)
+    }
+
+    /// Best path tier across the live connections to `peer`; `None` if there is none (offline,
+    /// or no path selected yet). Sampled now: an idle connection may already have closed.
+    pub fn peer_path_tier(&self, peer: &NodeId) -> Option<PathTier> {
+        let lan = self.subnets.get();
+        self.gate
+            .connections_of(peer)
+            .iter()
+            .filter_map(|c| connection_tier(c, &lan))
+            .min()
     }
 
     /// Dial a paired device. Addresses come from the lookup (presence + mDNS).

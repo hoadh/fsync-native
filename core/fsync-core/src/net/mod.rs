@@ -12,6 +12,7 @@ mod node_addrs;
 mod node_builder;
 mod pair_handler;
 pub mod path_state;
+pub mod path_tier;
 pub mod relays;
 pub mod subnet_cache;
 
@@ -22,3 +23,4 @@ pub use node::Node;
 pub use node_addrs::AddrFeed;
 pub use node_builder::NodeBuilder;
 pub use path_state::PathTracker;
+pub use path_tier::PathTier;
