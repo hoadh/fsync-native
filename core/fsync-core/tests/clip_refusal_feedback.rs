@@ -74,3 +74,22 @@ async fn old_clip_alpn_peer_fails_fast_not_hangs() {
     assert!(r.is_err(), "a clip/1 peer must not be able to talk clip");
     assert!(started.elapsed() < Duration::from_secs(10));
 }
+
+/// A rate-limited sender is told "failed" (not refused, not delivered).
+#[tokio::test(flavor = "multi_thread")]
+async fn rate_limited_offers_are_failed_not_refused() {
+    let ps = group(vec![EngineConfig::default(); 2]).await;
+    let b = &ps[1];
+    let all = futures_util::future::join_all(
+        (0..60).map(|i| async move { publish(b, &format!("burst {i}")).await }),
+    )
+    .await;
+    let delivered: usize = all.iter().map(|p| p.delivered.len()).sum();
+    let failed: usize = all.iter().map(|p| p.failed.len()).sum();
+    assert!(all.iter().all(|p| p.refused.is_empty()), "{all:?}");
+    assert!(
+        delivered > 0 && failed > 0,
+        "delivered {delivered} failed {failed}"
+    );
+    assert_eq!(delivered + failed, 60);
+}

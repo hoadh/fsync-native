@@ -15,7 +15,7 @@ use crate::{
 use fsync_proto::{
     ALPN_CLIP, CLIP_ACK_ACCEPTED, CLIP_ACK_RATE_LIMITED, NodeId, frame::encode_frame,
 };
-use iroh::endpoint::{Connection, ConnectionError};
+use iroh::endpoint::{Connection, ConnectionError, WriteError};
 use std::time::{Duration, Instant};
 
 impl Shared {
@@ -152,8 +152,15 @@ async fn attempt(dialer: &Dialer, peer: &NodeId, frame: &[u8], limit: Duration) 
 
 async fn push_and_wait_ack(conn: &Connection, frame: &[u8]) -> Result<()> {
     let (mut tx, mut rx) = conn.open_bi().await.map_err(CoreError::net)?;
-    tx.write_all(frame).await.map_err(CoreError::net)?;
-    tx.finish().map_err(CoreError::net)?;
+    // A receiver that rate limits us stops the stream and then sends its ack: a stopped write or
+    // finish is not a broken path, the ack byte is still readable (and says "rate limited").
+    match tx.write_all(frame).await {
+        Ok(()) => {
+            let _ = tx.finish();
+        }
+        Err(WriteError::Stopped(_)) => {}
+        Err(e) => return Err(CoreError::net(e)),
+    }
     let mut ack = [0u8; 1];
     rx.read_exact(&mut ack).await.map_err(CoreError::net)?;
     match ack[0] {

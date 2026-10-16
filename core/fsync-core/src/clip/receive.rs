@@ -8,7 +8,7 @@ use crate::{
     engine::Shared,
     error::{CoreError, Result},
     events::{EngineEvent, OfferRef},
-    net::convert::node_id_of,
+    net::{convert::node_id_of, gate::CLOSE_UNTRUSTED},
 };
 use fsync_proto::{
     CLIP_ACK_ACCEPTED, CLIP_ACK_RATE_LIMITED, CLIP_ACK_REJECTED, ClipKind, ClipOffer, NodeId,
@@ -88,6 +88,13 @@ impl ProtocolHandler for ClipHandler {
     async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
         let from = node_id_of(&conn);
         while let Ok((tx, mut rx)) = conn.accept_bi().await {
+            // Trust can be withdrawn while this connection lives (the enforcer closes it
+            // asynchronously): re-check per offer so a removed peer is refused with 403 before
+            // any processing, never acked.
+            if !self.0.trust.is_trusted(&from) {
+                conn.close(CLOSE_UNTRUSTED.into(), b"removed");
+                break;
+            }
             if !self.0.offer_rate.allow(from) {
                 tracing::debug!("offer from {from} dropped: rate limit");
                 let _ = rx.stop(0u32.into());
