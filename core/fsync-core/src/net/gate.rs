@@ -92,6 +92,18 @@ impl Gate {
         }
     }
 
+    /// Close the inbound connections from `peer` opened before `before`. A peer that crashed leaves
+    /// connections that look alive; iroh keeps routing to the dead path while any exist, so they
+    /// would block a redial to its new address. A live peer simply reconnects.
+    pub fn close_stale_inbound(&self, peer: &NodeId, before: Instant) {
+        let Ok(g) = self.live.lock() else { return };
+        for ((p, _), (opened, outbound, conn)) in g.iter() {
+            if !*outbound && p == peer && *opened < before {
+                conn.close(CLOSE_STALE.into(), b"stale");
+            }
+        }
+    }
+
     /// Close live connections of devices no longer in the pinned list.
     pub fn enforce(&self) {
         let Ok(g) = self.live.lock() else { return };

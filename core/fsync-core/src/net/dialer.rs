@@ -49,11 +49,23 @@ impl Dialer {
 
     /// Open (or reuse) a connection to a trusted peer. Addresses come from the lookup.
     pub async fn connect(&self, peer: &NodeId, alpn: &'static [u8]) -> Result<Connection> {
+        self.connect_reporting_reuse(peer, alpn)
+            .await
+            .map(|(c, _)| c)
+    }
+
+    /// Like `connect`, also telling whether the connection came from the cache. A cached one may
+    /// be dead without being closed yet (peer crashed), so callers can use a short first attempt.
+    pub async fn connect_reporting_reuse(
+        &self,
+        peer: &NodeId,
+        alpn: &'static [u8],
+    ) -> Result<(Connection, bool)> {
         if !self.trust.is_trusted(peer) {
             return Err(CoreError::NotTrusted(peer.to_string()));
         }
         if let Some(c) = self.cached(peer, alpn) {
-            return Ok(c);
+            return Ok((c, true));
         }
         let lock = {
             let mut g = self
@@ -66,14 +78,14 @@ impl Dialer {
         };
         let _one = lock.lock().await;
         if let Some(c) = self.cached(peer, alpn) {
-            return Ok(c);
+            return Ok((c, true));
         }
         let conn = self.dial_with_recovery(peer, alpn).await?;
         self.gate.track_outbound(&conn);
         if let Ok(mut g) = self.conns.lock() {
             g.insert((*peer, alpn), conn.clone());
         }
-        Ok(conn)
+        Ok((conn, false))
     }
 
     /// First attempt is short. If it stalls, the peer probably restarted (same id, new port)
@@ -103,6 +115,15 @@ impl Dialer {
         if let Ok(mut g) = self.conns.lock() {
             g.remove(&(*peer, alpn));
         }
+    }
+
+    /// A reused connection to `peer` turned out dead (the peer crashed or moved): drop it and its
+    /// stale inbound siblings so the next `connect` dials the peer's current address.
+    pub fn abandon(&self, peer: &NodeId, alpn: &'static [u8], conn: &Connection) {
+        self.forget(peer, alpn);
+        conn.close(0u32.into(), b"dead path");
+        self.gate
+            .close_stale_inbound(peer, std::time::Instant::now());
     }
 
     fn cached(&self, peer: &NodeId, alpn: &'static [u8]) -> Option<Connection> {
