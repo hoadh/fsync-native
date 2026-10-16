@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034  # variables are consumed by the sourced libs (shellcheck cannot follow from the repo root)
 # P0 exit demo, fully local: Postgres (docker) + backend (dev mode) + iroh relay + two CLI devices.
 #
 #   login both -> A genesis -> B pairs (code, SAS confirmed on both) -> clip A -> B
@@ -92,7 +93,6 @@ grep -q '"account":"needs_pairing"' "$WORK/login-B.json" || fail "B should need 
 log "pairing: B offers a code, A joins (SAS confirmed on both)"
 pair B A
 
-# shellcheck disable=SC2034
 B_NODE="$(jfield "$WORK/login-B.json" logged_in node_id)"
 
 export CLIP_MAX_S="${CLIP_MAX_S:-5}"

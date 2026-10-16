@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034  # variables are consumed by the sourced libs (shellcheck cannot follow from the repo root)
 # Runs inside the privileged runner container (started by ../netns-matrix.sh). Builds the binaries
 # (cache volumes), wires the namespaces, starts backend + relay, pairs A and B once, then runs the
 # scenarios in order and writes the metrics JSON to /out.
