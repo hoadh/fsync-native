@@ -112,6 +112,11 @@ pub fn dev_with(be: &Backend, seed: u8, name: &str, mdns: bool) -> Dev {
 }
 
 impl Dev {
+    /// The service's data directory.
+    pub fn data_dir(&self) -> &Path {
+        self._dir.path()
+    }
+
     /// Fresh OTP login (the backend then sees a recent `auth_time`).
     pub fn login(&self, be: &Backend) -> SessionTokens {
         self.svc.login_start(EMAIL).unwrap();

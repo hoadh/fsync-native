@@ -75,6 +75,38 @@ fn lock_is_held_while_a_handle_is_leaked_and_freed_when_it_drops() {
     svc.stop().unwrap();
 }
 
+/// `start` while our own engine still lingers fails with the typed error (FFI unchanged) and the
+/// remaining hold is known; once the handle drops the same call succeeds.
+#[test]
+fn start_during_own_lingering_hold_is_refused_then_works_after_release() {
+    let dir = tempfile::tempdir().unwrap();
+    let svc = service(dir.path());
+    svc.start().unwrap();
+    let leaked = svc.inner.engine().unwrap();
+    svc.run(async {
+        svc.inner
+            .stop_with(Duration::from_millis(50), Duration::from_secs(300))
+            .await;
+        Ok(())
+    })
+    .unwrap();
+
+    let left = svc.inner.lingering.remaining().expect("holder is tracked");
+    assert!(left > Duration::from_secs(200), "{left:?}");
+    assert!(matches!(svc.start(), Err(FsyncError::EngineAlreadyRunning)));
+
+    drop(leaked);
+    assert!(wait_until_lock_free(dir.path()));
+    svc.start().expect("start works once released");
+    // The holder clears its marker just after it frees the lock.
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while svc.inner.lingering.remaining().is_some() && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(svc.inner.lingering.remaining(), None);
+    svc.stop().unwrap();
+}
+
 /// After the (short) hold the leaked engine is closed before the lock is released, so once
 /// the lock is free the node is already closed; no timing assumption beyond a generous wait.
 #[test]

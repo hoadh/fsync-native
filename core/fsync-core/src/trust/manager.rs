@@ -6,7 +6,7 @@ use crate::{
     events::{EngineEvent, EventSink},
 };
 use fsync_proto::{DeviceList, NodeId, SignedDeviceList};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use tokio::sync::watch;
 
 /// `root_hash` of a pin made from the head alone (genesis never seen).
@@ -57,6 +57,7 @@ pub struct TrustManager {
     pub(super) gate: Mutex<()>,
     pub(super) events: EventSink,
     pub(super) version: watch::Sender<u64>,
+    on_synced: OnceLock<Box<dyn Fn() + Send + Sync>>,
 }
 
 impl TrustManager {
@@ -77,7 +78,20 @@ impl TrustManager {
             gate: Mutex::new(()),
             events,
             version: watch::channel(0).0,
+            on_synced: OnceLock::new(),
         })
+    }
+
+    /// Register the `mark_synced` callback; the first registration wins.
+    pub fn set_on_synced(&self, f: impl Fn() + Send + Sync + 'static) {
+        let _ = self.on_synced.set(Box::new(f));
+    }
+
+    /// The list was just confirmed against the backend (`sync_device_list` succeeded).
+    pub fn mark_synced(&self) {
+        if let Some(f) = self.on_synced.get() {
+            f();
+        }
     }
 
     pub(super) fn lock(&self) -> Result<MutexGuard<'_, Inner>> {

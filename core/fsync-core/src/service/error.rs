@@ -63,7 +63,10 @@ impl From<CoreError> for FsyncError {
             CoreError::Io(e) => Self::Io(e.to_string()),
             CoreError::Db(e) => Self::Io(e.to_string()),
             CoreError::Store(m) => Self::Io(m),
-            CoreError::Net(m) | CoreError::Http(m) | CoreError::Ws(m) => Self::Network(m),
+            CoreError::Net(m)
+            | CoreError::Http(m)
+            | CoreError::Unreachable(m)
+            | CoreError::Ws(m) => Self::Network(m),
             CoreError::Invalid(m) => Self::Invalid(m.to_owned()),
             CoreError::Closed => Self::Cancelled,
             CoreError::HistoryKeyMismatch => Self::HistoryKeyMismatch,

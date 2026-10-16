@@ -24,4 +24,5 @@ pub use error::{ApiError, CoreError, PairError, Result, TransferError};
 pub use events::{EngineEvent, EventSink, OfferRef, PairDecision, PairingEvent, PathState};
 pub use fs_util::{ensure_private_dir, write_private_atomic};
 pub use identity::Identity;
+pub use net::PathTier;
 pub use pair::{DeviceInfo, ListBackend, PairSecret};

@@ -3,7 +3,7 @@
 
 use super::{convert::node_id_of, path_state::PathTracker};
 use crate::{pair::PairingWindows, trust::TrustManager};
-use fsync_proto::{ALPN_PAIR, NodeId};
+use fsync_proto::{ALPN_FILE, ALPN_PAIR, NodeId};
 use iroh::{
     endpoint::Connection,
     protocol::{AcceptError, ProtocolHandler},
@@ -18,6 +18,16 @@ use std::{
 pub const CLOSE_UNTRUSTED: u32 = 403;
 /// Application close code for connections dropped locally because the peer looks gone.
 pub const CLOSE_STALE: u32 = 410;
+
+/// How far [`Gate::close_inbound`] goes while a redial to a peer keeps stalling.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InboundCleanup {
+    /// Close only idle connections; spare every one that received bytes (any ALPN).
+    IdleOnly,
+    /// Last resort: also close in-use clip/presence connections (they reconnect on next use);
+    /// spare only `file/1` connections that are moving data (a running pull).
+    AllButPulls,
+}
 
 /// (opened at, we dialed it, the connection)
 type Live = (Instant, bool, Connection);
@@ -87,6 +97,56 @@ impl Gate {
         let Ok(g) = self.live.lock() else { return };
         for ((p, _), (opened, outbound, conn)) in g.iter() {
             if *outbound && p == peer && *opened < before && conn.alpn() == alpn {
+                conn.close(CLOSE_STALE.into(), b"stale");
+            }
+        }
+    }
+
+    /// Live connections (either direction) to `peer`.
+    pub fn connections_of(&self, peer: &NodeId) -> Vec<Connection> {
+        let Ok(g) = self.live.lock() else {
+            return vec![];
+        };
+        g.iter()
+            .filter(|((p, _), _)| p == peer)
+            .map(|(_, (_, _, c))| c.clone())
+            .collect()
+    }
+
+    /// Received-bytes marks of the inbound connections from `peer`, for [`Self::close_inbound`].
+    pub fn inbound_rx_marks(&self, peer: &NodeId) -> Vec<(usize, u64)> {
+        let Ok(g) = self.live.lock() else {
+            return vec![];
+        };
+        g.iter()
+            .filter(|((p, _), (_, outbound, _))| p == peer && !*outbound)
+            .map(|((_, sid), (_, _, c))| (*sid, c.stats().udp_rx.bytes))
+            .collect()
+    }
+
+    /// Close inbound connections from `peer` that block a stalled redial, sampled now (at close
+    /// time). A connection is "in use" when it received bytes since its mark, or has no mark
+    /// (opened after the dial started). See [`InboundCleanup`] for what is spared at each stage.
+    ///
+    /// Measured with a crashed and restarted peer: iroh keeps the stale path while ANY connection
+    /// to the peer exists, including the fresh one the restarted peer opened. Hence the
+    /// escalation: idle ones first, in-use clip/presence ones only if the dial still stalls.
+    pub fn close_inbound(&self, peer: &NodeId, marks: &[(usize, u64)], stage: InboundCleanup) {
+        let Ok(g) = self.live.lock() else { return };
+        for ((p, sid), (_, outbound, conn)) in g.iter() {
+            if *outbound || p != peer {
+                continue;
+            }
+            let in_use = match marks.iter().find(|(s, _)| s == sid) {
+                Some((_, before)) => conn.stats().udp_rx.bytes != *before,
+                None => true,
+            };
+            let spared = in_use
+                && match stage {
+                    InboundCleanup::IdleOnly => true,
+                    InboundCleanup::AllButPulls => conn.alpn() == ALPN_FILE,
+                };
+            if !spared {
                 conn.close(CLOSE_STALE.into(), b"stale");
             }
         }

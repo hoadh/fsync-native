@@ -14,6 +14,10 @@ use fsync_proto::{ALPN_FILE, FetchReq, FetchResp, FetchStatus, NodeId, file::CV_
 use iroh::endpoint::RecvStream;
 use std::{sync::Arc, time::Duration};
 
+/// Limit for the handshake on a cached connection, which may be dead after a peer crash.
+/// Generous enough for a slow relay (about 0.4 MiB/s, high RTT) or a sender busy with other streams.
+const FIRST_ATTEMPT: Duration = Duration::from_secs(5);
+
 /// A transfer stalls (error, not hang) after this long without progress.
 pub const STALL: Duration = Duration::from_secs(30);
 
@@ -42,6 +46,46 @@ async fn read_exact(rx: &mut RecvStream, buf: &mut [u8]) -> Result<()> {
     )
 }
 
+/// Send `req` and read the response header. On a cached connection the first try is short; if the
+/// path turns out dead (transport error or silence) the connection is dropped and the request is
+/// repeated once on a fresh one. Protocol answers are never retried (the caller checks them).
+async fn handshake(
+    dialer: &Dialer,
+    peer: &NodeId,
+    req: &FetchReq,
+) -> Result<(FetchResp, RecvStream)> {
+    let (conn, reused) = dialer.connect_reporting_reuse(peer, ALPN_FILE).await?;
+    let limit = if reused { FIRST_ATTEMPT } else { STALL };
+    let rx_before = conn.stats().udp_rx.bytes;
+    match request(&conn, req, limit).await {
+        // Dead = silence past the deadline, or the connection itself is closed. Any other error
+        // (stream refused, protocol) says the path works and is not retried.
+        Err(e) if reused && is_dead_path(&conn, &e) => {
+            dialer.abandon(peer, ALPN_FILE, &conn, rx_before);
+            let conn = dialer.connect(peer, ALPN_FILE).await?;
+            request(&conn, req, STALL).await
+        }
+        r => r,
+    }
+}
+
+fn is_dead_path(conn: &iroh::endpoint::Connection, e: &CoreError) -> bool {
+    matches!(e, CoreError::Transfer(TransferError::Timeout))
+        || (matches!(e, CoreError::Net(_)) && conn.close_reason().is_some())
+}
+
+async fn request(
+    conn: &iroh::endpoint::Connection,
+    req: &FetchReq,
+    wait: Duration,
+) -> Result<(FetchResp, RecvStream)> {
+    let (mut tx, mut rx) = conn.open_bi().await.map_err(CoreError::net)?;
+    send_frame(&mut tx, req).await?;
+    tx.finish().map_err(CoreError::net)?;
+    let resp: FetchResp = recv_frame(&mut rx, wait).await?;
+    Ok((resp, rx))
+}
+
 /// Send `req`, check the response against `exp`, and (unless `known`) read + verify the CV list.
 pub async fn open(
     dialer: &Dialer,
@@ -51,11 +95,7 @@ pub async fn open(
     known: Option<Arc<Verifier>>,
 ) -> Result<Session> {
     req.no_cvs = known.is_some();
-    let conn = dialer.connect(peer, ALPN_FILE).await?;
-    let (mut tx, mut rx) = conn.open_bi().await.map_err(CoreError::net)?;
-    send_frame(&mut tx, &req).await?;
-    tx.finish().map_err(CoreError::net)?;
-    let resp: FetchResp = recv_frame(&mut rx, STALL).await?;
+    let (resp, mut rx) = handshake(dialer, peer, &req).await?;
     match resp.status {
         FetchStatus::Ok => {}
         FetchStatus::Denied => return Err(TransferError::Denied.into()),

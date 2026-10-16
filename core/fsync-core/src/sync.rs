@@ -14,7 +14,16 @@ use tokio::sync::mpsc;
 
 /// Fetch lists newer than the pin and ingest them; falls back to the full chain when the
 /// incremental one does not connect (reset, pruned history).
+///
+/// The single choke point for "the list was confirmed with the backend": every success (pairing,
+/// presence push, startup, removal) refreshes the offline-start stamp via `mark_synced`.
 pub async fn sync_device_list(api: &ApiClient, trust: &TrustManager) -> Result<Ingest> {
+    let ingest = fetch_and_ingest(api, trust).await?;
+    trust.mark_synced();
+    Ok(ingest)
+}
+
+async fn fetch_and_ingest(api: &ApiClient, trust: &TrustManager) -> Result<Ingest> {
     let from = trust
         .head()
         .ok_or(CoreError::Invalid("no pinned list; pair first"))?

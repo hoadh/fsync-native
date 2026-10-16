@@ -9,6 +9,7 @@ use super::{
     pair_handler::PairHandler,
     path_state::PathTracker,
     relays::{parse_relays, relay_map},
+    subnet_cache::SubnetCache,
 };
 use crate::{
     error::{CoreError, Result},
@@ -125,6 +126,7 @@ impl NodeBuilder {
             windows,
             gate,
             paths,
+            subnets: SubnetCache::default(),
             enforcer,
             feed,
             feeder,

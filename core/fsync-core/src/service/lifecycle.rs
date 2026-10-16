@@ -54,7 +54,15 @@ impl Inner {
             .map_err(|e| FsyncError::Io(format!("open {}: {e}", path.display())))?;
         match file.try_lock() {
             Ok(()) => Ok(file),
-            Err(std::fs::TryLockError::WouldBlock) => Err(FsyncError::EngineAlreadyRunning),
+            Err(std::fs::TryLockError::WouldBlock) => {
+                if let Some(left) = self.lingering.remaining() {
+                    tracing::warn!(
+                        "previous engine still releasing engine.lock, up to {}s left; retry then",
+                        left.as_secs() + 1
+                    );
+                }
+                Err(FsyncError::EngineAlreadyRunning)
+            }
             Err(std::fs::TryLockError::Error(e)) => {
                 Err(FsyncError::Io(format!("lock {}: {e}", path.display())))
             }
@@ -101,14 +109,20 @@ impl Inner {
         // shut down cleanly), so a new engine never overlaps with a lingering one, but only for
         // a bounded time: a leaked handle must not block restart forever.
         tracing::warn!("engine still referenced at stop; holding engine.lock until released");
-        tokio::spawn(hold_lock_until_released(
-            engine,
-            data_lock,
-            POLL_LINGERING,
-            max_hold,
-            |e: Engine| e.shutdown(),
-            |e: Arc<Engine>| async move { e.close().await },
-        ));
+        let lingering = self.lingering.clone();
+        lingering.begin(max_hold);
+        tokio::spawn(async move {
+            hold_lock_until_released(
+                engine,
+                data_lock,
+                POLL_LINGERING,
+                max_hold,
+                |e: Engine| e.shutdown(),
+                |e: Arc<Engine>| async move { e.close().await },
+            )
+            .await;
+            lingering.end();
+        });
     }
 }
 
