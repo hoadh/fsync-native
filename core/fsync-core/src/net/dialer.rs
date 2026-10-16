@@ -1,6 +1,9 @@
 //! Cached outbound connections to paired devices (one per peer + ALPN).
 
-use super::{discovery::Discovery, gate::Gate};
+use super::{
+    discovery::Discovery,
+    gate::{Gate, InboundCleanup},
+};
 use crate::{
     error::{CoreError, Result},
     trust::TrustManager,
@@ -95,13 +98,25 @@ impl Dialer {
         let started = tokio::time::Instant::now();
         let started_std = std::time::Instant::now();
         let marks = self.gate.inbound_rx_marks(peer);
-        let addr = self.discovery.addr_for(peer)?;
-        match tokio::time::timeout(FIRST_ATTEMPT, self.ep.connect(addr, alpn)).await {
-            Ok(res) => return res.map_err(CoreError::net),
-            Err(_) => {
-                self.forget(peer, alpn);
-                self.gate.close_stale(peer, alpn, started_std);
-                self.gate.close_inbound_except_active_pulls(peer, &marks);
+        // Escalation, one step per stalled 2 s attempt (iroh keeps the stale path while any
+        // connection to the peer lives): 1) our own older outbound connections for this ALPN,
+        // 2) the peer's idle inbound connections, 3) its in-use clip/presence ones too (a running
+        // pull is always spared). Each step only happens if the dial still stalls.
+        for stage in 0..3 {
+            let addr = self.discovery.addr_for(peer)?;
+            match tokio::time::timeout(FIRST_ATTEMPT, self.ep.connect(addr, alpn)).await {
+                Ok(res) => return res.map_err(CoreError::net),
+                Err(_) if stage == 0 => {
+                    self.forget(peer, alpn);
+                    self.gate.close_stale(peer, alpn, started_std);
+                }
+                Err(_) if stage == 1 => {
+                    self.gate
+                        .close_inbound(peer, &marks, InboundCleanup::IdleOnly)
+                }
+                Err(_) => self
+                    .gate
+                    .close_inbound(peer, &marks, InboundCleanup::AllButPulls),
             }
         }
         let left = DIAL_TIMEOUT.saturating_sub(started.elapsed());

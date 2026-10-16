@@ -129,7 +129,9 @@ fn second_fetch_after_sender_crash_recovers_within_seconds() {
         .expect("fetch hung on the dead cached connection")
         .expect("fetch");
         let took = t.elapsed();
-        assert!(took < Duration::from_secs(10), "second fetch took {took:?}");
+        // Recovery takes ~6-12 s (5 s handshake + two 2 s dial stages); the unfixed code hangs
+        // past the 25 s outer timeout above.
+        assert!(took < Duration::from_secs(20), "second fetch took {took:?}");
         assert_eq!(hash_file(&got), want);
     });
 }

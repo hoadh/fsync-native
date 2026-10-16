@@ -9,10 +9,79 @@ use common::{
     files::{hash_file, offer_file, write_src},
     peer,
 };
-use fsync_core::EngineConfig;
+use fsync_core::{EngineConfig, net::gate::InboundCleanup};
 use fsync_proto::{DeviceList, Platform, sign};
+use iroh::endpoint::Connection;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
+
+/// Polls `f` until it holds (10 s deadline).
+async fn until(what: &str, mut f: impl FnMut() -> bool) {
+    let end = Instant::now() + Duration::from_secs(10);
+    while !f() {
+        assert!(Instant::now() < end, "timed out waiting for {what}");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+/// Waits until `c` received nothing for a full 250 ms window.
+async fn quiet(c: &Connection) {
+    let end = Instant::now() + Duration::from_secs(10);
+    loop {
+        let before = c.stats().udp_rx.bytes;
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        if c.stats().udp_rx.bytes == before {
+            return;
+        }
+        assert!(Instant::now() < end, "connection never went quiet");
+    }
+}
+
+/// `Gate::close_inbound`: idle connections are closed first; in-use ones (any ALPN) survive the
+/// idle stage and go only at the last-resort stage.
+#[tokio::test(flavor = "multi_thread")]
+async fn close_inbound_spares_in_use_connections_until_the_last_stage() {
+    let (a, b) = (peer().await, peer().await);
+    let g = a.genesis(Uuid::new_v4());
+    let l1 = DeviceList::next_add(&g, a.nid(), b.nid(), "b".into(), Platform::Mac, 2).unwrap();
+    let l1 = sign(a.id.signing_key(), &l1).unwrap();
+    a.trust.ingest(&l1).unwrap();
+    b.trust
+        .pin_paired_chain(&[g, l1], &b.nid(), &a.nid())
+        .unwrap();
+    a.learn(&b);
+    b.learn(&a);
+
+    let idle = b.node.connect(&a.nid(), TEST_ALPN).await.unwrap();
+    let busy = b.node.connect(&a.nid(), TEST_ALPN).await.unwrap();
+    let gate = a.node.gate();
+    until("both inbound connections tracked", || {
+        gate.connections_of(&b.nid()).len() == 2
+    })
+    .await;
+    for c in gate.connections_of(&b.nid()) {
+        quiet(&c).await;
+    }
+    let marks = gate.inbound_rx_marks(&b.nid());
+    assert_eq!(marks.len(), 2);
+
+    // `busy` carries a stream: A receives bytes on it after the mark.
+    let (mut tx, mut rx) = busy.open_bi().await.unwrap();
+    tx.write_all(b"clip data").await.unwrap();
+    tx.finish().unwrap();
+    assert_eq!(rx.read_to_end(1 << 16).await.unwrap(), b"clip data");
+
+    gate.close_inbound(&b.nid(), &marks, InboundCleanup::IdleOnly);
+    tokio::time::timeout(Duration::from_secs(5), idle.closed())
+        .await
+        .expect("idle connection closed");
+    assert!(busy.close_reason().is_none(), "in-use connection was cut");
+
+    gate.close_inbound(&b.nid(), &marks, InboundCleanup::AllButPulls);
+    tokio::time::timeout(Duration::from_secs(5), busy.closed())
+        .await
+        .expect("in-use non-pull connection closed at the last stage");
+}
 
 /// Dialer-level: `abandon` evicts only the connection it was given, and closes it only when it
 /// received nothing since the caller started (in-flight streams of a healthy one always do).
@@ -39,8 +108,10 @@ async fn abandon_spares_a_connection_with_traffic_and_a_newer_cache_entry() {
     // A sibling stream is mid-flight on the shared connection: it writes and gets acks.
     let (mut tx, mut rx) = c1.open_bi().await.unwrap();
     tx.write_all(b"in flight").await.unwrap();
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    assert!(c1.stats().udp_rx.bytes > rx_before, "no ack seen");
+    until("the stream's first ack", || {
+        c1.stats().udp_rx.bytes > rx_before
+    })
+    .await;
 
     dialer.abandon(&a.nid(), TEST_ALPN, &c1, rx_before);
     assert!(c1.close_reason().is_none(), "healthy connection was closed");
@@ -55,9 +126,9 @@ async fn abandon_spares_a_connection_with_traffic_and_a_newer_cache_entry() {
     let c3 = dialer.connect(&a.nid(), TEST_ALPN).await.unwrap();
     assert_eq!(c2.stable_id(), c3.stable_id());
 
-    // Silence since the mark means dead: closed. Let the fresh connection's handshake tail
-    // (tokens, path probes) settle first so the mark is taken in a quiet moment.
-    tokio::time::sleep(Duration::from_millis(1500)).await;
+    // Silence since the mark means dead: closed. The mark is taken once the fresh connection's
+    // handshake tail (tokens, path probes) has drained, i.e. its byte count is stable.
+    quiet(&c2).await;
     dialer.abandon(&a.nid(), TEST_ALPN, &c2, c2.stats().udp_rx.bytes);
     assert!(c2.close_reason().is_some(), "silent connection stayed open");
 }
