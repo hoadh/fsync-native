@@ -133,21 +133,6 @@ impl Ctx {
             std::thread::sleep(Duration::from_millis(100));
         }
     }
-
-    /// Polls until the device is online (backend presence or live connection).
-    pub fn wait_online(&self, node: &str, wait: Duration) -> Result<Device> {
-        let end = Instant::now() + wait;
-        loop {
-            let d = self.resolve(node)?;
-            if d.online || d.status != fsync_core::service::DeviceStatus::Offline {
-                return Ok(d);
-            }
-            if Instant::now() >= end {
-                bail!("{node} did not come online");
-            }
-            std::thread::sleep(Duration::from_millis(500));
-        }
-    }
 }
 
 /// One JSON object per line on stdout, flushed (scripts read these).

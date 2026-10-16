@@ -21,7 +21,9 @@ fn mib_s(bytes: u64, secs: f64) -> f64 {
 pub fn send(c: &Ctx, node: &str, paths: Vec<String>, wait: u64) -> Result<()> {
     c.online(true)?;
     let end = Instant::now() + Duration::from_secs(wait);
-    let dev = c.wait_online(node, Duration::from_secs(wait))?;
+    // No passive presence gate: the offer itself dials the peer, so this also works when the
+    // backend (presence) is down; `PeerOffline` retries until `wait` runs out.
+    let dev = c.resolve(node)?;
     let t0 = Instant::now();
     let id = loop {
         match c.svc.send_files(&dev.node_id, paths.clone()) {
@@ -35,21 +37,40 @@ pub fn send(c: &Ctx, node: &str, paths: Vec<String>, wait: u64) -> Result<()> {
     emit(json!({"event": "offered", "transfer_id": id}));
     // Remember the latest tier seen while the transfer runs: the peer may close right after Done.
     let mut tier = c.path_tier(&dev.node_id);
-    let total = c.wait_event(Instant::now() + Duration::from_secs(3600), |ev| match ev {
+    // Per event of this push: `Some(None)` = the peer is pulling, `Some(Some(r))` = finished.
+    let mut on = |ev: Ev| match ev {
         Ev::Transfer(t) if t.transfer_id == id && t.direction == TransferDirection::Send => {
             tier = c.path_tier(&dev.node_id).or(tier);
             match t.state {
-                TransferState::Done => Some(Ok(t.bytes_total)),
-                TransferState::Failed | TransferState::Cancelled => Some(Err(anyhow::anyhow!(
-                    "send {:?}: {}",
-                    t.state,
-                    t.message.unwrap_or_default()
+                TransferState::Done => Some(Some(Ok(t.bytes_total))),
+                TransferState::Failed | TransferState::Cancelled => Some(Some(Err(
+                    anyhow::anyhow!("send {:?}: {}", t.state, t.message.unwrap_or_default()),
                 ))),
-                _ => None,
+                TransferState::Progress => Some(None),
+                TransferState::Started => None,
             }
         }
         _ => None,
-    })??;
+    };
+    // The peer must start pulling within `wait` (min 10 s): an offer it dropped (or a peer that
+    // refused us after the transport ack) must not hang the command for the full hour.
+    let start_by = end.max(Instant::now() + Duration::from_secs(10));
+    // The receiving `fsync fetch` pulls pushed files on its own: no user decision to wait for.
+    let first = c
+        .wait_event(start_by, &mut on)
+        .map_err(|e| match e.to_string().as_str() {
+            "timed out" => anyhow::anyhow!("{node} did not start fetching the offer"),
+            _ => e,
+        })?;
+    let total = match first {
+        Some(done) => done?,
+        None => loop {
+            let deadline = Instant::now() + Duration::from_secs(3600);
+            if let Some(done) = c.wait_event(deadline, &mut on)? {
+                break done?;
+            }
+        },
+    };
     let secs = t0.elapsed().as_secs_f64();
     let path = c.path_tier(&dev.node_id).or(tier);
     emit(
