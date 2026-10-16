@@ -7,6 +7,7 @@
 # Scenarios (scripts in this directory):
 #   p0     p0-exit-demo.sh        two CLI devices: pair, clip, file direct + forced relay (honors E2E_RELAY_URL)
 #   stack  compose-stack-sync.sh  production compose stack incl. its own relay (relay axis does not apply: run once)
+#   netns  netns-matrix.sh        N1-N9 in Linux network namespaces in a privileged container (run once; env NETNS_SCENARIOS)
 # Relays: local (the scenario's own relay, default), us (relay-fsync.10z.one), sg (relay-sg-fsync.10z.one),
 #   or any http(s):// URL. Env: MIB (file size, default 16 here), CELL_TIMEOUT_S (default 1800),
 #   OUT_DIR (logs, default a temp dir). The "direct" round of p0 needs both devices on one LAN.
@@ -14,14 +15,14 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # bash 3.2 (macOS /bin/bash) has no associative arrays: plain functions.
-script_of() { case "$1" in p0) echo p0-exit-demo.sh;; stack) echo compose-stack-sync.sh;; esac; }
+script_of() { case "$1" in p0) echo p0-exit-demo.sh;; stack) echo compose-stack-sync.sh;; netns) echo netns-matrix.sh;; esac; }
 url_of() { case "$1" in us) echo https://relay-fsync.10z.one;; sg) echo https://relay-sg-fsync.10z.one;; http://*|https://*) echo "$1";; esac; }
 scenarios="p0" relays="local"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --scenarios) scenarios="${2:?}"; shift 2;;
     --relays) relays="${2:?}"; shift 2;;
-    --list) echo "scenarios: p0 stack"; echo "relays: local us sg or an http(s) URL"; exit 0;;
+    --list) echo "scenarios: p0 stack netns"; echo "relays: local us sg or an http(s) URL"; exit 0;;
     *) sed -n 2,5p "$0" >&2; exit 2;;
   esac
 done
@@ -57,7 +58,7 @@ run_cell() { # scenario relay -> appends a summary row
 
 IFS=, read -r -a sc <<<"$scenarios"; IFS=, read -r -a rl <<<"$relays"
 for s in "${sc[@]}"; do
-  if [[ "$s" == stack ]]; then run_cell stack local; continue; fi
+  if [[ "$s" == stack || "$s" == netns ]]; then run_cell "$s" local; continue; fi
   for r in "${rl[@]}"; do run_cell "$s" "$r"; done
 done
 
