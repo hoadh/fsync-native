@@ -1,0 +1,203 @@
+{
+  "run_id": "261016140846-28234",
+  "git_sha": "68d7ae6",
+  "mib": 64,
+  "docker": {
+    "cpus": 10,
+    "mem_gb": 7.7
+  },
+  "duration_s": 182,
+  "build_s": 1,
+  "scenarios": [
+    {
+      "id": "n1",
+      "result": "PASS",
+      "gating": true,
+      "secs": 4,
+      "path_expected": "lan",
+      "path_observed": "lan",
+      "bytes": {
+        "relay": 25444,
+        "wan_a": 36348,
+        "wan_b": 36348,
+        "host_a": 69243095
+      },
+      "clip_latency_s": 0.01,
+      "file_secs": 0.524889167,
+      "mib_s": 121.93050271125142,
+      "sha_ok": true,
+      "cli_path": null,
+      "notes": ""
+    },
+    {
+      "id": "n2",
+      "result": "QUARANTINED",
+      "gating": true,
+      "secs": 2,
+      "path_expected": null,
+      "path_observed": null,
+      "bytes": {},
+      "clip_latency_s": null,
+      "file_secs": null,
+      "mib_s": null,
+      "sha_ok": null,
+      "cli_path": null,
+      "notes": "CLI cannot start with backend unreachable. cmd: fsync-cli --data A --api http://100.64.0.1:8080 --relay http://100.64.0.2:3340 --insecure-http devices --json ; error: error: network: error sending request "
+    },
+    {
+      "id": "n5",
+      "result": "PASS",
+      "gating": true,
+      "secs": 3,
+      "path_expected": "relay",
+      "path_observed": "relay",
+      "bytes": {
+        "relay": 156713134,
+        "wan_a": 156724038,
+        "wan_b": 156724038,
+        "host_a": 74819226
+      },
+      "clip_latency_s": 0.02,
+      "file_secs": 1.003019167,
+      "mib_s": 63.80735493960905,
+      "sha_ok": true,
+      "cli_path": null,
+      "notes": ""
+    },
+    {
+      "id": "n3",
+      "result": "QUARANTINED",
+      "gating": true,
+      "secs": 16,
+      "path_expected": "-",
+      "path_observed": "relay",
+      "bytes": {
+        "relay": 139501135,
+        "wan_a": 69495529,
+        "wan_b": 70018137,
+        "host_a": 69511298
+      },
+      "clip_latency_s": 4.04,
+      "file_secs": 0.535992417,
+      "mib_s": 119.40467433889089,
+      "sha_ok": true,
+      "cli_path": null,
+      "notes": "no direct path behind full-cone NATs: local relay has no QUIC address discovery (webpki-only trust), peers only know private candidates; file went via relay (139501135 B on relay veth)"
+    },
+    {
+      "id": "n3b",
+      "result": "PASS",
+      "gating": true,
+      "secs": 16,
+      "path_expected": "direct",
+      "path_observed": "direct",
+      "bytes": {
+        "relay": 89731,
+        "wan_a": 69286471,
+        "wan_b": 69287561,
+        "host_a": 69289175
+      },
+      "clip_latency_s": 4.03,
+      "file_secs": 0.590960584,
+      "mib_s": 108.29825496449693,
+      "sha_ok": true,
+      "cli_path": null,
+      "notes": ""
+    },
+    {
+      "id": "n4",
+      "result": "QUARANTINED",
+      "gating": true,
+      "secs": 17,
+      "path_expected": "relay",
+      "path_observed": "relay",
+      "bytes": {
+        "relay": 139192481,
+        "wan_a": 69376699,
+        "wan_b": 69828033,
+        "host_a": 69393025
+      },
+      "clip_latency_s": 4.03,
+      "file_secs": 1.409863334,
+      "mib_s": 45.394470837412385,
+      "sha_ok": true,
+      "cli_path": null,
+      "notes": "path relay + hash ok, but clip latency 4.03s exceeds spec 1.5s (same stall seen in N3/N3b; LAN and forced-relay are ~0.01s)"
+    },
+    {
+      "id": "n7",
+      "result": "PASS",
+      "gating": true,
+      "secs": 29,
+      "path_expected": null,
+      "path_observed": null,
+      "bytes": {},
+      "clip_latency_s": 0.01,
+      "file_secs": null,
+      "mib_s": null,
+      "sha_ok": null,
+      "cli_path": null,
+      "notes": "B seen offline after 3s"
+    },
+    {
+      "id": "n9",
+      "result": "QUARANTINED",
+      "gating": true,
+      "secs": 0,
+      "path_expected": null,
+      "path_observed": null,
+      "bytes": {},
+      "clip_latency_s": null,
+      "file_secs": null,
+      "mib_s": null,
+      "sha_ok": null,
+      "cli_path": null,
+      "notes": "CLI cannot start with backend unreachable. cmd: fsync-cli --data A --api http://100.64.0.1:8080 --relay http://100.64.0.2:3340 --insecure-http devices --json ; error: error: network: error sending request "
+    },
+    {
+      "id": "n6",
+      "result": "PASS",
+      "gating": false,
+      "secs": 43,
+      "path_expected": null,
+      "path_observed": null,
+      "bytes": {},
+      "clip_latency_s": null,
+      "file_secs": 31.136706055,
+      "mib_s": 32.887229567289566,
+      "sha_ok": true,
+      "cli_path": null,
+      "notes": "A re-addressed mid-transfer (1024 MiB)"
+    },
+    {
+      "id": "n8",
+      "result": "PASS",
+      "gating": true,
+      "secs": 45,
+      "path_expected": null,
+      "path_observed": null,
+      "bytes": {},
+      "clip_latency_s": null,
+      "file_secs": null,
+      "mib_s": null,
+      "sha_ok": null,
+      "cli_path": null,
+      "notes": "B clip rejected in 20s, file push in 20s; A received nothing"
+    },
+    {
+      "id": "sec",
+      "result": "SKIP",
+      "gating": false,
+      "secs": 0,
+      "path_expected": null,
+      "path_observed": null,
+      "bytes": {},
+      "clip_latency_s": null,
+      "file_secs": null,
+      "mib_s": null,
+      "sha_ok": null,
+      "cli_path": null,
+      "notes": "pure unpaired NodeId dial not expressible via CLI (peers resolve from the paired list); covered by core tests clip_security.rs and net_gate_and_paths.rs; removed-peer dial covered by N8"
+    }
+  ]
+}
