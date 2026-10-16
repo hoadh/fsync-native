@@ -33,8 +33,11 @@ pub fn send(c: &Ctx, node: &str, paths: Vec<String>, wait: u64) -> Result<()> {
         }
     };
     emit(json!({"event": "offered", "transfer_id": id}));
+    // Remember the latest tier seen while the transfer runs: the peer may close right after Done.
+    let mut tier = c.path_tier(&dev.node_id);
     let total = c.wait_event(Instant::now() + Duration::from_secs(3600), |ev| match ev {
         Ev::Transfer(t) if t.transfer_id == id && t.direction == TransferDirection::Send => {
+            tier = c.path_tier(&dev.node_id).or(tier);
             match t.state {
                 TransferState::Done => Some(Ok(t.bytes_total)),
                 TransferState::Failed | TransferState::Cancelled => Some(Err(anyhow::anyhow!(
@@ -48,8 +51,9 @@ pub fn send(c: &Ctx, node: &str, paths: Vec<String>, wait: u64) -> Result<()> {
         _ => None,
     })??;
     let secs = t0.elapsed().as_secs_f64();
+    let path = c.path_tier(&dev.node_id).or(tier);
     emit(
-        json!({"event": "sent", "bytes": total, "secs": secs, "mib_s": mib_s(total, secs), "via": format!("{:?}", c.resolve(&dev.node_id)?.status)}),
+        json!({"event": "sent", "bytes": total, "secs": secs, "mib_s": mib_s(total, secs), "via": format!("{:?}", c.resolve(&dev.node_id)?.status), "path": path}),
     );
     Ok(())
 }
@@ -79,6 +83,9 @@ pub fn fetch(c: &Ctx, out: &Path, count: u32, timeout: u64) -> Result<()> {
         })?;
         for f in &offer.files {
             let t0 = Instant::now();
+            // The sender may close its side right after Done, so remember the latest tier seen
+            // before and during the transfer instead of sampling only at the end.
+            let mut tier = c.path_tier(&offer.from);
             let id = c
                 .svc
                 .fetch_file_to(&offer.item_id, f.file_id, &out.to_string_lossy())?;
@@ -87,6 +94,7 @@ pub fn fetch(c: &Ctx, out: &Path, count: u32, timeout: u64) -> Result<()> {
                     Ev::Transfer(t)
                         if t.transfer_id == id && t.direction == TransferDirection::Receive =>
                     {
+                        tier = c.path_tier(&offer.from).or(tier);
                         match t.state {
                             TransferState::Done => {
                                 Some(Ok((t.path.unwrap_or_default(), t.bytes_total)))
@@ -104,8 +112,10 @@ pub fn fetch(c: &Ctx, out: &Path, count: u32, timeout: u64) -> Result<()> {
                     _ => None,
                 })??;
             let secs = t0.elapsed().as_secs_f64();
+            // `path` is the saved file here, so the network path is `path_tier`.
+            let path_tier = c.path_tier(&offer.from).or(tier);
             emit(
-                json!({"event": "fetched", "path": path, "bytes": bytes, "secs": secs,
+                json!({"event": "fetched", "path": path, "path_tier": path_tier, "bytes": bytes, "secs": secs,
                 "mib_s": mib_s(bytes, secs), "blake3": blake3_hex(Path::new(&path))?}),
             );
         }

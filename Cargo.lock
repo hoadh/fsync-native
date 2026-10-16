@@ -1519,6 +1519,7 @@ dependencies = [
  "fsync-proto",
  "getrandom 0.4.3",
  "serde_json",
+ "tracing-subscriber",
  "zeroize",
 ]
 

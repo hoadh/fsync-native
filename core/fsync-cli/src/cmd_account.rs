@@ -60,7 +60,7 @@ pub fn devices(c: &Ctx, as_json: bool) -> Result<()> {
                 DeviceStatus::Relay => "relay",
             };
             json!({"node_id": d.node_id, "name": d.name, "platform": format!("{:?}", d.platform).to_lowercase(),
-                "status": status, "online": d.online, "last_seen_ms": d.last_seen_ms, "self": d.is_self})
+                "status": status, "path": c.path_tier(&d.node_id), "online": d.online, "last_seen_ms": d.last_seen_ms, "self": d.is_self})
         })
         .collect();
     if as_json {

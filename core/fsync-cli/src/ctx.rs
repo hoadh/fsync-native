@@ -96,6 +96,11 @@ impl Ctx {
         }
     }
 
+    /// "lan" | "direct" | "relay" for the best live path to `node`, JSON null without one.
+    pub fn path_tier(&self, node: &str) -> Option<&'static str> {
+        self.svc.peer_path_tier(node).map(|t| t.as_str())
+    }
+
     /// Hex id or name -> a paired device other than this one.
     pub fn resolve(&self, node: &str) -> Result<Device> {
         let mut hits: Vec<Device> = self

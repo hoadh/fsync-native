@@ -60,7 +60,23 @@ fn run(cli: Cli) -> Result<()> {
     }
 }
 
+/// Traces go to stderr and only when `RUST_LOG` is set; stdout stays pure JSON lines.
+fn init_tracing() {
+    if std::env::var_os("RUST_LOG").is_none() {
+        return;
+    }
+    // A malformed RUST_LOG falls back to errors only rather than aborting a transfer.
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("error"));
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
+        .try_init();
+}
+
 fn main() {
+    init_tracing();
     if let Err(e) = run(Cli::parse()) {
         eprintln!("error: {e:#}");
         std::process::exit(1);
