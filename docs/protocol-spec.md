@@ -1,4 +1,4 @@
-# fsync wire protocols (clip/1, file/1, pair/1)
+# fsync wire protocols (clip/2, file/1, pair/1)
 
 Transport: iroh 1.x QUIC, one connection per peer pair per ALPN, cached by `Dialer` (retry once on a fresh connection). Accept gate: remote node id must be in the pinned, verified device list (except `fsync/pair/1` while one pairing window is open); untrusted live connections are closed with code 403 when trust changes. Types live in `core/fsync-proto`.
 
@@ -9,14 +9,15 @@ Transport: iroh 1.x QUIC, one connection per peer pair per ALPN, cached by `Dial
 | ALPN | Direction | Streams |
 |---|---|---|
 | `fsync/pair/1` | new device -> existing | bi, see pairing phase |
-| `fsync/clip/1` | sender -> every online trusted peer | one uni stream per item, one `ClipOffer` frame |
+| `fsync/clip/2` | sender -> every online trusted peer | one bi stream per item: one `ClipOffer` frame out, one ack byte back (`1` accepted, `2` rate limited, `3` rejected) |
 | `fsync/file/1` | receiver -> sender | one bi stream per fetch |
 
-## clip/1 flow
+## clip/2 flow
+clip/2 replaces clip/1 (uni stream, transport ack only), which could not tell a refusal from delivery (N8). Pre-release: no compatibility; a clip/1 peer fails the ALPN handshake at once, so a mixed-version pair fails fast instead of hanging.
 1. Sender builds the offer: hashes every rep (blake3), inlines reps while the 256 KiB shared budget lasts, spills reps > 1 MiB to its blob store, snapshots files (size, mtime, blake3), `item_id` = UUIDv7. Total of rep sizes must be <= `max_clip_bytes` (50 MiB default) else `CoreError::TooLarge`.
 2. Echo guard: if the content set hash equals what we last applied from a peer, nothing is sent (`PublishOutcome::Echo`); any other publish clears it.
-3. Entry goes into the outbox (`offered_to` = target set) BEFORE sending. Sends run concurrently with a 5 s per-peer timeout; failed peers are removed from `offered_to`.
-4. Receiver (per uni stream, 10 s read timeout): decode (no trailing bytes), `origin == connection peer`, `ClipOffer::validate` (version, inline hashes, budgets, names, `rel_path` safety), total (checked sum, overflow rejected) <= `max_clip_bytes`, per-peer rate limit (20 offers/s, burst 20; excess dropped before reading), dedupe by `item_id` (ring of 1024), arm echo guard, history row (skipped when `ClipOffer.sensitive`: sensitive items are never stored, blobs fetched for them are removed after use), keep in the receive log (128 offers and 32 MiB of inline bytes/names/previews; oldest evicted together with their range readers), emit `EngineEvent::RemoteClip` (or `IncomingFiles` if `push` and kind Files). Any failure: `EngineEvent::Error` (no content in message), offer dropped.
+3. Entry goes into the outbox (`offered_to` = target set) BEFORE sending. Sends run concurrently with a 5 s per-peer timeout; a peer counts as delivered only after its ack byte `1`. Failed and refused peers are removed from `offered_to`. A connection the peer closes with 403 (it removed or reset us; the accept gate closes after the handshake) is `refused` (`CoreError::PeerRefused`), distinct from offline; the cached connection is retried once on a fresh dial first. `Published.refused` lists such peers; single-target pushes (`send_files`) return `FsyncError::NotPaired`.
+4. Receiver (per bi stream, 10 s read timeout; replies with the ack byte after processing): decode (no trailing bytes), `origin == connection peer`, `ClipOffer::validate` (version, inline hashes, budgets, names, `rel_path` safety), total (checked sum, overflow rejected) <= `max_clip_bytes`, per-peer rate limit (20 offers/s, burst 20; excess dropped before reading, answered with ack `2`), dedupe by `item_id` (ring of 1024), arm echo guard, history row (skipped when `ClipOffer.sensitive`: sensitive items are never stored, blobs fetched for them are removed after use), keep in the receive log (128 offers and 32 MiB of inline bytes/names/previews; oldest evicted together with their range readers), emit `EngineEvent::RemoteClip` (or `IncomingFiles` if `push` and kind Files). Any failure: `EngineEvent::Error` (no content in message), offer dropped.
 5. Outbox lifetime: 1 h, or 10 min once a newer clip was published; swept on publish. Expired -> fetch answers `NotFound`.
 
 ## file/1 flow

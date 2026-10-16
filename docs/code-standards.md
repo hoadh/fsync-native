@@ -12,7 +12,7 @@
 
 ## Wire formats
 - postcard (serde) for wire frames and signed bytes; JSON for HTTP.
-- Protocols versioned by ALPN (`fsync/clip/1`, `fsync/file/1`, `fsync/pair/1`). Never change v1 semantics — add v2.
+- Protocols versioned by ALPN (`fsync/clip/2`, `fsync/file/1`, `fsync/pair/1`). Never change v1 semantics — add v2.
 - Signatures are domain-separated (`"fsync-devlist-v1" || body`).
 
 ## Security

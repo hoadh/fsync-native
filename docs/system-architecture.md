@@ -17,7 +17,7 @@ fsync syncs clipboard items and files between a user's own devices. Trust is roo
   Device A                    |                       Device B
   App -> FsyncCoreKit (Swift) |                       fsync-cli (or app via FFI)
       -> fsync-ffi -> fsync-core service ...  <== iroh QUIC ==>  fsync-core service
-  ALPNs: fsync/pair/1 (pairing), fsync/clip/1 (clip offers), fsync/file/1 (file fetch)
+  ALPNs: fsync/pair/1 (pairing), fsync/clip/2 (clip offers), fsync/file/1 (file fetch)
   Path: direct (LAN / hole punch) or iroh relay (sees ciphertext only)
 ```
 
@@ -94,7 +94,7 @@ Mac-side logic lives in `FsyncMacCore/Clipboard`, `Files`, `Settings` and `Featu
 | `net/` | iroh node builder and `Node`: accept gate (only pinned devices), discovery fed from presence (trusted peers only), path tracking (`Lan` / `Relay`), dialer, LAN-first `PathSelector` (see [Path selection](#path-selection-lan-first)). |
 | `pair/` | `fsync/pair/1`: SPAKE2 (code mode) or HKDF (QR mode), MAC confirm, 3-word SAS, pairing window with admission limits. |
 | `trust/` | Pinned device-list head and root, chain ingest, reset detection and confirmation, trust stores (`SqliteTrustStore` in history, `FileTrustStore` for CLI/tests). |
-| `clip/` | `fsync/clip/1`: send and receive, echo guard, offer validation, per-peer rate limit, received-offer log. |
+| `clip/` | `fsync/clip/2`: send and receive, echo guard, offer validation, per-peer rate limit, received-offer log. |
 | `file/` | `fsync/file/1`: serve and fetch, CV (chunk-group) outboard via `blake3::hazmat`, resume from `.part`, ranged reads, size and deadline policy. |
 | `blobs/` | `BlobStore` trait, `FsBlobStore`, `EncryptedBlobStore` (FSB1 format). |
 | `history/` | SQLCipher database: items, reps, files, settings, trust. Retention, recovery, migrations. |
@@ -212,11 +212,11 @@ Limits: at most 3 unauthenticated sessions per window, one attempt per source no
 3. Client sends `hello` with its relay URL and direct addresses. It waits up to 300 ms for the relay URL before the first `hello`, re-sends on address change (200 ms debounce), and sends a heartbeat every 20 s.
 4. Backend fans out `peer_update` to listed devices. Core feeds the addresses into iroh discovery, for trusted peers only.
 
-### 4. Clip (`fsync/clip/1`)
+### 4. Clip (`fsync/clip/2`)
 
 1. `publish_clip` builds a `ClipOffer`: each rep is hashed (blake3). Reps are inlined while the 256 KiB budget lasts. Reps over 1 MiB spill to the blob store. Files are snapshotted (size, mtime, blake3).
 2. The item is recorded in history (unless sensitive) and placed in the outbox before any send.
-3. One uni stream per target peer, each with one framed offer. Sends have a 5 s per-peer timeout. Delivery counts when the peer acks the frame.
+3. One bi stream per target peer, each with one framed offer. Sends have a 5 s per-peer timeout. Delivery counts only when the peer answers with the app-level accept byte. A peer that closes the connection with 403 (it no longer trusts us) is reported in `Published.refused`, and `send_files` returns `NotPaired`; this is distinct from offline.
 4. Receiver: checks that the offer origin matches the connection peer, validates it (versions, hashes, budgets, `rel_path` safety), deduplicates by `item_id`, records history, then emits `RemoteClip`.
 5. Latency in the last e2e runs: about 0.02-0.03 s on LAN and on relay. The bound in the demo is 5 s.
 

@@ -1,0 +1,37 @@
+{
+  "run_id": "261016155651-93369",
+  "git_sha": "65b69a4-dirty",
+  "mib": 16,
+  "docker": {
+    "cpus": 10,
+    "mem_gb": 7.7
+  },
+  "duration_s": 29,
+  "build_s": 26,
+  "strict": true,
+  "scenarios": [
+    {
+      "id": "n8",
+      "result": "PASS",
+      "gating": true,
+      "secs": 21,
+      "path_expected": null,
+      "path_observed": null,
+      "bytes": {},
+      "clip_latency_s": null,
+      "file_secs": null,
+      "mib_s": null,
+      "sha_ok": null,
+      "cli_path": null,
+      "cli_path_tier": null,
+      "notes": "N8: every B clip put (3 of 3) and the file push were refused with the typed error; A received and stored nothing; slowest B clip put 5s, file push refused in 2s"
+    }
+  ],
+  "counts": {
+    "PASS": 1,
+    "FAIL": 0,
+    "QUARANTINED": 0,
+    "SKIP": 0
+  },
+  "quarantined_gating": []
+}

@@ -2,6 +2,15 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-10-16 - N8: senders learn when a peer refused them
+
+### Fixed
+- Core: after a peer removed or reset a device, the sender was told "delivered" because clip/1 only had a transport ack (the accept gate closes with 403 after the handshake). Clip offers now use `fsync/clip/2` (bi stream, the receiver answers with an app-level ack byte). "Delivered" means accepted. A 403 close is `Published.refused` (`CoreError::PeerRefused`); `send_files` and `clip put` return `NotPaired`, not `PeerOffline`. Rate-limit and invalid-offer replies stay in `failed`.
+- Wire: ALPN bumped, no compatibility. A clip/1 peer fails the handshake at once, never hangs. No FFI change: the app `Published` record folds `refused` into `failed`; the error reuses `NotPaired`.
+
+### Verification
+- `tests/clip_refusal_feedback.rs` fails with the old transport-ack behavior and passes now. The netns N8 scenario asserts the refusal on every try.
+
 ## 2026-10-15 - LAN-first path selection and macOS history device names
 
 ### Added

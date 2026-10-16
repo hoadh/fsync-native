@@ -20,6 +20,16 @@ All Docker objects are named `fsync-netns-*` and labelled `fsync.e2e=netns`; the
 The cache volumes `fsync-netns-cargo`, `fsync-netns-rustup` and `fsync-netns-build` have fixed names, so
 concurrent runs are not supported.
 
+## N8 (trust reset) and the refusal ack
+
+N8 asserts that after A resets trust, every B `clip put` and the B file push fail with `not paired with that device`
+(the typed refusal) and FAILs if any is reported delivered. Run it alone, and its core counterpart:
+
+```
+NETNS_MIB=16 NETNS_SCENARIOS=n8 NETNS_STRICT=1 tests/e2e/netns-matrix.sh
+cargo test -p fsync-core --test clip_refusal_feedback
+```
+
 ## Result values
 
 | result | meaning |
