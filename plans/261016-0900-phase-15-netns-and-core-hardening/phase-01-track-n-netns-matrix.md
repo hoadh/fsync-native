@@ -7,7 +7,7 @@
 - Four-track [plan](../261015-0410-four-track-hardening/plan.md) Next action 12
 
 ## Overview
-- Priority P1 | Status: Pending | Effort 2.5d | Branch `track-n/netns-matrix` (worktree off main 68d7ae6)
+- Priority P1 | Status: Completed (N3, N4 quarantined) | Effort 2.5d | Branch `track-n/netns-matrix` (worktree off main 68d7ae6), merged 05890e3
 - One privileged Linux container on this Mac builds fsync-cli, backend and the spike relay for aarch64, wires netns topologies, runs N1-N9, asserts path from veth byte counters, writes metrics JSON.
 - Ownership: `tests/e2e/**`, `docs/test-results/**` only. Product bugs found are filed as findings (report), never fixed here.
 
@@ -100,17 +100,17 @@ Delete: none.
 10. Full warm run, time it, commit JSON. Report to `plans/reports/` (path from hook naming).
 
 ## Todo List
-- [ ] Worktree + spike (mDNS, iptables, QAD/N3 feasibility)
-- [ ] lib/netns-topology.sh, lib/assert.sh, lib/cli-session.sh
-- [ ] netns-matrix.sh + Dockerfile + run-in-container.sh
-- [ ] N1, N2, N5 green
-- [ ] N3, N4
-- [ ] N7, N9, N8
-- [ ] N6 best-effort, security best-effort
-- [ ] run-matrix.sh `netns` scenario
-- [ ] metrics JSON + docs/test-results/README.md
-- [ ] p0 refactor + regression PASS
-- [ ] warm run < 15 min; fmt/clippy/test workspace unaffected
+- [x] Worktree + spike (mDNS, iptables, QAD/N3 feasibility)
+- [x] lib/netns-topology.sh, lib/assert.sh, lib/cli-session.sh
+- [x] netns-matrix.sh + Dockerfile + run-in-container.sh
+- [x] N1, N2, N5 green (N2 needed K backend-down start)
+- [ ] N3, N4: QUARANTINED, not green (N3 no QAD on local relay; N4 clip 4.0 s vs 1.5 s). Owner Q1/Q2
+- [x] N7, N9, N8
+- [x] N6 best-effort, security best-effort (sec SKIP, reason recorded)
+- [x] run-matrix.sh `netns` scenario
+- [ ] metrics JSON committed (JSON exists, untracked; docs/test-results/README.md exists)
+- [x] p0 refactor + regression PASS (MIB=16)
+- [x] warm run < 15 min (~3 min at MIB=64); fmt/clippy/test workspace unaffected
 
 ## Success Criteria
 - `tests/e2e/run-matrix.sh --scenarios netns` exits 0; every gating scenario PASS or QUARANTINED with a lead-approved finding.
@@ -139,3 +139,11 @@ Dev-mode backend with throwaway Postgres and `@example.test` emails; no secrets,
 
 ## Next Steps
 Lead: tick MVP phase-15 todos, link JSON. Later: nightly Linux CI job (needs GitHub billing), lab runners, 1 GiB variant.
+
+## Results (merged main 026fb5a)
+- Reviews: 8.8, then 9.5 (0 critical). Final run at MIB=64: n1, n2, n5, n3b, n6, n7, n8, n9 PASS. n3, n4 QUARANTINED. sec SKIP.
+- Strict mode (`NETNS_STRICT=1`) red only from n3/n4. Non-strict rc 0.
+- Metrics: `docs/test-results/netns-261016-1643.json` (strict), `netns-261016-1649.json`. Not committed yet.
+- Negative check: N1 expect relay FAILs. p0 MIB=16 PASS. Docker: no fsync-netns leftovers.
+- Quarantine causes: N3 no QUIC address discovery on local relay. N4 relay path OK, first connect ~4 s (iroh net report ~3 s, see Track K round 2 B).
+- Open: Q1 (N3 QAD hook) and Q2 (N4 early relay advertising) need owner decision. JSON commit pending.

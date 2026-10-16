@@ -1,6 +1,6 @@
 # Development Roadmap
 
-Last updated: 2026-10-15. Plan of record: [plans/261013-2029-fsync-native-mvp](../plans/261013-2029-fsync-native-mvp/plan.md). Its phase files still show "pending"; this page is the current status.
+Last updated: 2026-10-16. Plan of record: [plans/261013-2029-fsync-native-mvp](../plans/261013-2029-fsync-native-mvp/plan.md). Its phase files still show "pending"; this page is the current status.
 
 ## Phase Status
 
@@ -20,7 +20,7 @@ Last updated: 2026-10-15. Plan of record: [plans/261013-2029-fsync-native-mvp](.
 | 12 | macOS app: clipboard, files, history, settings | Implemented; automated tests pass; manual QA open | Clipboard sync (auto/manual), privacy filters, history, settings, file clips, incoming offers, transfers, retention. Swift tests green (222 run, 18 skipped); integration script against a real backend and relay (run locally, needs Docker). 2026-10-15: uses core `relay_urls`; copy-back of full history content via `history_item_reps`. Open: manual QA. |
 | 13 | Windows app: shell, auth, pairing, devices | Partial | `apps/windows`: WinUI 3 tray app, DPAPI secrets, sign-in, pairing (code/QR/SAS), devices, start with Windows; `tests/e2e/pair-with-cli.ps1` PASS against fsync-cli. 2026-10-15: relay list in `FSYNC_RELAY`, DPAPI pending revoke, sign-out always completes locally, C# bindings regenerated. Open: pairing with the Mac app, ARM64 hardware. |
 | 14 | Windows app: clipboard, files, history, settings | Merged 2026-10-15; manual GUI QA open | Clipboard sync, files, history, settings. Default hotkeys Win+Alt+C / Win+Alt+V. Windows 11 x64: `dotnet` 144/144 (includes the S5 relay and revoke work); 2026-10-15 round 2: History Copy with full content, 156/156 on merged main. Open: manual GUI QA. |
-| 15 | Cross-OS integration and network test matrix | Not started | Harness depends on 10. |
+| 15 | Cross-OS integration and network test matrix | In progress | Netns matrix N1-N9 (`tests/e2e/netns`) runs in a privileged container: 8 PASS, n3 and n4 QUARANTINED (no direct path on the test relay; ~4 s first connect). Core hardening (offline start, fetch retry, redial stages, path tier, N8 refusal ack) merged. Cross-OS not started. |
 | 16 | Release: signing, notarization, auto-update | Not started | Depends on 10, 12, 14. |
 
 Phase names and dependencies follow the MVP plan. Its own status column still reads "pending" or "Partial"; the table above is the current state.
@@ -52,5 +52,6 @@ Phase names and dependencies follow the MVP plan. Its own status column still re
 | 2026-10-15 | OTP email over Gmail SMTP with a global send cap; relay-only deploy mode; Singapore relay live; Windows phase 14 merged |
 | 2026-10-15 | Multiple relays in core and FFI (home relay by latency); `logout_confirmed` and `revoke_session`; pending revoke on macOS and Windows (main 461dd57) |
 | 2026-10-15 | Hardening round 2 merged into local main (`3c405b1`): core redial after peer restart (~2 s), `history_item_reps` and typed `EngineAlreadyRunning`, macOS and Windows copy-back, `/health/otp`, health probe, rollback guard, off-box backups; rollback rehearsal incident (about 5 min API 502) |
+| 2026-10-16 | Core hardening and netns matrix merged into local main (`026fb5a`): offline start from the cached list (7-day bound), fetch retry, staged redial cleanup, CLI `path` tier, clip/2 refusal ack (N8) |
 
 See [project-changelog.md](./project-changelog.md) for details.

@@ -30,6 +30,31 @@ NETNS_MIB=16 NETNS_SCENARIOS=n8 NETNS_STRICT=1 tests/e2e/netns-matrix.sh
 cargo test -p fsync-core --test clip_refusal_feedback
 ```
 
+## Latest runs (phase 15, tree 026fb5a)
+
+Both runs: 64 MiB, `git_sha` `026fb5a-dirty` (the tree had untracked files only), same result set.
+
+| file | mode | PASS | FAIL | QUARANTINED | SKIP | duration |
+| --- | --- | --- | --- | --- | --- | --- |
+| `netns-261016-1643.json` | `NETNS_STRICT=1` (exit 1 by design) | 8 | 0 | 2 (n3, n4) | 1 | 309 s |
+| `netns-261016-1649.json` | non-strict (exit 0) | 8 | 0 | 2 (n3, n4) | 1 | 297 s |
+
+| id | result | gating | secs | path (byte counters) | notes |
+| --- | --- | --- | --- | --- | --- |
+| n1 LAN | PASS | yes | 5 | lan | clip 0.01 s |
+| n2 WAN down | PASS | yes | 84 | lan | CLI starts from the cached list |
+| n5 force-relay | PASS | yes | 3 | relay | |
+| n3 full-cone NAT | QUARANTINED | yes | 16 | relay | no direct path: the local relay has no QUIC address discovery (webpki-only trust) |
+| n3b stateful firewalls | PASS | yes | 16 | direct | |
+| n4 symmetric NAT | QUARANTINED | yes | 16 | relay | clip 4.03 s against the 1.5 s spec; the same first-connect stall as N3 |
+| n7 offline peer | PASS | yes | 29 | - | B seen offline after 3 s |
+| n9 backend down | PASS | yes | 67 | lan | CLI starts from the cached list |
+| n6 re-address, 1 GiB | PASS | no | 44 | - | re-addressed mid-transfer |
+| n8 reset trust | PASS | yes | 22 | - | all 3 clip puts and the file push refused with the typed error |
+| sec unpaired dial | SKIP | no | 0 | - | not expressible through the CLI; core tests cover it |
+
+N2 and N9 were QUARANTINED before the offline start (see [changelog](../project-changelog.md)); the N3 and N4 causes are open.
+
 ## Result values
 
 | result | meaning |
@@ -41,8 +66,8 @@ cargo test -p fsync-core --test clip_refusal_feedback
 
 The run prints `summary: PASS=.. FAIL=.. QUARANTINED=.. SKIP=..` and, when a gating scenario is quarantined, a
 `WARNING` line naming it. By default that does not fail the run; with `NETNS_STRICT=1` it does.
-A quarantined scenario that starts working promotes itself to PASS (N2, N9 once the CLI starts without the
-backend; N3 once a direct path appears).
+A quarantined scenario that starts working promotes itself to PASS (N2 and N9 did, once the CLI started without
+the backend; N3 and N4 still wait for a direct path and a faster first connect).
 
 ## Schema
 
@@ -56,6 +81,8 @@ interface byte counters), `bytes{relay,wan_a,wan_b,host_a}`, `clip_latency_s`, `
 
 `cli_path` / `cli_path_tier` are what the CLI itself reports (`path` on `sent`, `path_tier` on `fetched`). They are
 informational and null when the CLI does not emit the field; the byte-counter classification is authoritative.
+Caveat: in the 1643 run the CLI reported `direct` for n1 and n9, where the byte counters say `lan`. Do not use
+`cli_path` to judge LAN in netns until that is explained.
 
 ## Path classification
 

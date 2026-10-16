@@ -41,7 +41,7 @@ login_verify(email, code) throws -> SessionTokens
 set_session(tokens: SessionTokens) throws         // restore at launch
 logout() throws                                   // clears session, presence and pinned trust
 logout_confirmed() throws -> Bool                 // logout() + whether the revoke settled (see below)
-ensure_account() throws -> AccountState           // Created | Ready | NeedsPairing
+ensure_account() throws -> AccountState           // Created | Ready | NeedsPairing; Ready also when the backend is unreachable and the cached list is < 7 days old
 // trust reset (ADR 012)
 reset_account_trust() throws -> AccountState      // Created; needs session + server list, no pin; ReauthRequired -> OTP again
 pending_trust_resets() -> [TrustResetInfo]        // resets waiting for an answer

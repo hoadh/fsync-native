@@ -4,9 +4,10 @@
 - Design §7 success metrics; [phase-08](phase-08-core-history-ffi-cli.md) CLI harness; [phase-10](phase-10-infra-relay-backend-deploy.md) staging; apps [12](phase-12-macos-clipboard-files-history.md), [14](phase-14-windows-clipboard-files-history.md)
 
 ## Overview
-- Priority: P1 | Status: in progress (harness skeleton only; netns N1-N9 not started) | Effort: harness 2 wk (B, P1 w2-5) + execution 2-3 wk (all, P1 w10-13)
+- Priority: P1 | Status: done with known quarantines (netns N3, N4; security SKIP) | Effort: harness 2 wk (B, P1 w2-5) + execution 2-3 wk (all, P1 w10-13)
 - Automated CLI-level network matrix (Linux netns + real mac/win runners) + scripted manual QA for UI/clipboard/paste targets. Gate for release.
 - Round 2 (2026-10-15, D7): `tests/e2e/run-matrix.sh` (scenario `p0`, relays local + sg) PASS: local 239 s, sg 51 s (~0.38 MiB/s, clip 0.53 s), MIB=8, watchdog and signal forwarding verified. Only the p0 scenario exists; none of the todo items below are done. Manual QA rows: `plans/reports/qa-checklist-261015-macos-manual.md` (macOS only).
+- Round 3 (2026-10-16, main 026fb5a, [four-track phase 15 plan](../261016-0900-phase-15-netns-and-core-hardening/plan.md)): netns at MIB=64: n1, n2, n5, n3b, n6, n7, n8, n9 PASS; n3, n4 QUARANTINED (no QUIC address discovery on local relay; relay clip 4.0 s vs 1.5 s); sec SKIP (core tests cover). Strict run red only from n3/n4. p0 MIB=16 PASS. JSON: `docs/test-results/netns-261016-1643.json` (not yet committed).
 - Ad hoc runs 2026-10-14 (not the harness): Track X Mac↔Win over Tailscale (pair, clip, 64 MiB both ways, hash OK); public staging two-client e2e (direct + relay, 16 MiB hash OK); P0 e2e local relay. netns N1-N9, nightly, lab runners not started.
 
 ## Key Insights
@@ -61,12 +62,12 @@ docs/qa-checklist.md
 5. Metrics collection → compare to targets.
 
 ## Todo List
-- [ ] netns lib + N1/N2/N5
-- [ ] N3/N4/N6-N9
-- [ ] Security cases
+- [x] netns lib + N1/N2/N5
+- [ ] N3/N4 (QUARANTINED, owner decision pending); [x] N6-N9
+- [ ] Security cases (netns sec SKIP; core tests cover part)
 - [ ] Cross-OS runners
 - [ ] QA checklist + RC run
-- [ ] Metrics report
+- [ ] Metrics report (JSON exists; commit pending)
 
 ## Success Criteria
 - All N1-N9 + security cases green nightly 5 consecutive days; metrics meet design §7; QA checklist 100% must-items pass on Win10, Win11, macOS N and N-1.

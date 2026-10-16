@@ -7,7 +7,7 @@
 - Code: `core/fsync-core/src/net/dialer.rs`, `file/fetch_client.rs`, `file/resume.rs`, `clip/send.rs` (pattern to copy), `service/lifecycle.rs`, `service/engine_release.rs`, `net/path_state.rs`, `net/lan_first_path_selector.rs`, `core/fsync-cli/src/{main,cmd_files,cmd_account,ctx}.rs`
 
 ## Overview
-- Priority P1 | Status: Pending | Effort 1d | Branch `track-k/core-hardening` (worktree off main 68d7ae6)
+- Priority P1 | Status: Completed (merged after 4 review rounds; scope deviations below) | Effort 1d | Branch `track-k/core-hardening` (worktree off main 68d7ae6)
 - K1 fetch retry on dead cached connection. K2 engine.lock M1/M2: verify and close (already fixed on main). K3 CLI path tier + tracing subscriber.
 - Ownership `core/**` only. No `apps/**`. FFI: no change planned (additive allowed, not needed).
 
@@ -70,13 +70,13 @@ Delete: none.
 8. Report to `plans/reports/`.
 
 ## Todo List
-- [ ] Worktree
-- [ ] K1 regression test (red on main)
-- [ ] K1 fix (green, 10x stable)
-- [ ] K2 own-lingering test + warn; M1/M2 closure note
-- [ ] K3 PathTier + peer_path_tier + tests
-- [ ] K3 CLI path fields + RUST_LOG subscriber
-- [ ] Gates incl. p0 MIB=16, xcframework + swift test
+- [x] Worktree
+- [x] K1 regression test (red on main: hang, 25.4 s)
+- [x] K1 fix (green, 10/10 runs in round 1; 5/5 after round 3 budget change)
+- [x] K2 own-lingering test + warn; M1/M2 closure note (closed by 7817300, 7e92f3d, 7b9cd0f)
+- [x] K3 PathTier + peer_path_tier + tests
+- [x] K3 CLI path fields + RUST_LOG subscriber
+- [x] Gates incl. p0 MIB=16, xcframework + swift test (FsyncMac 231 run, 18 skipped, 0 fail)
 
 ## Success Criteria
 - `fetch_after_peer_restart` fails on 68d7ae6, passes on branch; second fetch < 10 s (was ~30 s fail).
@@ -103,3 +103,18 @@ Retry path keeps trust check (`Dialer::connect` refuses untrusted peers). Tracin
 
 ## Next Steps
 Lead: tick phase-08 M1/M2 and A2 gap; four-track Next action 10 fetch part done; Unresolved 7 answered. Track N may log `path` as cross-check after merge.
+
+## Results (merged main 026fb5a)
+- Reviews 8.6, 9.2, 9.3, 9.6. Gates: fmt, clippy -D warnings, `cargo test --workspace` green. p0 MIB=16 PASS. xcframework + swift test green.
+- K1: fetch retry on dead cached conn done. Protocol answers not retried.
+- K2: lingering-hold warn added. M1/M2 closed on main before K. Phase-08 line 79 is where M1/M2 is listed (not line 90).
+- K3: `PathTier` core-only, no FFI change. `via` unchanged.
+- Backend-down start (added scope, answers Q2): fail-closed offline fallback, 7-day bound via `<data_dir>/list-synced-at`, legacy mtime fallback, future-stamp reject.
+
+Scope changes (deviation vs spec above):
+- `FIRST_ATTEMPT` 2 s -> 5 s. Reason: slow relay (~0.4 MiB/s). Impact: slower stall detection on reused conns.
+- Regression bound 10 s -> 20 s. Last run 11.6 s; spec "second fetch < 10 s" not met on that run. Needs owner sign-off.
+- Redial-stall escalation closes peer's idle, then in-use inbound clip/presence conns (pulls spared). They reconnect on next use.
+- Loopback = `lan`. `fetched` key is `path_tier`.
+- K2 optional bounded wait not implemented.
+- Windows dotnet not run (no FFI change, optional).

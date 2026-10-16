@@ -103,8 +103,8 @@ Full steps and host provisioning: [deploy/operations.md](../deploy/operations.md
 
 ## E2E Matrix
 
-`tests/e2e/run-matrix.sh` runs scenarios `p0` (two CLI devices: pair, clip, file direct and forced relay) and `stack`
-(the compose stack, once) over relay configs `local`, `us`, `sg`, or an https URL. Each cell has a time limit. It is not CI: `us` and `sg`
+`tests/e2e/run-matrix.sh` runs scenarios `p0` (two CLI devices: pair, clip, file direct and forced relay), `stack`
+(the compose stack, once) and `netns` (N1-N9 in network namespaces, privileged Docker, once; see [test results](./test-results/README.md)) over relay configs `local`, `us`, `sg`, or an https URL. Each cell has a time limit. It is not CI: `us` and `sg`
 are production relays. Last recorded run (MiB=8, `p0`, `local,sg`): both PASS (local 239 s, sg 51 s, sg about 0.38 MiB/s).
 
 ## Rules That Are Easy to Miss

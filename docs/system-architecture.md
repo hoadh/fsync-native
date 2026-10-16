@@ -1,6 +1,6 @@
 # System Architecture
 
-Last updated: 2026-10-15. Covers the P0 Rust track (phases 01, 02, 06-09) with its hardening (read-ahead, logout revocation, data-dir lock, multiple relays), the production deployment (phase 10), the macOS FFI package, the macOS app (phases 04, 11, 12) and the Windows app (phases 03 C# half, 13, 14). Windows phase 05 is partial and phases 15-16 are not started; see [development-roadmap](./development-roadmap.md).
+Last updated: 2026-10-16. Covers the P0 Rust track (phases 01, 02, 06-09) with its hardening (read-ahead, logout revocation, data-dir lock, multiple relays), the production deployment (phase 10), the macOS FFI package, the macOS app (phases 04, 11, 12) and the Windows app (phases 03 C# half, 13, 14). Windows phase 05 is partial and phases 15-16 are not started; see [development-roadmap](./development-roadmap.md).
 
 ## Overview
 
@@ -135,6 +135,7 @@ Mac-side logic lives in `FsyncMacCore/Clipboard`, `Files`, `Settings` and `Featu
 - **Inside a tier**: iroh's biased RTT (IPv6 gets −3 ms). A switch needs a 5 ms RTT margin. **Across tiers** the switch is immediate.
 - **LAN test is generic.** `net/local_subnets.rs` counts an interface as LAN when it is up, physical (`netdev` `is_physical()`), not loopback or point-to-point, not tunnel/PPP, and has a gateway. Its subnets are the only LAN criterion. No vendor or Tailscale ranges are used.
 - **Snapshot off the hot path.** `net/subnet_cache.rs` re-reads interfaces every 5 s in the background. `select()` never blocks on it.
+- **Reported tier.** `FsyncService::peer_path_tier` gives the best tier over a peer's live connections (`lan`, `direct`, `relay`). Loopback counts as `lan`. The type is core-only (not in the FFI). The CLI prints it as `path` on `sent` and `devices`, and as `path_tier` on `fetched`.
 - **Failure mode.** A wrong LAN verdict only degrades to iroh's default RTT ordering. Known misses: a full-tunnel VPN whose adapter looks physical and owns the default gateway counts as LAN; `fe80::` peers match a LAN link-local `/64`.
 - **Why.** On one LAN, Tailscale ran 34–56% slower than plain LAN (see [the throughput report](../plans/reports/tester-261015-2130-tailscale-vs-lan-throughput.md)). fsync already encrypts end to end (QUIC/TLS 1.3, pinned node keys), so LAN gives up no security. Verified live: 256 MiB each way over LAN with Tailscale up, 58 and 64 MiB/s.
 - **Pins.** `iroh = "=1.3.0"` with `unstable-custom-transports` (the `PathSelector` API is unstable). `netdev` 0.46 with the `gateway` feature. Re-check both on any iroh or netdev upgrade.
@@ -217,7 +218,7 @@ Limits: at most 3 unauthenticated sessions per window, one attempt per source no
 1. `publish_clip` builds a `ClipOffer`: each rep is hashed (blake3). Reps are inlined while the 256 KiB budget lasts. Reps over 1 MiB spill to the blob store. Files are snapshotted (size, mtime, blake3).
 2. The item is recorded in history (unless sensitive) and placed in the outbox before any send.
 3. One bi stream per target peer, each with one framed offer. Sends have a 5 s per-peer timeout. Delivery counts only when the peer answers with the app-level accept byte. A peer that closes the connection with 403 (it no longer trusts us) is reported in `Published.refused`, and `send_files` returns `NotPaired`; this is distinct from offline.
-4. Receiver: checks that the offer origin matches the connection peer, validates it (versions, hashes, budgets, `rel_path` safety), deduplicates by `item_id`, records history, then emits `RemoteClip`.
+4. Receiver: re-checks trust before each offer (a removed peer's connection is closed with 403, nothing is acked), then checks that the offer origin matches the connection peer, validates it (versions, hashes, budgets, `rel_path` safety), deduplicates by `item_id`, records history, then emits `RemoteClip`.
 5. Latency in the last e2e runs: about 0.02-0.03 s on LAN and on relay. The bound in the demo is 5 s.
 
 ### 5. File transfer (`fsync/file/1`)
@@ -242,12 +243,36 @@ Limits: at most 3 unauthenticated sessions per window, one attempt per source no
 
 ### 8. Redial after a peer restarts
 
-A peer that crashes and comes back with the same node id on a new port used to stay unreachable for 15-30 s: iroh kept a stale selected path while old connections were still alive, so new handshakes went to the dead path until idle timeout.
+A peer that crashes and comes back with the same node id on a new port used to stay unreachable for 15-30 s: iroh kept a stale selected path while any connection to that peer was alive, so new handshakes went to the dead path until idle timeout.
 
-1. The first dial attempt has a 2 s budget (`net/dialer.rs`, `FIRST_ATTEMPT`).
-2. On stall, outbound same-ALPN connections opened by the shared `Dialer` are closed as stale (`Gate::close_stale`, code 410). Other ALPNs are left alone.
-3. The dial retries with the current addresses (`Discovery::addr_for`). Measured: about 2 s. Covered by `core/fsync-core/tests/dial_after_restart.rs` (crash, graceful restart, ALPN scoping).
-4. Gap: the file and rep fetch paths do not retry on a dead cached connection. Clip send does.
+1. Dial (`net/dialer.rs`, `dial_with_recovery`): the first attempt has a 2 s budget (`FIRST_ATTEMPT`). Each stalled attempt escalates one stage, then the dial uses the rest of its budget with the current addresses (`Discovery::addr_for`):
+
+| Stalled attempt | Cleanup | What is spared |
+|---|---|---|
+| 1 | Our own older outbound connections for this ALPN are forgotten and closed (`Gate::close_stale`, code 410) | Other ALPNs, inbound connections |
+| 2 | The peer's idle inbound connections are closed (`InboundCleanup::IdleOnly`) | Any connection that received bytes since the dial began |
+| 3 | Its in-use clip and presence connections too (`AllButPulls`) | Running file pulls (`fsync/file/1`) |
+
+   Measured: about 2 s on the restart test. Stage 3 closes the restarted peer's fresh clip or presence connection; it reconnects on next use. Covered by `core/fsync-core/tests/dial_after_restart.rs` and `close_inbound_spares_in_use_connections_until_the_last_stage`.
+2. File fetch (`file/fetch_client.rs`): a cached connection gets a 5 s first attempt. On a timeout, or a closed connection, `Dialer::abandon` drops it (closing it only if it received no bytes since the request began), and the request is repeated once on a fresh dial. Protocol answers (`Denied`, `NotFound`, `Changed`, `Integrity`) are never retried. Covered by `core/fsync-core/tests/fetch_after_peer_restart.rs` (the unfixed code hangs past 25 s).
+
+### 9. Offline start (cached device list)
+
+When the backend is unreachable, `ensure_account` can still return `Ready` from the pinned device list, so paired peers keep working without it (`service/account.rs`, `offline_fallback`). Presence retries in the background.
+
+| Rule | Where |
+|---|---|
+| Only `CoreError::Unreachable` qualifies: a timeout, a connect failure (refused, reset, aborted, not connected, host or network unreachable, addr not available), or a DNS error | `api/reachability.rs` (`is_unreachable`), `api/check.rs` |
+| Everything else stays an error: TLS and certificate failures, bad or oversized bodies, and every HTTP status, including 502, 503 and 504 (a proxy can send them) | same |
+| The device must be in its own pinned list. A device with nothing pinned still errors | `offline_fallback` |
+| The list must have been confirmed within 7 days (`MAX_AGE_SECS`) | `service/list_freshness.rs` |
+
+Age clock:
+
+- Every successful device-list sync stamps `core/list-synced-at` (unix seconds, 0600, atomic). Hook: `TrustManager::mark_synced`, so startup, presence-push resync, pairing, device removal and genesis creation all count.
+- An install with no stamp (older than the feature) ages from the mtime of `core/history.db`, which holds the pinned list. It never gets a fresh window from "now". The first successful sync replaces this.
+- A stamp, or mtime, more than 5 min ahead of the clock (`MAX_SKEW_SECS`) is invalid. It falls back to the mtime, or fails closed.
+- Past 7 days the original error is returned and a `stale device list` warning is logged. FFI state is unchanged, so apps see only `ensure_account` returning `Ready` or an error.
 
 ## Storage
 
@@ -270,10 +295,11 @@ A peer that crashes and comes back with the same node id on a new port used to s
 | `identity.key` | Device signing seed, 0600. Apps pass the 32 bytes as `device_secret` (Keychain or DPAPI). |
 | `history.key` | 32-byte history key, 0600. Apps pass `history_key` from Keychain or DPAPI. |
 | `session.json` | Access and refresh tokens, 0600. |
-| `engine.lock` | Exclusive lock (`File::try_lock`) held while an engine runs. A second engine on the same directory fails to start with `Invalid`. Released on `stop()` or drop; a crash never leaves it held. |
+| `engine.lock` | Exclusive lock (`File::try_lock`) held while an engine runs. A second engine on the same directory fails to start with `Invalid`. Released on `stop()` or drop; a crash never leaves it held. If the previous engine is still releasing it, `start()` logs a warning with the remaining hold. |
 | `core/history.db` | SQLCipher database (raw 32-byte key, WAL, `secure_delete`). Tables: `items`, `reps`, `files`, `settings`, `trust`, plus the search index. |
 | `core/history.keycheck` | Keyed blake3 tag of the history key. Tells a wrong key apart from a damaged file. |
 | `core/blobs/` | `<hash>` (encrypted) and `<hash>.part` (staging). |
+| `core/list-synced-at` | Unix seconds of the last successful device-list sync, 0600. Starts the offline-start age clock (see [Offline start](#9-offline-start-cached-device-list)). Absent on older installs. |
 
 Blob format (`FSB1`): 19-byte random nonce prefix, then 64 KiB STREAM-BE32 segments. XChaCha20-Poly1305, AAD is the plaintext blake3. Subkeys come from HKDF-SHA256 with salt `fsync-blobs-v1`. Random-access reads work and truncation fails authentication.
 
@@ -309,7 +335,9 @@ Defaults (settings): history mode Auto, 30 days, 1 GiB size cap, 50 MiB max clip
 
 - Presence and rate-limit state is per instance. The backend is single-instance.
 - Relay: mid-run failover (home relay dies while connected) is unverified; relays do not mesh, so peers on disjoint relays cannot connect ([Relay](#relay)).
-- Redial: file and rep fetches do not retry on a dead cached connection (clip send does) ([Redial](#8-redial-after-a-peer-restarts)).
+- Redial: a stalled redial closes the restarted peer's in-use clip and presence connections (stage 3, [Redial](#8-redial-after-a-peer-restarts)). They reconnect on next use, and running pulls are spared.
+- Offline start: a device whose list is never re-synced ages out after 7 days. Any successful sync resets the clock, so an app that calls `ensure_account` at each start rarely hits this.
+- Netns: a direct path behind full-cone NAT (N3) is not verified, because the test relay has no QUIC address discovery. First connect through the relay takes about 4 s (N4 misses its 1.5 s target). Both are quarantined in [test results](./test-results/README.md).
 - No Postgres TLS (`tls-rustls` not enabled in sqlx).
 - Email: Gmail SMTP is the only real sender. Gmail's consumer limit (about 500 recipients per day) is enforced by `OTP_DAILY_SEND_CAP` (450 per rolling 24 h). A transactional provider is needed before real traffic (only the `SMTP_*` values change).
 - Root of a fresh device's chain is learned only when a chain through the head is seen. An old genesis replayed to a fresh device triggers a reset prompt, not a silent accept.

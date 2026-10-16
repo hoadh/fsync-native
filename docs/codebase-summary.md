@@ -18,7 +18,7 @@ Last updated: 2026-10-15. Repo map for the P0 Rust track, the production deploy 
 | `apps/macos/scripts` | `build-fsync-mac-app.sh` (signed `FsyncMac.app`), `run-fsync-mac-integration.sh` (Docker Postgres + dev backend + relay + CLI, then the integration tests) |
 | `apps/windows` | .NET 8 solution: `Fsync.CoreBindings` (generated C# + native DLL per RID), `Fsync.App.Core` (bridge, DPAPI secrets, view models), `Fsync.App` (WinUI 3 tray app), xUnit tests, UIA e2e script. See its README |
 | `scripts` | `gen-bindings.sh` (Swift bindings + headers), `build-xcframework.sh` (universal static lib, xcframework), `gen-bindings-cs.ps1` (C# bindings), `build-windows-dll.ps1` (`fsync_ffi.dll` per RID) |
-| `tests/e2e` | `p0-exit-demo.sh`: end-to-end demo (backend, CLI, relay in Docker Postgres). `compose-stack-sync.sh`: the production compose stack under Docker (Caddy with a local CA, two CLIs, relay-forced clip and file, backup and restore) |
+| `tests/e2e` | `netns/` and `netns-matrix.sh`: N1-N9 in network namespaces (privileged Docker), results in `docs/test-results/`. `p0-exit-demo.sh`: end-to-end demo (backend, CLI, relay in Docker Postgres). `compose-stack-sync.sh`: the production compose stack under Docker (Caddy with a local CA, two CLIs, relay-forced clip and file, backup and restore) |
 | `spikes/iroh-discovery` | Standalone spike: discovery, relay (`relay [port]`), blob measurements. Not in the workspace |
 | `spikes/ffi-bindings` | Standalone UniFFI crate + C# harness: 10k-callback stress, buffer copy timing (phase 03) |
 | `spikes/macos-clipboard` | Phase 04 spike (own SwiftPM package, not in the workspace): pasteboard watcher, sensitive filter, lazy file writer, `ClipSpikeSelfTest` child-process self-test; results in `results/`. ADR 009 |
@@ -41,7 +41,7 @@ Generated and local (not source): `target/` (Cargo), `build/` (script output: `f
 ### core/fsync-core
 | Module | Purpose |
 |--------|---------|
-| `api` | HTTP client (HTTPS only unless dev flag): `check` (HTTP outcome to `CoreError`), `client/authed` (refresh-on-401), presence session, WS utilities |
+| `api` | HTTP client (HTTPS only unless dev flag): `check` (HTTP outcome to `CoreError`; `reachability` tells an unreachable backend from a TLS or HTTP failure), `client/authed` (refresh-on-401), presence session, WS utilities |
 | `blobs` | Blob store trait, plain FS store, `EncryptedBlobStore` (FSB1), export |
 | `clip` | Clip offers, echo guard, rate limit |
 | `config` | `EngineConfig` |
@@ -49,9 +49,9 @@ Generated and local (not source): `target/` (Cargo), `build/` (script output: `f
 | `file` | File transfer (resume, ranges, locks, policy). Read-ahead: `range_reader` (4 MiB windows, prefetch), `seq_run` (sequential-read detection), `reader_cache` (LRU of readers, per-peer prefetch budget of 8) |
 | `history` | SQLCipher history DB, keycheck, backups, retention |
 | `identity` | Node identity keys |
-| `net` | iroh endpoint, relay URL and path handling. `lan_first_path_selector` (custom iroh `PathSelector`: LAN, then other direct, then relay), `local_subnets` (on-link LAN subnets from physical, up, gatewayed interfaces), `subnet_cache` (5 s background refresh, never blocks `select()`) |
+| `net` | iroh endpoint, relay URL and path handling. `lan_first_path_selector` (custom iroh `PathSelector`: LAN, then other direct, then relay), `local_subnets` (on-link LAN subnets from physical, up, gatewayed interfaces), `subnet_cache` (5 s background refresh, never blocks `select()`), `path_tier` (best live tier per peer: lan, direct, relay) |
 | `pair` | Pairing windows, SPAKE2/HKDF initiator and responder steps |
-| `service` | `FsyncService` facade (login, pairing, devices, clips, transfers, history, presence). `lifecycle` (start/stop, `engine.lock`), `revoke` (logout revocation with background retry) |
+| `service` | `FsyncService` facade (login, pairing, devices, clips, transfers, history, presence). `lifecycle` (start/stop, `engine.lock`), `revoke` (logout revocation with background retry), `list_freshness` (`list-synced-at` stamp and the 7-day offline-start policy), `path_tier` (`peer_path_tier` facade) |
 | `settings` | User settings and validation |
 | `sync` | Sync coordination |
 | `trust` | Device-list chain pinning, trust store (in history DB) |

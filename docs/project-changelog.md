@@ -2,6 +2,30 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-10-16 - Core hardening: offline start, fetch retry, redial stages; CLI path tier; netns matrix
+
+### Added
+- Core: offline start. When the backend is unreachable, a device whose pinned list includes itself keeps working from that list, for up to 7 days after its last device-list sync (`core/list-synced-at`; installs with no stamp age from the `history.db` mtime). Only connect, timeout and DNS errors qualify. TLS, bad bodies and every HTTP status (502, 503 and 504 included) still fail. See [system architecture, section 9](./system-architecture.md#9-offline-start-cached-device-list).
+- CLI: `path` on `sent` and `devices` (`lan`, `direct`, `relay`, or null); `path_tier` on `fetched` (`path` there is the saved file). `RUST_LOG` turns on traces on stderr.
+- Test harness: netns matrix `tests/e2e/netns` (N1-N9 in network namespaces, privileged Docker), run with `run-matrix.sh --scenarios netns`. `NETNS_STRICT=1` fails on a gating quarantine. `NETNS_MAX_S` bounds the run. See [test results](./test-results/README.md).
+
+### Changed
+- CLI `send` no longer waits for presence: the offer dials the peer. It retries only while the peer is offline, within `--wait`. After the offer, the peer must start pulling within max(`--wait`, 10 s), or `send` fails with "did not start fetching the offer".
+- Core redial: stalled dials clean up in stages (own stale outbound, then idle inbound, then in-use clip and presence inbound). Running file pulls are always spared. See [architecture, section 8](./system-architecture.md#8-redial-after-a-peer-restarts).
+
+### Fixed
+- Core: a file fetch on a cached connection could hang after the peer restarted. The first attempt now has 5 s, then one retry on a fresh dial. Protocol answers are not retried.
+- Core: the clip receiver re-checks trust for every offer, so a removed peer is closed with 403 before processing, never acked.
+- Core: a rate-limited offer no longer ends the connection. Its stream is stopped, it gets ack 2, and the connection stays open.
+- Core: starting while our own previous engine still holds `engine.lock` logs a warning with the remaining hold.
+
+### Upgrade
+- No FFI change in this batch. `ensure_account` may now return `Ready` offline (see [FFI contract](./ffi-contract.md)).
+
+### Verification
+- Final merged tree at `026fb5a` (tester, 2026-10-16): fmt and clippy `-D warnings` clean; `cargo test --workspace` 354 passed, 0 failed (two runs); xcframework builds; `swift test` FsyncCoreKit 14 and FsyncMac 231 executed, 18 skipped (integration, needs `FSYNC_IT_API`), 0 failures; `p0` at 16 MiB PASS.
+- Netns 64 MiB: PASS 8, QUARANTINED 2 (n3, n4), SKIP 1, on both strict and non-strict runs. N2 and N9 (backend down) now PASS. n3 and n4 are quarantined for lack of a direct path and a fast first connect, see the results page.
+
 ## 2026-10-16 - N8: senders learn when a peer refused them
 
 ### Fixed
@@ -12,7 +36,7 @@ Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-n
 - The macOS and Windows apps must be updated together: clip/1 and clip/2 do not interoperate, so a device on the old version cannot send or receive clips with one on the new version.
 
 ### Verification
-- `tests/clip_refusal_feedback.rs` fails with the old transport-ack behavior and passes now. The netns N8 scenario asserts the refusal on every try.
+- `core/fsync-core/tests/clip_refusal_feedback.rs` fails with the old transport-ack behavior and passes now. The netns N8 scenario asserts the refusal on every try.
 
 ## 2026-10-15 - LAN-first path selection and macOS history device names
 
