@@ -11,6 +11,7 @@ publish = false
 iroh = "1.3"
 iroh-blobs = "0.103"
 iroh-relay = { version = "1.3", features = ["server"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 iroh-mdns-address-lookup = "0.6"
 tokio = { version = "1", features = ["full"] }
 n0-error = "1"

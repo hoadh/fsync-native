@@ -15,6 +15,8 @@ pub mod path_state;
 pub mod path_tier;
 pub mod relays;
 pub mod subnet_cache;
+#[cfg(feature = "test-relay-ca")]
+pub mod test_relay_ca;
 
 pub use dialer::Dialer;
 pub use discovery::Discovery;

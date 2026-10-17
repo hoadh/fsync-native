@@ -37,6 +37,8 @@ pub struct NodeBuilder {
     pub(super) relays: Vec<String>,
     pub(super) mdns: bool,
     pub(super) relay_only: bool,
+    #[cfg(feature = "test-relay-ca")]
+    pub(super) relay_ca_pem: Option<Vec<u8>>,
     pub(super) extra: Vec<Extra>,
 }
 
@@ -53,6 +55,12 @@ impl NodeBuilder {
     /// Test flag: drop all IP transports so every path goes through the relay.
     pub fn relay_only(mut self, on: bool) -> Self {
         self.relay_only = on;
+        self
+    }
+    /// Test hook (feature `test-relay-ca`): also trust the CA(s) in this PEM for relay TLS and QAD.
+    #[cfg(feature = "test-relay-ca")]
+    pub fn extra_relay_ca_pem(mut self, pem: Vec<u8>) -> Self {
+        self.relay_ca_pem = Some(pem);
         self
     }
     /// Register a protocol (clip/file in phase 07); it is wrapped by the accept gate.
@@ -81,6 +89,17 @@ impl NodeBuilder {
             .relay_mode(mode)
             .address_lookup(lookup.clone())
             .path_selector(Arc::new(LanFirstPathSelector::default()));
+        #[cfg(feature = "test-relay-ca")]
+        {
+            use super::test_relay_ca::{ca_config_from_env, ca_config_from_pem};
+            let ca = match &self.relay_ca_pem {
+                Some(pem) => Some(ca_config_from_pem(pem)?),
+                None => ca_config_from_env()?,
+            };
+            if let Some(ca) = ca {
+                eb = eb.ca_tls_config(ca);
+            }
+        }
         if self.relay_only {
             eb = eb.clear_ip_transports();
         }

@@ -1,5 +1,7 @@
 //! iroh 1.x spike. Usage:
 //!   relay [port]                       in-process iroh-relay (http, dev mode)
+//!   relay <port> <bind-ip> <cert.pem> <key.pem>
+//!                                      https on port, http (captive probe) on port+1, QAD on udp 7842
 //!   listen   [flags] [--blobs-dir D --blob-mib N]
 //!   dial  <id> [flags]                 connect, report timings + path changes
 //!   bench <id> <MiB> [flags]           upload throughput after path settles
@@ -34,6 +36,29 @@ async fn relay(port: u16) -> Res<()> {
     cfg.relay = Some(RelayConfig::new(([127, 0, 0, 1], port)));
     let server = Server::spawn(cfg).await?;
     println!("RELAY http://{}", server.http_addr().ok_or("no http addr")?);
+    tokio::signal::ctrl_c().await?;
+    server.shutdown().await?;
+    Ok(())
+}
+
+/// Relay with TLS from PEM files (private CA in the netns matrix) and QUIC address discovery.
+/// The client derives the QAD port from the relay URL (default 7842), so QAD binds that port.
+async fn relay_tls(port: u16, ip: std::net::IpAddr, cert: &str, key: &str) -> Res<()> {
+    use iroh_relay::server::{CertConfig, QuicConfig, TlsConfig};
+    use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
+    let certs = CertificateDer::pem_file_iter(cert)?.collect::<Result<Vec<_>, _>>()?;
+    let key = PrivateKeyDer::from_pem_file(key)?;
+    let sc = rustls::ServerConfig::builder_with_provider(std::sync::Arc::new(rustls::crypto::ring::default_provider()))
+        .with_safe_default_protocol_versions()?
+        .with_no_client_auth()
+        .with_single_cert(certs, key)?;
+    let mut relay = RelayConfig::new((ip, port + 1));
+    relay.tls = Some(TlsConfig::new((ip, port), CertConfig::Manual { server_config: sc }));
+    let mut cfg = ServerConfig::default();
+    cfg.relay = Some(relay);
+    cfg.quic = Some(QuicConfig::new((ip, 7842)));
+    let server = Server::spawn(cfg).await?;
+    println!("RELAY https://{} quic {}", server.https_addr().ok_or("no https addr")?, server.quic_addr().ok_or("no quic addr")?);
     tokio::signal::ctrl_c().await?;
     server.shutdown().await?;
     Ok(())
@@ -161,6 +186,7 @@ async fn main() -> Res<()> {
     let Some((cmd, rest)) = args.split_first() else { return Err("no command".into()) };
     let (o, pos) = node::parse(rest)?;
     match cmd.as_str() {
+        "relay" if pos.len() == 4 => relay_tls(pos[0].parse()?, pos[1].parse()?, &pos[2], &pos[3]).await,
         "relay" => relay(pos.first().map(|p| p.parse()).transpose()?.unwrap_or(3340)).await,
         "listen" => listen(o, pos).await,
         "dial" => dial(o, pos[0].parse()?).await,

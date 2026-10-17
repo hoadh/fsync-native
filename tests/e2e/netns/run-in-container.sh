@@ -23,13 +23,14 @@ cleanup() {
   for p in ${PIDS[@]+"${PIDS[@]}"} $(cat "$WORK"/*.pid 2>/dev/null); do kill "$p" 2>/dev/null || true; done
   topo_destroy
   cp -R "$WORK" /out/work 2>/dev/null || true
+  rm -rf /out/work/relay-tls   # throwaway CA/relay keys never leave the container
 }
 trap cleanup EXIT
 
 if [[ -z "${SKIP_BUILD:-}" ]]; then
   log "build (release, cached)"
   B0=$SECONDS
-  (cd /src && CARGO_TARGET_DIR=/build/ws cargo build --release --locked -p fsync-backend -p fsync-cli) || fail "workspace build"
+  (cd /src && CARGO_TARGET_DIR=/build/ws cargo build --release --locked -p fsync-backend -p fsync-cli --features fsync-cli/test-relay-ca) || fail "workspace build"
   (cd /src/spikes/iroh-discovery && CARGO_TARGET_DIR=/build/spike cargo build --release --locked) || fail "spike build"
   log "build took $((SECONDS - B0))s"
 fi
@@ -44,7 +45,7 @@ topo_build || fail "topology"
 : >"$WORK/backend.log"
 backend_start
 relay_start
-API="http://$API_ADDR"; RELAY="http://100.64.0.2:$RELAY_PORT"
+API="http://$API_ADDR"; RELAY="https://100.64.0.2:$RELAY_PORT"
 use_pair lan
 
 EMAIL="e2e-$$@example.test"
