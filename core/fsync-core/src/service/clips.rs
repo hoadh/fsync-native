@@ -146,7 +146,9 @@ impl FsyncService {
     }
 
     /// Sends files/folders to one paired device ("Send to..."); progress and completion arrive
-    /// as `Send` transfer events for the returned id. `NotPaired` if we have no such paired device, `PeerRefused` if the peer no longer trusts us, `PeerOffline` if it did not take the offer.
+    /// as `Send` transfer events for the returned id. `NotPaired` if we have no such paired
+    /// device, `PeerRefused` if the peer no longer trusts us, `PeerOffline` if it did not take
+    /// the offer.
     pub fn send_files(&self, node_id: &str, paths: Vec<String>) -> SvcResult<u64> {
         self.run(self.inner.send_files(node_id, paths))
     }
