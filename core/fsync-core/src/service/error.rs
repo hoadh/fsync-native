@@ -34,6 +34,10 @@ pub enum FsyncError {
     EngineAlreadyRunning,
     #[error("internal: {0}")]
     Internal(String),
+    /// The other device no longer trusts this one (it removed or reset us). Unlike `NotPaired`
+    /// (we have no such paired device locally), the peer is still in our list.
+    #[error("the other device removed this one")]
+    PeerRefused,
 }
 
 pub type SvcResult<T> = Result<T, FsyncError>;
@@ -48,11 +52,11 @@ impl From<CoreError> for FsyncError {
     fn from(e: CoreError) -> Self {
         match e {
             CoreError::Transfer(TransferError::Integrity) => Self::Integrity,
-            // `PeerRefused`: the other device unpaired us. Same app outcome as a local "not
-            // paired": the device must be paired again, so no new FFI variant.
-            CoreError::Transfer(TransferError::Denied)
-            | CoreError::NotTrusted(_)
-            | CoreError::PeerRefused => Self::NotPaired,
+            CoreError::Transfer(TransferError::Denied) | CoreError::NotTrusted(_) => {
+                Self::NotPaired
+            }
+            // The other device unpaired us: re-pairing is needed, but the peer is still listed here.
+            CoreError::PeerRefused => Self::PeerRefused,
             CoreError::Transfer(t) => Self::Network(t.to_string()),
             CoreError::TooLarge { .. } => Self::TooLarge,
             CoreError::Pair(PairError::Rejected) => Self::Cancelled,

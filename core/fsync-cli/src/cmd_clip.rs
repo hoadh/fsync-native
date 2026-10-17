@@ -45,7 +45,7 @@ pub fn put(c: &Ctx, text: &str, wait: u64) -> Result<()> {
         }
         // Every peer that did not take it no longer trusts us: retrying cannot help.
         if p.failed.is_empty() && !p.refused.is_empty() {
-            bail!(FsyncError::NotPaired);
+            bail!(FsyncError::PeerRefused);
         }
         if attempt == MAX_ATTEMPTS || Instant::now() >= end {
             break;

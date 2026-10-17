@@ -23,6 +23,7 @@ public enum ErrorText {
         case .EngineAlreadyRunning: return "fsync is already running on this Mac."
         case .NotFound: return "This changed. Review it again."
         case .PeerOffline: return "That device is offline."
+        case .PeerRefused: return "That device removed this Mac. Pair again to send to it."
         case .HistoryKeyMismatch: return "The saved history belongs to a different key."
         case .Cancelled: return nil
         case .Io: return generic("io", e)
