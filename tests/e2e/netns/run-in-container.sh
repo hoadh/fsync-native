@@ -23,6 +23,7 @@ cleanup() {
   for p in ${PIDS[@]+"${PIDS[@]}"} $(cat "$WORK"/*.pid 2>/dev/null); do kill "$p" 2>/dev/null || true; done
   topo_destroy
   cp -R "$WORK" /out/work 2>/dev/null || true
+  rm -rf /out/work/relay-tls   # throwaway CA/relay keys never leave the container
 }
 trap cleanup EXIT
 

@@ -63,8 +63,9 @@ async fn private_relay_ca_is_trusted_only_when_passed_in() {
     let (ca_pem, server_config) = private_ca_and_server_config();
     let (_server, url) = https_relay(server_config).await;
 
+    let ca_pem_bytes = ca_pem.into_bytes();
     let trusting = builder(&url)
-        .extra_relay_ca_pem(ca_pem.into_bytes())
+        .extra_relay_ca_pem(ca_pem_bytes.clone())
         .relay_only(true)
         .spawn()
         .await
@@ -73,6 +74,22 @@ async fn private_relay_ca_is_trusted_only_when_passed_in() {
         trusting.wait_online(Duration::from_secs(15)).await,
         "client with the private CA must reach the relay"
     );
+
+    // Verification-level control: the same relay endpoint, handshaken with the exact TLS config
+    // each client uses. Default roots must fail on the issuer; the hook's roots must succeed.
+    let addr = _server.https_addr().unwrap();
+    let ca_cfg =
+        fsync_core::net::test_relay_ca::ca_config_from_pem(ca_pem_bytes.as_slice()).unwrap();
+    let err = handshake(addr, iroh::tls::CaTlsConfig::embedded())
+        .await
+        .expect_err("default roots must reject a private CA");
+    assert!(
+        err.contains("UnknownIssuer"),
+        "expected a verification failure, got: {err}"
+    );
+    handshake(addr, ca_cfg)
+        .await
+        .expect("hook roots must verify the relay cert");
 
     let plain = builder(&url).relay_only(true).spawn().await.unwrap();
     assert!(
@@ -88,4 +105,19 @@ async fn malformed_ca_pem_is_rejected_at_spawn() {
         .spawn()
         .await;
     assert!(res.is_err());
+}
+
+/// TLS handshake to the relay with `ca`; the error text names the verification failure.
+async fn handshake(addr: std::net::SocketAddr, ca: iroh::tls::CaTlsConfig) -> Result<(), String> {
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let cfg = ca.client_config(provider).map_err(|e| e.to_string())?;
+    let tcp = tokio::net::TcpStream::connect(addr)
+        .await
+        .map_err(|e| e.to_string())?;
+    let name = rustls::pki_types::ServerName::IpAddress(addr.ip().into());
+    tokio_rustls::TlsConnector::from(Arc::new(cfg))
+        .connect(name, tcp)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }

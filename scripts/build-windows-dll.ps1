@@ -37,6 +37,10 @@ try {
         rustup target add $triple | Out-Null
         cargo build -p fsync-ffi --release --target $triple
         if ($LASTEXITCODE -ne 0) { throw "cargo build failed for $triple" }
+        # Shipped builds must never carry the test-only cargo features.
+        $tree = cargo tree -e normal,build,features -p fsync-ffi --target $triple
+        if ($LASTEXITCODE -ne 0) { throw "cargo tree failed for $triple" }
+        if ($tree | Select-String -Pattern 'test-relay-ca|test-hooks') { throw "test-only feature enabled in the fsync-ffi release build ($triple)" }
 
         $dest = Join-Path $Proj "runtimes\$rid\native"
         New-Item -ItemType Directory -Force $dest -ErrorAction Stop | Out-Null
