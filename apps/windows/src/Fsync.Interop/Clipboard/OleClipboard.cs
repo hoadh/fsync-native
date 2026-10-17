@@ -40,10 +40,10 @@ public static class OleClipboard
     public static void Flush() => Retry(OleFlushClipboard);
 
     /// <summary>Empties the clipboard if we own it (exit policy for lazy entries).</summary>
-    public static void ClearIfCurrent(IDataObject obj)
-    {
-        if (IsCurrent(obj)) Retry(() => OleSetClipboard(null));
-    }
+    public static void ClearIfCurrent(IDataObject obj) =>
+        // Ownership is re-checked on every attempt: the user may copy something else while we
+        // wait, and that entry must survive.
+        Retry(() => IsCurrent(obj) ? OleSetClipboard(null) : 0);
 
     /// <summary>Reads the clipboard as an IDataObject.</summary>
     public static IDataObject Get()
