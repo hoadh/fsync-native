@@ -25,6 +25,7 @@ pub fn put(c: &Ctx, text: &str, wait: u64) -> Result<()> {
     c.settle_presence(Duration::from_secs(wait));
     let settle_ms = started.elapsed().as_millis() as u64;
     let first_publish_ms = unix_ms();
+    let mut refused_by: Vec<String> = vec![];
     for attempt in 1..=MAX_ATTEMPTS {
         let clip = LocalClip {
             reps: vec![ClipRep {
@@ -43,6 +44,7 @@ pub fn put(c: &Ctx, text: &str, wait: u64) -> Result<()> {
             );
             return Ok(());
         }
+        refused_by = p.refused.clone();
         // Every peer that did not take it no longer trusts us: retrying cannot help.
         if p.failed.is_empty() && !p.refused.is_empty() {
             bail!(FsyncError::PeerRefused);
@@ -51,6 +53,14 @@ pub fn put(c: &Ctx, text: &str, wait: u64) -> Result<()> {
             break;
         }
         std::thread::sleep(Duration::from_secs(1));
+    }
+    if !refused_by.is_empty() {
+        // Some peers were offline, others removed us: say which, so the user can re-pair them.
+        bail!(
+            "{}; removed this device: {}",
+            FsyncError::PeerOffline,
+            refused_by.join(", ")
+        );
     }
     bail!(FsyncError::PeerOffline)
 }

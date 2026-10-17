@@ -97,6 +97,7 @@ HistoryPage { items, next_cursor? }
 Settings { clip_mode: Auto|Manual, retention_days, retention_bytes, max_clip_bytes, denylist, auto_accept_files }
 FsyncError { NotPaired, PeerOffline, Network{msg}, Integrity, TooLarge, Auth, ReauthRequired, Io{msg},
              Cancelled, NotFound, HistoryKeyMismatch, Invalid{msg}, Internal{msg}, EngineAlreadyRunning, PeerRefused }
+// NotPaired: no such paired device here. PeerRefused: the peer removed or reset this device.
 // EngineAlreadyRunning (index 14) and PeerRefused (index 15) are unit variants, appended last.
 ```
 

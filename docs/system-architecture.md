@@ -217,7 +217,7 @@ Limits: at most 3 unauthenticated sessions per window, one attempt per source no
 
 1. `publish_clip` builds a `ClipOffer`: each rep is hashed (blake3). Reps are inlined while the 256 KiB budget lasts. Reps over 1 MiB spill to the blob store. Files are snapshotted (size, mtime, blake3).
 2. The item is recorded in history (unless sensitive) and placed in the outbox before any send.
-3. One bi stream per target peer, each with one framed offer. Sends have a 5 s per-peer timeout. Delivery counts only when the peer answers with the app-level accept byte. A peer that closes the connection with 403 (it no longer trusts us) is reported in `Published.refused`, and `send_files` returns `NotPaired`; this is distinct from offline.
+3. One bi stream per target peer, each with one framed offer. Sends have a 5 s per-peer timeout. Delivery counts only when the peer answers with the app-level accept byte. A peer that closes the connection with 403 (it no longer trusts us) is reported in `Published.refused`, and `send_files` returns `PeerRefused` (`NotPaired` is only for a device we have no pairing with); this is distinct from offline.
 4. Receiver: re-checks trust before each offer (a removed peer's connection is closed with 403, nothing is acked), then checks that the offer origin matches the connection peer, validates it (versions, hashes, budgets, `rel_path` safety), deduplicates by `item_id`, records history, then emits `RemoteClip`.
 5. Latency in the last e2e runs: about 0.02-0.03 s on LAN and on relay. The bound in the demo is 5 s.
 

@@ -2,6 +2,16 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-10-17 - Peer refusal is its own error in the FFI and the apps
+
+### Changed
+- FFI: new `FsyncError::PeerRefused` (appended last, index 15) for a single-target push (`send_files`) to a peer that removed or reset this device. `NotPaired` now means only "no such paired device here". `Published` gains `refused: [node]`. Supersedes the 2026-10-16 line "No FFI change: ... folds `refused` into `failed`; the error reuses `NotPaired`". See [FFI contract](./ffi-contract.md).
+- CLI: `clip put` fails with `PeerRefused` when every peer refused; `send` shows the same error.
+- macOS and Windows: new text "That device removed this Mac/PC. Pair again to send to it." instead of "Something went wrong (not-paired)" (macOS) and "That device is not paired." (Windows).
+
+### Upgrade
+- Hosts regenerate the Swift and C# bindings. Swift `switch` statements over `FsyncError` need a `PeerRefused` case.
+
 ## 2026-10-16 - Core hardening: offline start, fetch retry, redial stages; CLI path tier; netns matrix
 
 ### Added
