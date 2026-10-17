@@ -11,6 +11,9 @@ namespace Fsync.Interop.Clipboard;
 public static class OleClipboard
 {
     private const int CLIPBRD_E_CANT_OPEN = unchecked((int)0x800401D0);
+    /// <summary>Retries while the clipboard is held: 10 x 25 ms, about 250 ms in the worst case.</summary>
+    private const int OpenRetries = 10;
+    private const int OpenRetryDelayMs = 25;
 
     /// <summary>Puts <paramref name="obj"/> on the clipboard (retries while another process holds it).</summary>
     public static void Set(IDataObject obj) => Retry(() => OleSetClipboard(obj));
@@ -18,6 +21,7 @@ public static class OleClipboard
     /// <summary>
     /// Runs a call that opens the clipboard, retrying while another process holds it open
     /// (rdpclip, clipboard managers and history open it right after every change).
+    /// Thread.Sleep does not pump messages on the STA (checked on Windows), so no reentrancy.
     /// </summary>
     private static void Retry(Func<int> call)
     {
@@ -25,8 +29,8 @@ public static class OleClipboard
         {
             var hr = call();
             if (hr == 0) return;
-            if (hr != CLIPBRD_E_CANT_OPEN || i >= 10) Marshal.ThrowExceptionForHR(hr);
-            Thread.Sleep(25);
+            if (hr != CLIPBRD_E_CANT_OPEN || i >= OpenRetries) Marshal.ThrowExceptionForHR(hr);
+            Thread.Sleep(OpenRetryDelayMs);
         }
     }
 
