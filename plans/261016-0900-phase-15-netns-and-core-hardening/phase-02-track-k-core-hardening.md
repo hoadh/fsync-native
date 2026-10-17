@@ -113,8 +113,9 @@ Lead: tick phase-08 M1/M2 and A2 gap; four-track Next action 10 fetch part done;
 
 Scope changes (deviation vs spec above):
 - `FIRST_ATTEMPT` 2 s -> 5 s. Reason: slow relay (~0.4 MiB/s). Impact: slower stall detection on reused conns.
-- Regression bound 10 s -> 20 s. Last run 11.6 s; spec "second fetch < 10 s" not met on that run. Needs owner sign-off.
+- Regression bound 10 s -> 20 s. Last run 11.6 s; spec "second fetch < 10 s" not met on that run. Owner signed off 2026-10-17 (with `FIRST_ATTEMPT` 5 s and the redial escalation).
 - Redial-stall escalation closes peer's idle, then in-use inbound clip/presence conns (pulls spared). They reconnect on next use.
 - Loopback = `lan`. `fetched` key is `path_tier`.
 - K2 optional bounded wait not implemented.
 - Windows dotnet not run (no FFI change, optional).
+- Windows dotnet run 2026-10-17 on 366c70d (interactive session): CoreBindings 9/9, Interop 47/47, App 100/100.
