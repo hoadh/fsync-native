@@ -46,6 +46,8 @@ impl Node {
             relays: vec![],
             mdns: false,
             relay_only: false,
+            #[cfg(feature = "test-relay-ca")]
+            relay_ca_pem: None,
             extra: vec![],
         }
     }

@@ -20,3 +20,7 @@ blake3.workspace = true
 getrandom = "0.4"
 zeroize.workspace = true
 tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt", "ansi"] }
+
+[features]
+# e2e/netns builds only: FSYNC_TEST_RELAY_CA=<pem path> makes the client trust a private relay CA.
+test-relay-ca = ["fsync-core/test-relay-ca"]

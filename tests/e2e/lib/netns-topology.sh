@@ -63,8 +63,6 @@ topo_build() {
   lan_build r-lan 192.168.10 h-la:10 h-lb:11
   lan_build r-a 10.1.0 h-na:10
   lan_build r-b 10.2.0 h-nb:10
-  # The relay process listens on loopback only (spike server): expose its port on the WAN address.
-  nsx relay sysctl -qw net.ipv4.conf.all.route_localnet=1 net.ipv4.conf.wan.route_localnet=1
   nat_mode r-lan masq
   nat_mode r-a masq
   nat_mode r-b masq

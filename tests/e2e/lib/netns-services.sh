@@ -32,14 +32,34 @@ cli_kill() {
 
 backend_up() { curl -fs --max-time 2 "http://$API_ADDR/health" >/dev/null 2>&1; }
 
-# The spike relay binds 127.0.0.1 in its own ns; DNAT exposes it on the WAN address (route_localnet).
+# relay_certs: throwaway CA + relay leaf for the WAN address, generated per run in $WORK (never
+# committed). Clients trust the CA only through FSYNC_TEST_RELAY_CA (fsync-cli built with the
+# test-relay-ca feature), which makes both the HTTPS relay and QUIC address discovery verifiable.
+relay_certs() {
+  local d="$WORK/relay-tls" ec=(-newkey ec -pkeyopt ec_paramgen_curve:prime256v1)
+  mkdir -p "$d"
+  openssl req -x509 "${ec[@]}" -nodes -days 2 -subj "/CN=fsync-netns-test-ca" \
+    -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign" \
+    -keyout "$d/ca.key" -out "$d/ca.pem" 2>/dev/null || fail "openssl CA"
+  openssl req -new "${ec[@]}" -nodes -subj "/CN=fsync-netns-relay" -keyout "$d/relay.key" -out "$d/relay.csr" 2>/dev/null \
+    || fail "openssl relay csr"
+  printf 'subjectAltName=IP:100.64.0.2\nbasicConstraints=CA:FALSE\nextendedKeyUsage=serverAuth\n' >"$d/ext.cnf"
+  openssl x509 -req -in "$d/relay.csr" -CA "$d/ca.pem" -CAkey "$d/ca.key" -CAcreateserial -days 2 \
+    -extfile "$d/ext.cnf" -out "$d/relay.pem" 2>/dev/null || fail "openssl relay cert"
+  export FSYNC_TEST_RELAY_CA="$d/ca.pem"
+}
+
+# Local iroh relay in its own ns, bound to its WAN address: HTTPS on RELAY_PORT, QUIC address
+# discovery on udp 7842 (the port clients derive from the relay URL).
 relay_start() {
-  nsx relay "$BIN_DIR/spike/iroh-discovery-spike" relay "$RELAY_PORT" >"$WORK/relay.log" 2>&1 &
+  relay_certs
+  local d="$WORK/relay-tls"
+  nsx relay "$BIN_DIR/spike/iroh-discovery-spike" relay "$RELAY_PORT" 100.64.0.2 "$d/relay.pem" "$d/relay.key" \
+    >"$WORK/relay.log" 2>&1 &
   echo $! >"$WORK/relay.pid"
-  wait_for '^RELAY http' "$WORK/relay.log" 20
-  nsx relay iptables -t nat -A PREROUTING -d 100.64.0.2 -p tcp --dport "$RELAY_PORT" \
-    -j DNAT --to-destination "127.0.0.1:$RELAY_PORT"
-  curl -fs --max-time 3 -o /dev/null "http://100.64.0.2:$RELAY_PORT/" || log "warn: relay root not answering on WAN"
+  wait_for '^RELAY https' "$WORK/relay.log" 20
+  curl -fs --max-time 3 --cacert "$d/ca.pem" -o /dev/null "https://100.64.0.2:$RELAY_PORT/" \
+    || log "warn: relay https root not answering on WAN"
 }
 
 # probe_offline_start: a plain CLI start must work with the backend unreachable (N2, N9). If it does

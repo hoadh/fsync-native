@@ -1652,6 +1652,7 @@ dependencies = [
  "n0-error",
  "n0-future",
  "rand 0.9.5",
+ "rustls",
  "tokio",
  "tracing-subscriber",
 ]
