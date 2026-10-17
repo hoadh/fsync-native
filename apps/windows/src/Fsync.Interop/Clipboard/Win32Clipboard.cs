@@ -7,12 +7,13 @@ namespace Fsync.Interop.Clipboard;
 
 /// <summary>
 /// Plain Win32 clipboard access (OpenClipboard / GetClipboardData). Another process may hold
-/// the clipboard briefly, so opening retries (5 x 50 ms by default).
+/// the clipboard briefly, so opening retries (6 attempts, 5 x 50 ms = 250 ms by default, the
+/// same budget as the OLE calls; rdpclip and clipboard managers open it after every change).
 /// </summary>
 public static unsafe class Win32Clipboard
 {
     /// <summary>Runs <paramref name="body"/> with the clipboard open; false if it stayed locked.</summary>
-    public static bool TryWithOpen(Action body, nint owner = 0, int attempts = 5)
+    public static bool TryWithOpen(Action body, nint owner = 0, int attempts = 6)
     {
         for (var i = 0; !PInvoke.OpenClipboard((HWND)owner); i++)
         {
