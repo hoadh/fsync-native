@@ -13,11 +13,17 @@ public static class OleClipboard
     private const int CLIPBRD_E_CANT_OPEN = unchecked((int)0x800401D0);
 
     /// <summary>Puts <paramref name="obj"/> on the clipboard (retries while another process holds it).</summary>
-    public static void Set(IDataObject obj)
+    public static void Set(IDataObject obj) => Retry(() => OleSetClipboard(obj));
+
+    /// <summary>
+    /// Runs a call that opens the clipboard, retrying while another process holds it open
+    /// (rdpclip, clipboard managers and history open it right after every change).
+    /// </summary>
+    private static void Retry(Func<int> call)
     {
         for (var i = 0; ; i++)
         {
-            var hr = OleSetClipboard(obj);
+            var hr = call();
             if (hr == 0) return;
             if (hr != CLIPBRD_E_CANT_OPEN || i >= 10) Marshal.ThrowExceptionForHR(hr);
             Thread.Sleep(25);
@@ -31,12 +37,12 @@ public static class OleClipboard
     /// Renders every format into the clipboard and releases our object. Never for a virtual-file
     /// entry: FileContents cannot be flushed and the entry would be broken (ADR 010).
     /// </summary>
-    public static void Flush() => Marshal.ThrowExceptionForHR(OleFlushClipboard());
+    public static void Flush() => Retry(OleFlushClipboard);
 
     /// <summary>Empties the clipboard if we own it (exit policy for lazy entries).</summary>
     public static void ClearIfCurrent(IDataObject obj)
     {
-        if (IsCurrent(obj)) Marshal.ThrowExceptionForHR(OleSetClipboard(null));
+        if (IsCurrent(obj)) Retry(() => OleSetClipboard(null));
     }
 
     /// <summary>Reads the clipboard as an IDataObject.</summary>
