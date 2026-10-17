@@ -86,14 +86,14 @@ services:
       context: ./relay
     environment:
       RELAY_HOSTNAME: ${RELAY_HOST:?set RELAY_HOST}
-      # 1 = QUIC address discovery on udp/7842 (needs the Caddy-managed cert, see RELAY_CERT_VOLUME).
+      # 1 = QUIC address discovery on udp/7842 (needs the relay cert copy, see RELAY_CERT_DIR).
       RELAY_QAD: ${RELAY_QAD:-0}
       RELAY_RX_BYTES_PER_SEC: ${RELAY_RX_BYTES_PER_SEC:-}
       RUST_LOG: ${RELAY_RUST_LOG:-info}
     volumes:
-      # Only used when RELAY_QAD=1: ONLY the relay hostname's certificate directory that Caddy
-      # manages (RELAY_CERT_DIR, host path), never Caddy's whole data dir (it holds the keys of every
-      # site on the host). Caddy's key is root-owned 0600, so QAD also needs RELAY_USER=0.
+      # Only used when RELAY_QAD=1: the copy of the relay hostname's crt/key that
+      # scripts/sync-relay-cert.sh keeps for uid 10001 (RELAY_CERT_DIR, host path). Never a Caddy
+      # directory: Caddy's data dir holds the keys of every site on the host.
       - ${RELAY_CERT_DIR:-relay_nocert}:/relay-cert:ro
     user: "${RELAY_USER:-10001:10001}"
     mem_limit: 96m

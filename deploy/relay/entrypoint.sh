@@ -3,8 +3,9 @@
 #
 # TLS is terminated by the reverse proxy (Caddy) in front: the relay speaks plain HTTP on :3340
 # (dangerous_http_only, the behind-a-proxy mode). With RELAY_QAD=1 it also runs QUIC address
-# discovery on udp/7842, which needs a certificate for RELAY_HOSTNAME: it reads the one Caddy
-# manages, mounted read-only at /relay-cert (re-read periodically, so renewals are picked up).
+# discovery on udp/7842, which needs a certificate for RELAY_HOSTNAME: on the hosts, the copy that
+# scripts/sync-relay-cert.sh keeps (readable by our uid), mounted read-only at /relay-cert and re-read
+# periodically, so renewals are picked up.
 set -eu
 : "${RELAY_HOSTNAME:?RELAY_HOSTNAME is required}"
 CONF=/tmp/iroh-relay.toml
@@ -17,9 +18,8 @@ metrics_bind_addr = "0.0.0.0:9090"
 TOML
 
 if [ "${RELAY_QAD:-0}" = "1" ]; then
-  # Caddy obtains the certificate shortly after it first sees the hostname; wait for it
-  # (compose restarts us if it never shows up). Mount is the host's cert dir (flat) or, in the
-  # local test, a whole Caddy volume: find handles both.
+  # Wait for the certificate (compose restarts us if it never shows up). The mount is flat on the
+  # hosts; local tests may mount a nested tree: find handles both.
   i=0; CRT=""
   while [ -z "$CRT" ]; do
     CRT="$(find /relay-cert -name "${RELAY_HOSTNAME}.crt" 2>/dev/null | head -1)"

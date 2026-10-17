@@ -110,16 +110,26 @@ are production relays. Last recorded run (MiB=8, `p0`, `local,sg`): both PASS (l
 ## Relay QUIC Address Discovery
 
 QAD (udp/7842) lets a client learn its public address, which is what makes a direct path possible behind NAT.
-Both production relays run with `RELAY_QAD=0`. Setup steps: [deploy/README.md](../deploy/README.md), "Enabling QUIC address discovery"
-(Ohio) and the relay-only section (Singapore).
+**Enabled on both production relays since 2026-10-17** (`RELAY_QAD=1`, Lightsail rule UDP 7842 from anywhere). Setup and
+rollback: [deploy/README.md](../deploy/README.md), "Enabling QUIC address discovery".
 
 **Why it matters:** without QAD, iroh's net report waits about 3 s for an address answer that never comes, and our relay URL
-is published only after that report. The first connect through the relay then takes about 4 s (netns N4: 4.03 s without
-QAD, 0.01 s with it). With QAD, the first connect is faster and WAN hole punching is possible.
+is published only after that report (netns N4: 4.03 s without QAD, 0.01 s with it).
 
-**Recommendation (decision pending, owner):** enable QAD on both relays. Cost: udp/7842 open in the Lightsail firewall, and
-`RELAY_USER=0` on the relay, because Caddy's certificate key is root-only (0600). Then `docker compose up -d relay`. Until
-decided, production stays as it is; the netns result does not predict WAN behaviour, since production relays have no QAD yet.
+**How the relay reads the certificate:** `scripts/sync-relay-cert.sh`, installed root-owned as
+`/usr/local/sbin/fsync-sync-relay-cert` and run by the daily root cron `/etc/cron.d/fsync-relay-cert`, copies only the relay
+hostname's crt/key from Caddy's store to `/opt/fsync/relay-cert` (`root:10001`, 0550/0440). It picks the valid,
+key-matching pair with the latest expiry and logs to syslog tag `fsync-relay-cert` (warning under 14 days left). The relay
+stays non-root, never mounts a Caddy directory, and re-reads the files after renewal. Caddy and its config are not touched.
+
+**Measured from Vietnam (spike `listen`, time until online):**
+
+| Relay | Before | After | Public address learned |
+|---|---|---|---|
+| SG `relay-sg-fsync.10z.one` | 3.2-3.3 s (3 runs) | 0.58-0.64 s (3 runs) | yes, every run |
+| Ohio `relay-fsync.10z.one` | 6.1 s (1 run) | 2.1-4.1 s (15 runs) | 14 of 15 runs |
+
+Ohio's remainder is the path: TCP ~0.26 s RTT with occasional 1 s retransmits, TLS 0.5-2.3 s. Times cluster at 1 s steps.
 
 ## Rules That Are Easy to Miss
 

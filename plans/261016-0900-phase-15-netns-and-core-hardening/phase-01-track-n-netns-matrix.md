@@ -156,4 +156,4 @@ Lead: tick MVP phase-15 todos, link JSON. Later: nightly Linux CI job (needs Git
 - Results: N3 direct, clip 0.01 s. N4 relay, clip 0.01 s (was ~4 s).
 - Strict netns on d1c35f3 (pre-merge): 10 PASS, 1 SKIP (sec).
 - netns strict on c429406 (tree dirty with plan markdown only): PASS=10 FAIL=0 QUARANTINED=0 SKIP=1 (sec), rc 0, 259 s, `docs/test-results/netns-261017-1821.json`.
-- Prod relays run `RELAY_QAD=0`. QAD enable is a separate owner decision (see plan.md).
+- Prod relays run QAD since 2026-10-17 (owner approved; non-root cert copy, UDP 7842 open).

@@ -24,7 +24,7 @@ RUN set -eu; \
 FROM debian:bookworm-slim
 COPY --from=build /out/bin/iroh-relay /usr/local/bin/iroh-relay
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-# Non-root unless compose sets RELAY_USER=0 (QAD reading Caddy's root-only key). Ports are >1024.
+# Non-root, also with QAD (it reads a uid 10001 copy of the cert, scripts/sync-relay-cert.sh). Ports are >1024.
 USER 10001:10001
 EXPOSE 3340/tcp 7842/udp
 HEALTHCHECK --interval=30s --timeout=3s --start-period=120s CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3340 && printf 'GET /ping HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q ' 200 ' <&3"]

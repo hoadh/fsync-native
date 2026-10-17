@@ -2,6 +2,11 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-10-17 - QUIC address discovery on both production relays
+
+### Changed
+- Infra: QAD enabled on SG and Ohio (`RELAY_QAD=1`, UDP 7842 open). New `deploy/scripts/sync-relay-cert.sh` (daily root cron) copies only the relay hostname's crt/key (newest valid, key-matching pair; `root:10001` 0440; installed root-owned in `/usr/local/sbin`); the relay stays non-root and `RELAY_USER=0` is no longer documented. Local check `deploy/scripts/test-sync-relay-cert.sh` (PASS). Time to online from Vietnam: SG 3.2 s -> 0.6 s, Ohio 6.1 s -> 2.1-4.1 s (path-bound); clients now learn their public address. See [deployment guide](./deployment-guide.md).
+
 ## 2026-10-17 - Peer refusal error, test relay CA and QAD in netns, Windows clipboard retries
 
 ### Added

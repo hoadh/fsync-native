@@ -53,13 +53,13 @@ Relay mesh decision; A5 mid-run relay death on real relays; UI "Direct" label; r
 # Next actions (owner, definition of done)
 1. Done (c429406, netns-261017-1821.json). Lead: run netns strict on merged main. DoD: JSON in `docs/test-results/`, n8 PASS, strict exit 0, no fsync-netns containers left.
 2. Lead: commit netns JSON (untracked); push local main after gates. DoD: pushed, one green GitHub CI run.
-3. Owner: decide prod relays `RELAY_QAD=0` -> enable QAD (needs UDP 7842 open in Lightsail firewall; cert readable without `RELAY_USER=0`). DoD: decision recorded; if yes, N3 direct verified on a prod-like relay.
+3. Done 2026-10-17: QAD on SG and Ohio (UDP 7842 open, `sync-relay-cert.sh` copy readable by uid 10001, no `RELAY_USER=0`). SG online 3.2 -> 0.6 s; Ohio 6.1 -> 2.1-4.1 s; public address learned. Open: a WAN direct-path check between two NATed devices.
 4. Mac and Windows app owners: rebuild with clip/2 + `PeerRefused`; wire `send_files` and `Published` into UI; check refusal text on both OS. DoD: manual check recorded in QA checklist.
 5. Windows ARM64 DLL build. DoD: build green or owner defers.
 6. Lead docs impact: minor. `docs/ffi-contract.md` (PeerRefused additive), CLI `path`/RUST_LOG, changelog.
 
 # Unresolved questions
-1. Enable QAD on prod relays (`RELAY_QAD=0` today)? Owner decision.
+1. Resolved 2026-10-17: QAD enabled on both prod relays.
 2. Mixed-version clip/1 vs clip/2 peer: core test covers fail-fast; not tried live against an old app build.
 3. Refusal text does not name the device. Keep generic or name it?
 4. Optional hardening: freeze legacy mtime as stamp; move stamp fsync off async thread.

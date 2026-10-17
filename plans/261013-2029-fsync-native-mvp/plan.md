@@ -19,7 +19,7 @@ Specs: layout+ADRs [01](phase-01-repo-scaffold-and-decisions.md) · DeviceList+p
 Roles: A = Rust core | B = backend+DevOps | C = macOS | D = Windows
 
 ## Progress (sync 2026-10-15, main e536ce7, pushed)
-- 10-17: local main (not pushed). N3 test relay CA + QAD hook: N3 direct, N4 relay, clip 0.01 s each, un-quarantined. FFI `PeerRefused` (Track R; Mac/Win texts). n8 e2e updated. Windows OLE clipboard clear/flush retry fix (1d65725..9071a9d). Gates green on merged main; netns strict 10 PASS, 0 FAIL on c429406. Details: [phase-15 plan](../261016-0900-phase-15-netns-and-core-hardening/plan.md).
+- 10-17: QAD on both prod relays (non-root cert copy; SG online 3.2 -> 0.6 s, Ohio 6.1 -> 2.1-4.1 s). Pushed 4609dd5. N3 test relay CA + QAD hook: N3 direct, N4 relay, clip 0.01 s each, un-quarantined. FFI `PeerRefused` (Track R; Mac/Win texts). n8 e2e updated. Windows OLE clipboard clear/flush retry fix (1d65725..9071a9d). Gates green on merged main; netns strict 10 PASS, 0 FAIL on c429406. Details: [phase-15 plan](../261016-0900-phase-15-netns-and-core-hardening/plan.md).
 - 10-16: four-track phase 15 merged 026fb5a: netns N1-N9, K1-K3 core hardening, N8 clip/2 refusal. Details: same plan.
 - Round 2 hardening merged to local main 3c405b1: [four-track plan](../261015-0410-four-track-hardening/plan.md). Closure needs: gates re-run after C, push, one green GitHub CI run, owner items.
 - Done 10-15: S1 Gmail SMTP OTP (450/24 h cap); S2 SG relay-only, S6 two-relay e2e PASS; S3/S4 `revoke_session` + pending revoke (mac bb412e8, Win 7cc8cfd); Win phase 14 merged (37e0430). Round 2 landed: A1-A5 core (A2 gap, A5 partial), B1-B5 Windows, C1-C5 macOS (C1 partial), D1-D7 infra (D1/D2 unverified on GitHub).
@@ -35,7 +35,7 @@ Roles: A = Rust core | B = backend+DevOps | C = macOS | D = Windows
   - Backend: 10k WS load test; Postgres TLS before remote DB.
   - Core (A): A5 mid-run relay death; relay-mesh decision; `docs/ffi-contract.md` additive entries (lead). Closed 10-16: file/rep fetch retry (K1), M1/M2 engine.lock (K2).
   - Apps/release: phase 11 Low items (Q7); C1 live-session revoke proof (owner `FSYNC_REAL_REFRESH`, optional); phase 16 signed launch-at-login check.
-  - Phase 15: done; security SKIP. Open: netns strict rerun on merged main, JSON commit, prod relays `RELAY_QAD=0` (owner decision: enable QAD), cross-OS runners, QA checklist, nightly.
+  - Phase 15: done; security SKIP. Open: netns strict rerun on merged main, JSON commit, cross-OS runners, QA checklist, nightly.
   - Closed 10-17: N3/N4 netns un-quarantined; FFI refused error (`PeerRefused`); Windows OLE clipboard retry. Closed 10-16: N8 refused sender (clip/2); CLI `path` tier (K3); engine.lock M1/M2 (K2); fetch retry (K1); CLI start with backend down.
   - Closed 10-15: smtp_mailpit flake (D6); Win `WithoutAnEngineSignOut` flake (B1); ~30 s dial after restart (A2); history copy-back blocked on FFI (A1, B4, C3); rollback rehearsal (D3); off-box backups (D4).
 - Next: four-track plan "Next actions" (13 items, owners, definition of done). **Finish the plan: every open item must close or be explicitly deferred with owner sign-off.**

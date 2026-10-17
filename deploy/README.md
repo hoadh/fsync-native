@@ -7,7 +7,7 @@ terminated by a Caddy that is **not** in the compose file (the VPS already runs 
 ```
 internet --443--> host Caddy (ACME) --> 127.0.0.1:18080 backend   api-fsync.10z.one  (REST + presence WebSocket)
                                     --> 127.0.0.1:18081 relay     relay-fsync.10z.one (iroh relay, HTTP/WebSocket)
-internet --7842/udp--> relay (QUIC address discovery; optional, off by default)
+internet --7842/udp--> relay (QUIC address discovery; RELAY_QAD=1)
                        backend --> postgres (compose network only)
 ```
 
@@ -169,9 +169,7 @@ DNS: A record to the instance IP, **DNS-only (grey cloud)**. Then verify publicl
 or `deploy/scripts/smoke-check.sh --relay-only https://relay-sg-fsync.10z.one`.
 
 **Firewall (Lightsail > Networking):** nothing new by default; 80/tcp, 443/tcp and 22/tcp are already open.
-QUIC address discovery stays **off**, as on the main host (nothing listens publicly on udp/7842; clients just use
-the relay). To enable it, follow "Enabling QUIC address discovery" below with this host's certificate directory
-(`.../certificates/acme-v02.api.letsencrypt.org-directory/relay-sg-fsync.10z.one`), `RELAY_QUIC_BIND=0.0.0.0`,
+QUIC address discovery: follow "Enabling QUIC address discovery" below with `relay-sg-fsync.10z.one`
 and add the Lightsail rule **UDP 7842 from anywhere**. udp/443 is Caddy's HTTP/3 and unrelated.
 
 Local check: `deploy/scripts/test-relay-only-local.sh` (builds the image, runs the file on loopback ports,
@@ -190,12 +188,28 @@ disk: also enable Lightsail automatic snapshots. Rotating
 `JWT_SIGNING_KEY` signs everyone out (edit `.env`, `docker compose up -d backend`).
 
 ### Enabling QUIC address discovery
-Needs the relay certificate that host Caddy manages, mounted **alone** (never Caddy's whole data dir,
-which holds every site's keys). Set in `/opt/fsync/.env` (path: `sudo caddy environ | grep -i data`;
-the directory exists once Caddy has served the relay host):
-`RELAY_QAD=1`, `RELAY_QUIC_BIND=0.0.0.0`, `RELAY_USER=0` (Caddy's key is root-only 0600),
-`RELAY_CERT_DIR=/var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/relay-fsync.10z.one`,
-open udp/7842, then `docker compose up -d relay`. Without QAD the relay runs as uid 10001.
+QAD answers clients' "what is my public address" over QUIC on udp/7842. Without it every client's
+first connect waits about 3 s for a probe that never answers. It needs the relay hostname's
+certificate, which host Caddy manages (`caddy:caddy`, 0600). The relay never mounts Caddy's data dir
+and never runs as root. Instead, `scripts/sync-relay-cert.sh` copies only that hostname's crt/key to
+`/opt/fsync/relay-cert` (`root:10001`, dir 0550, files 0440), and the relay re-reads them
+(`cert_mode = "Reloading"`). It picks the valid, key-matching pair with the latest expiry across
+Caddy's issuer dirs, and logs to syslog (`fsync-relay-cert`), warning when the copy expires within
+14 days (exit 3; exit 1 = error, old copy kept). Caddy and its config are not touched. Cron runs it as root, so it is installed root-owned
+(`/opt/fsync/scripts` belongs to the deploy user). On the host:
+```bash
+cd /opt/fsync
+sudo install -o root -g root -m 755 scripts/sync-relay-cert.sh /usr/local/sbin/fsync-sync-relay-cert
+sudo fsync-sync-relay-cert <relay host>                 # e.g. relay-sg-fsync.10z.one; prints "updated ..."
+echo '23 4 * * * root /usr/local/sbin/fsync-sync-relay-cert <relay host>' | sudo tee /etc/cron.d/fsync-relay-cert
+# .env: RELAY_QAD=1  RELAY_QUIC_BIND=0.0.0.0  RELAY_CERT_DIR=/opt/fsync/relay-cert   (no RELAY_USER)
+sudo docker compose up -d relay
+```
+Open **UDP 7842 from anywhere** in the firewall (Lightsail > Networking). Check: the relay log shows
+the QUIC endpoint, `ss -ulpn` shows `0.0.0.0:7842`, and a client's first connect takes well under 1 s.
+Rollback: `RELAY_QAD=0`, `RELAY_QUIC_BIND=127.0.0.1`, `docker compose up -d relay`, close udp/7842,
+remove the cron file and `/opt/fsync/relay-cert`. After changing the script, re-run the `install` line.
+Local check: `deploy/scripts/test-sync-relay-cert.sh`.
 
 ## Local verification
 `tests/e2e/compose-stack-sync.sh` builds and runs the stack with Docker (own project and free ports),
