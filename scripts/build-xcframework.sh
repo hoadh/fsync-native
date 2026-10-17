@@ -23,8 +23,10 @@ rustup target add "${TRIPLES[@]}" >/dev/null
 LIBS=()
 for t in "${TRIPLES[@]}"; do
   cargo build -p fsync-ffi --release --target "$t"
-  # Shipped builds must never carry the test-only cargo features.
-  if cargo tree -e normal,build,features -p fsync-ffi --target "$t" | grep -E 'test-relay-ca|test-hooks'; then
+  # Shipped builds must never carry the test-only cargo features. `{f}` prints each crate's
+  # enabled features (the default format hides them); capture first so a cargo failure aborts.
+  tree=$(cargo tree -e normal,build -p fsync-ffi --target "$t" --format '{p} {f}')
+  if grep -E 'test-relay-ca|test-hooks' <<<"$tree"; then
     echo "error: test-only feature enabled in the fsync-ffi release build" >&2
     exit 1
   fi
