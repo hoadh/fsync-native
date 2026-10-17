@@ -7,7 +7,7 @@ effort: ~17-19 wk calendar (P0 4-5 wk + P1 11-14 wk), team of 4
 branch: main
 tags: [rust, iroh, uniffi, swiftui, winui3, clipboard, p2p, backend]
 created: 2026-10-13
-updated: 2026-10-16
+updated: 2026-10-17
 blockedBy: []
 blocks: []
 ---
@@ -19,7 +19,8 @@ Specs: layout+ADRs [01](phase-01-repo-scaffold-and-decisions.md) · DeviceList+p
 Roles: A = Rust core | B = backend+DevOps | C = macOS | D = Windows
 
 ## Progress (sync 2026-10-15, main e536ce7, pushed)
-- 10-16: phase-15 four-track merged to local main 026fb5a: netns N1-N9 matrix (N3, N4 quarantined; sec SKIP); core hardening K1-K3 + backend-down CLI start; N8 refused sender told (clip/2). Details: [phase-15 plan](../261016-0900-phase-15-netns-and-core-hardening/plan.md).
+- 10-17: local main (not pushed). N3 test relay CA + QAD hook: N3 direct, N4 relay, clip 0.01 s each, un-quarantined. FFI `PeerRefused` (Track R; Mac/Win texts). n8 e2e updated. Windows OLE clipboard clear/flush retry fix (1d65725..9071a9d). Gates green on merged main; netns strict 10 PASS, 0 FAIL on c429406. Details: [phase-15 plan](../261016-0900-phase-15-netns-and-core-hardening/plan.md).
+- 10-16: four-track phase 15 merged 026fb5a: netns N1-N9, K1-K3 core hardening, N8 clip/2 refusal. Details: same plan.
 - Round 2 hardening merged to local main 3c405b1: [four-track plan](../261015-0410-four-track-hardening/plan.md). Closure needs: gates re-run after C, push, one green GitHub CI run, owner items.
 - Done 10-15: S1 Gmail SMTP OTP (450/24 h cap); S2 SG relay-only, S6 two-relay e2e PASS; S3/S4 `revoke_session` + pending revoke (mac bb412e8, Win 7cc8cfd); Win phase 14 merged (37e0430). Round 2 landed: A1-A5 core (A2 gap, A5 partial), B1-B5 Windows, C1-C5 macOS (C1 partial), D1-D7 infra (D1/D2 unverified on GitHub).
 - Gates on merged main, pre-C: cargo 308/0; fmt+clippy clean; swift 208 (14 skipped) 0 fail; mac integration PASS; dotnet waso 156/156. Track C alone: swift 222 (18 skipped) 0 fail. Post-C gates: lead re-running.
@@ -34,8 +35,8 @@ Roles: A = Rust core | B = backend+DevOps | C = macOS | D = Windows
   - Backend: 10k WS load test; Postgres TLS before remote DB.
   - Core (A): A5 mid-run relay death; relay-mesh decision; `docs/ffi-contract.md` additive entries (lead). Closed 10-16: file/rep fetch retry (K1), M1/M2 engine.lock (K2).
   - Apps/release: phase 11 Low items (Q7); C1 live-session revoke proof (owner `FSYNC_REAL_REFRESH`, optional); phase 16 signed launch-at-login check.
-  - Phase 15: done with known quarantines (netns N3, N4; security SKIP). Open: cross-OS runners, QA checklist, nightly, JSON commit, N3/N4 owner decision.
-  - Closed 10-16: N8 refused sender told (clip/2); CLI `path` tier (K3); engine.lock M1/M2 (K2); fetch retry on dead cached conn (K1); CLI start with backend down (7-day cached list bound).
+  - Phase 15: done; security SKIP. Open: netns strict rerun on merged main, JSON commit, prod relays `RELAY_QAD=0` (owner decision: enable QAD), cross-OS runners, QA checklist, nightly.
+  - Closed 10-17: N3/N4 netns un-quarantined; FFI refused error (`PeerRefused`); Windows OLE clipboard retry. Closed 10-16: N8 refused sender (clip/2); CLI `path` tier (K3); engine.lock M1/M2 (K2); fetch retry (K1); CLI start with backend down.
   - Closed 10-15: smtp_mailpit flake (D6); Win `WithoutAnEngineSignOut` flake (B1); ~30 s dial after restart (A2); history copy-back blocked on FFI (A1, B4, C3); rollback rehearsal (D3); off-box backups (D4).
 - Next: four-track plan "Next actions" (13 items, owners, definition of done). **Finish the plan: every open item must close or be explicitly deferred with owner sign-off.**
 
@@ -44,7 +45,7 @@ Roles: A = Rust core | B = backend+DevOps | C = macOS | D = Windows
 |---|---|---|---|---|---|
 | 01 | [Repo scaffold + decisions](phase-01-repo-scaffold-and-decisions.md) | B (+all) | P0 w1 | - | Partial |
 | 02 | [Spike: iroh discovery/relay/blobs](phase-02-spike-iroh-discovery-relay.md) | A | P0 w1 | 01 | Partial |
-| 03 | [Spike: FFI bindings Swift + C#; contract](phase-03-spike-ffi-bindings.md) | A+D | P0 w2 | 01 | Partial (Swift+C# done; ARM64 not run; additive relay_urls, revoke_session, history_item_reps, EngineAlreadyRunning) |
+| 03 | [Spike: FFI bindings Swift + C#; contract](phase-03-spike-ffi-bindings.md) | A+D | P0 w2 | 01 | Partial (Swift+C# done; ARM64 not run; additive relay_urls, revoke_session, history_item_reps, EngineAlreadyRunning, PeerRefused) |
 | 04 | [Spike: macOS clipboard + lazy file paste](phase-04-spike-macos-clipboard-lazy-paste.md) | C | P0 w1-3 | 01 | Partial (automated; ADR 009; manual open) |
 | 05 | [Spike: Windows clipboard + virtual-file paste](phase-05-spike-windows-clipboard-lazy-paste.md) | D | P0 w1-3 | 01 | Partial (automated; ADR 010) |
 | 06 | [Core: identity, trust, transport, pairing](phase-06-core-identity-trust-transport.md) | A | P0 w2-3 | 02 | Partial |
@@ -56,7 +57,7 @@ Roles: A = Rust core | B = backend+DevOps | C = macOS | D = Windows
 | 12 | [macOS app: clipboard, files, history](phase-12-macos-clipboard-files-history.md) | C | P1 w5-11 | 11 | Partial (automated, copy-back done; manual QA open) |
 | 13 | [Windows app: shell, auth, pairing](phase-13-windows-app-shell-pairing.md) | D | P1 w1-5 | 03,05,08,09 | Partial (GUI run, LAN, ARM64 open) |
 | 14 | [Windows app: clipboard, files, history](phase-14-windows-clipboard-files-history.md) | D | P1 w5-11 | 13 | Done w/ concerns (merged 37e0430; round 2 on main; manual QA, ARM64 open) |
-| 15 | [Cross-OS integration + network test matrix](phase-15-integration-testing-cross-os.md) | B lead, all | P1 w2-13 | 10, 12, 14 | Done w/ quarantines (netns N3, N4; sec SKIP); cross-OS runners, QA open |
+| 15 | [Cross-OS integration + network test matrix](phase-15-integration-testing-cross-os.md) | B lead, all | P1 w2-13 | 10, 12, 14 | Done (N3/N4 un-quarantined 10-17; sec SKIP); netns strict rerun, cross-OS runners, QA open |
 | 16 | [Release: signing, notarization, auto-update](phase-16-release-distribution.md) | B+C+D | P1 w8-14 | 10, 12, 14 | Pending (Developer ID + notarization done) |
 
 ## Ownership and merge rules
@@ -77,5 +78,4 @@ Roles: A = Rust core | B = backend+DevOps | C = macOS | D = Windows
 1. Pricing per tier (limits configurable, not tied to tiers in MVP).
 2. Transactional email provider before real traffic (Gmail SMTP is interim).
 3. Signed launch-at-login check (phase 16); macOS integration script not in CI (phase 10).
-4. Mac↔Win LAN unreachable; Tailscale fallback until S7 (owner).
-5. Six open technical questions are in the four-track plan (B5 scope, relay mesh, 502 incident link, FSYNC_ENV on cms-node, Postgres TLS, Windows QA doc).
+4. Six open technical questions are in the four-track plan (B5 scope, relay mesh, 502 incident link, FSYNC_ENV on cms-node, Postgres TLS, Windows QA doc).

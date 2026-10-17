@@ -1,0 +1,232 @@
+{
+  "run_id": "261017181649-76615",
+  "git_sha": "c429406-dirty",
+  "mib": 64,
+  "docker": {
+    "cpus": 10,
+    "mem_gb": 7.7
+  },
+  "duration_s": 253,
+  "build_s": 0,
+  "strict": true,
+  "scenarios": [
+    {
+      "id": "n1",
+      "result": "PASS",
+      "gating": true,
+      "secs": 3,
+      "path_expected": "lan",
+      "path_observed": "lan",
+      "bytes": {
+        "relay": 84017,
+        "wan_a": 95465,
+        "wan_b": 95465,
+        "host_a": 69297991
+      },
+      "clip_latency_s": 0.01,
+      "file_secs": 0.525263959,
+      "mib_s": 121.84350154509649,
+      "sha_ok": true,
+      "cli_path": "direct",
+      "cli_path_tier": "direct",
+      "notes": ""
+    },
+    {
+      "id": "n2",
+      "result": "PASS",
+      "gating": true,
+      "secs": 83,
+      "path_expected": "lan",
+      "path_observed": "lan",
+      "bytes": {
+        "relay": 0,
+        "wan_a": 0,
+        "wan_b": 0,
+        "host_a": 69218696
+      },
+      "clip_latency_s": 0.01,
+      "file_secs": 0.535472625,
+      "mib_s": 119.52058240138793,
+      "sha_ok": true,
+      "cli_path": "direct",
+      "cli_path_tier": "direct",
+      "notes": ""
+    },
+    {
+      "id": "n5",
+      "result": "PASS",
+      "gating": true,
+      "secs": 4,
+      "path_expected": "relay",
+      "path_observed": "relay",
+      "bytes": {
+        "relay": 159502251,
+        "wan_a": 159513252,
+        "wan_b": 159513252,
+        "host_a": 75089593
+      },
+      "clip_latency_s": 0.01,
+      "file_secs": 1.066538084,
+      "mib_s": 60.007233646989015,
+      "sha_ok": true,
+      "cli_path": "relay",
+      "cli_path_tier": "relay",
+      "notes": ""
+    },
+    {
+      "id": "n3",
+      "result": "PASS",
+      "gating": true,
+      "secs": 4,
+      "path_expected": "direct",
+      "path_observed": "direct",
+      "bytes": {
+        "relay": 49242,
+        "wan_a": 69297480,
+        "wan_b": 69298902,
+        "host_a": 69301440
+      },
+      "clip_latency_s": 0.01,
+      "file_secs": 0.527772375,
+      "mib_s": 121.26439925924505,
+      "sha_ok": true,
+      "cli_path": "direct",
+      "cli_path_tier": "direct",
+      "notes": ""
+    },
+    {
+      "id": "n3b",
+      "result": "PASS",
+      "gating": true,
+      "secs": 4,
+      "path_expected": "direct",
+      "path_observed": "direct",
+      "bytes": {
+        "relay": 100097,
+        "wan_a": 69315952,
+        "wan_b": 69317455,
+        "host_a": 69317626
+      },
+      "clip_latency_s": 0.01,
+      "file_secs": 0.518573292,
+      "mib_s": 123.41553448147884,
+      "sha_ok": true,
+      "cli_path": "direct",
+      "cli_path_tier": "direct",
+      "notes": ""
+    },
+    {
+      "id": "n4",
+      "result": "PASS",
+      "gating": true,
+      "secs": 4,
+      "path_expected": "relay",
+      "path_observed": "relay",
+      "bytes": {
+        "relay": 139925373,
+        "wan_a": 69643065,
+        "wan_b": 70302297,
+        "host_a": 69646102
+      },
+      "clip_latency_s": 0.01,
+      "file_secs": 0.5373285,
+      "mib_s": 119.10777113069565,
+      "sha_ok": true,
+      "cli_path": "relay",
+      "cli_path_tier": "relay",
+      "notes": ""
+    },
+    {
+      "id": "n7",
+      "result": "PASS",
+      "gating": true,
+      "secs": 26,
+      "path_expected": null,
+      "path_observed": null,
+      "bytes": {},
+      "clip_latency_s": 0.01,
+      "file_secs": null,
+      "mib_s": null,
+      "sha_ok": null,
+      "cli_path": null,
+      "cli_path_tier": null,
+      "notes": "B seen offline after 2s"
+    },
+    {
+      "id": "n9",
+      "result": "PASS",
+      "gating": true,
+      "secs": 64,
+      "path_expected": "lan",
+      "path_observed": "lan",
+      "bytes": {
+        "relay": 49174,
+        "wan_a": 49686,
+        "wan_b": 49686,
+        "host_a": 69275092
+      },
+      "clip_latency_s": 0.01,
+      "file_secs": 0.513647334,
+      "mib_s": 124.5991086950721,
+      "sha_ok": true,
+      "cli_path": "direct",
+      "cli_path_tier": "direct",
+      "notes": ""
+    },
+    {
+      "id": "n6",
+      "result": "PASS",
+      "gating": false,
+      "secs": 41,
+      "path_expected": null,
+      "path_observed": null,
+      "bytes": {},
+      "clip_latency_s": null,
+      "file_secs": 30.156898348,
+      "mib_s": 33.95574664819307,
+      "sha_ok": true,
+      "cli_path": null,
+      "cli_path_tier": null,
+      "notes": "A re-addressed mid-transfer (1024 MiB)"
+    },
+    {
+      "id": "n8",
+      "result": "PASS",
+      "gating": true,
+      "secs": 19,
+      "path_expected": null,
+      "path_observed": null,
+      "bytes": {},
+      "clip_latency_s": null,
+      "file_secs": null,
+      "mib_s": null,
+      "sha_ok": null,
+      "cli_path": null,
+      "cli_path_tier": null,
+      "notes": "N8: every B clip put (3 of 3) and the file push were refused with the typed error; A received and stored nothing; slowest B clip put 5s, file push refused in 1s"
+    },
+    {
+      "id": "sec",
+      "result": "SKIP",
+      "gating": false,
+      "secs": 0,
+      "path_expected": null,
+      "path_observed": null,
+      "bytes": {},
+      "clip_latency_s": null,
+      "file_secs": null,
+      "mib_s": null,
+      "sha_ok": null,
+      "cli_path": null,
+      "cli_path_tier": null,
+      "notes": "pure unpaired NodeId dial not expressible via CLI (peers resolve from the paired list); covered by core tests clip_security.rs and net_gate_and_paths.rs; removed-peer dial covered by N8"
+    }
+  ],
+  "counts": {
+    "PASS": 10,
+    "FAIL": 0,
+    "QUARANTINED": 0,
+    "SKIP": 1
+  },
+  "quarantined_gating": []
+}

@@ -1,4 +1,4 @@
-# Phase 03: N8, tell the sender when the peer refused it (status: completed, merged 026fb5a; strict netns red from n3/n4 only)
+# Phase 03: N8, tell the sender when the peer refused it (status: completed, merged 026fb5a; FFI `PeerRefused` via Track R 2026-10-17; netns strict green c429406)
 
 Owner decision (2026-10-16): fix N8 now. The sender must learn that it was refused.
 
@@ -32,10 +32,12 @@ Owner decision (2026-10-16): fix N8 now. The sender must learn that it was refus
 
 ## Todo
 - [x] Ack protocol plus refusal classification in core (clip/2, app-level ack byte, `CoreError::PeerRefused`)
-- [x] Error surfaced via `FsyncError` / `Published` (`NotPaired` for single-target; `refused` in core `Published`, folded into `failed` in FFI). FFI and Swift compile/test green (FsyncCoreKit 14/0, FsyncMac 231 run, 0 fail). No FFI enum change, so Windows build not required by this phase. Windows rebuild still needed for the clip/2 wire change
-- [x] CLI output (`clip put` JSON gains `refused`) and n8 scenario updated (n8 PASS at MIB=64)
-- [ ] cargo fmt / clippy / test ×2 and p0 MIB=16 done; netns strict still RED (n3/n4 quarantined, not n8)
-- [x] Code review ≥9.5 (9.0, then 9.7)
+- [x] Error surfaced via `FsyncError` / `Published`: 026fb5a used `NotPaired`; superseded by Track R (2026-10-17): `FsyncError::PeerRefused` (appended last), `Published.refused`. FFI and Swift green (FsyncCoreKit 14/0, FsyncMac 231 run, 0 fail). Windows rebuild still needed for the clip/2 wire change and the new FFI variant
+- [x] Track R: Mac text "That device removed this Mac. Pair again to send to it." Windows text "That device removed this PC. Pair again to send to it." CLI messages updated. Review 9.5
+- [x] CLI output (`clip put` JSON gains `refused`); n8 e2e assertion updated to the PeerRefused text ("the other device removed this one")
+- [x] cargo fmt / clippy (incl. test-relay-ca) / test x2 (360 pass, 0 fail, 3 ignored) and p0 MIB=16 PASS on merged main
+- [x] netns strict rerun on merged main: n8 PASS and no strict red (n3/n4 now un-quarantined). Result: 10 PASS, 0 FAIL, 1 SKIP on c429406 (netns-261017-1821.json)
+- [x] Code review ≥9.5 (9.0, then 9.7; Track R 9.5)
 
 ## Results (merged 026fb5a)
 - Fix: clip/2 with app-level ack. Sender reports delivered only on ack 1. 403 close (CLOSE_UNTRUSTED) -> `PeerRefused` -> `NotPaired` for `send_files` and single-target `clip put`. One retry on a fresh dial for Net or PeerRefused (a cached conn may predate a re-pair).
@@ -44,4 +46,5 @@ Owner decision (2026-10-16): fix N8 now. The sender must learn that it was refus
 - Proof: old behavior (no ack wait) made 2 of 3 tests FAIL with "reported delivered".
 - Scope changes: reused `NotPaired` (no new `Refused` variant, no FFI enum change). FFI `Published` folds `refused` into `failed`. ALPN bumped to clip/2. Pre-release, no clip/1 shim.
 - Constraint: Mac and Windows apps must update together.
-- Open: FFI `refused` field / dedicated `Refused` error for UI text. Mixed-version: `old_clip_alpn_peer_fails_fast_not_hangs` asserts a clip/1 dial fails fast (ALPN).
+- Scope change 2026-10-17 (Track R, closes the former open item): dedicated `FsyncError::PeerRefused` added at the end of the FFI enum, so the Mac/Windows UI can show the refusal text. Impact: additive FFI variant, Swift and Windows bindings regenerate. Mac and Windows must rebuild.
+- Open: UI does not yet call `send_files` or read `Published` (refusal text not exercised end-to-end in apps). Refusal text does not name the device. Mixed-version: `old_clip_alpn_peer_fails_fast_not_hangs` asserts a clip/1 dial fails fast (ALPN); not tried live.

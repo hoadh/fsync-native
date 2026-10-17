@@ -1,6 +1,6 @@
 # System Architecture
 
-Last updated: 2026-10-16. Covers the P0 Rust track (phases 01, 02, 06-09) with its hardening (read-ahead, logout revocation, data-dir lock, multiple relays), the production deployment (phase 10), the macOS FFI package, the macOS app (phases 04, 11, 12) and the Windows app (phases 03 C# half, 13, 14). Windows phase 05 is partial and phases 15-16 are not started; see [development-roadmap](./development-roadmap.md).
+Last updated: 2026-10-17. Covers the P0 Rust track (phases 01, 02, 06-09) with its hardening (read-ahead, logout revocation, data-dir lock, multiple relays), the production deployment (phase 10), the macOS FFI package, the macOS app (phases 04, 11, 12) and the Windows app (phases 03 C# half, 13, 14). Windows phase 05 is partial and phases 15-16 are not started; see [development-roadmap](./development-roadmap.md).
 
 ## Overview
 
@@ -46,7 +46,7 @@ Mac-side logic lives in `FsyncMacCore/Clipboard`, `Files`, `Settings` and `Featu
 2. `SensitiveFilter` decides before the content is read. It skips copies marked as our own write (`com.fsync.origin`), concealed (`org.nspasteboard.ConcealedType`, 1Password's type), transient, auto-generated, and copies while a denylisted app is frontmost. The built-in denylist holds six password managers; the user's list is added on top.
 3. Every step is guarded by `changeCount`: if the pasteboard changed before the snapshot, during the read, or before the send, the clip is dropped (no stale send). Explicit sends also re-check the sensitive types.
 4. `RepresentationMapper` builds text/plain, text/html, text/rtf and image/png representations. TIFF is converted to PNG off the main thread. A clip over `maxClipBytes` is refused (default 50 MiB, minimum 1 MiB); an oversized TIFF is refused without decoding.
-5. The clip goes to the engine as an offer (see [data flow 4](#4-clip-fsyncclip1)). The engine records it in history and sends it to paired devices.
+5. The clip goes to the engine as an offer (see [data flow 4](#4-clip-fsyncclip2)). The engine records it in history and sends it to paired devices.
 - `⌃⌥C` sends the current clipboard explicitly. Explicit sends skip the denylist (ADR 009).
 
 ### Clipboard receive
@@ -91,7 +91,7 @@ Mac-side logic lives in `FsyncMacCore/Clipboard`, `Files`, `Settings` and `Featu
 | `service/` | `FsyncService`: the facade apps call. Login, account, pairing (both sides), devices, clip publish, file send/fetch, history, settings, events to one delegate thread. |
 | `engine/` | Orchestration below the facade: outbox, placement of inline vs spilled reps, shared state, history hooks. |
 | `api/` | Backend HTTP and WebSocket client: token refresh, device-list sync, pairing create and lookup, presence session (`Hello` on relay readiness and address change, 20 s heartbeat, backoff). |
-| `net/` | iroh node builder and `Node`: accept gate (only pinned devices), discovery fed from presence (trusted peers only), path tracking (`Lan` / `Relay`), dialer, LAN-first `PathSelector` (see [Path selection](#path-selection-lan-first)). |
+| `net/` | iroh node builder and `Node`: accept gate (only pinned devices), discovery fed from presence (trusted peers only), path tracking (`Lan` / `Relay`), dialer, LAN-first `PathSelector` (see [Path selection](#path-selection-lan-first)). `test_relay_ca` is compiled only with the test-only feature `test-relay-ca` (see [code standards](./code-standards.md#test-only-features)). |
 | `pair/` | `fsync/pair/1`: SPAKE2 (code mode) or HKDF (QR mode), MAC confirm, 3-word SAS, pairing window with admission limits. |
 | `trust/` | Pinned device-list head and root, chain ingest, reset detection and confirmation, trust stores (`SqliteTrustStore` in history, `FileTrustStore` for CLI/tests). |
 | `clip/` | `fsync/clip/2`: send and receive, echo guard, offer validation, per-peer rate limit, received-offer log. |
@@ -149,7 +149,8 @@ Mac-side logic lives in `FsyncMacCore/Clipboard`, `Files`, `Settings` and `Featu
 - **Clients use both relays.** The macOS and Windows apps pass both URLs (`relay_urls`, comma-separated in `FSYNC_RELAY` or `--relay`). The core merges them into one iroh `RelayMap` (`net/relays.rs`); the endpoint probes all of them and picks the home relay by latency, and moves it when the network changes. A device reports its current home relay in presence.
 - **Relay failover, what is verified.** Connect-time failover: with one of two relays unreachable, peers still connect (`core/fsync-core/tests/relay_failover.rs`). Mid-run relay death (the home relay dies while connected): **not verified**. The in-process test relays lack QUIC address discovery, so iroh never re-homed within 45 s. **Relays do not mesh:** two peers whose only reachable relays differ cannot connect to each other.
 - The backend runs only in Ohio.
-- QUIC address discovery (QAD, udp/7842) is off by default. With `RELAY_QAD=1` the relay needs the Caddy-managed certificate for its own hostname, mounted alone.
+- QUIC address discovery (QAD, udp/7842) is off on both production relays. With `RELAY_QAD=1` the relay needs the Caddy-managed certificate for its own hostname, mounted alone.
+- **Why QAD matters for first connect.** Without QAD, iroh's net report waits about 3 s for QAD, and our relay URL is published only after the report, so the first connect through the relay takes about 4 s. Advertising the relay URL earlier was rejected: a peer could then dial a relay we are not connected to. Enabling QAD is the fix; the recommendation is pending the owner ([deployment guide](./deployment-guide.md#relay-quic-address-discovery)).
 - For local runs and the e2e demo, `spikes/iroh-discovery` starts an in-process `iroh-relay` in HTTP dev mode (`relay [port]`).
 - Relay sees only QUIC ciphertext. Clip and file bytes never reach the backend.
 
@@ -337,7 +338,7 @@ Defaults (settings): history mode Auto, 30 days, 1 GiB size cap, 50 MiB max clip
 - Relay: mid-run failover (home relay dies while connected) is unverified; relays do not mesh, so peers on disjoint relays cannot connect ([Relay](#relay)).
 - Redial: a stalled redial closes the restarted peer's in-use clip and presence connections (stage 3, [Redial](#8-redial-after-a-peer-restarts)). They reconnect on next use, and running pulls are spared.
 - Offline start: a device whose list is never re-synced ages out after 7 days. Any successful sync resets the clock, so an app that calls `ensure_account` at each start rarely hits this.
-- Netns: a direct path behind full-cone NAT (N3) is not verified, because the test relay has no QUIC address discovery. First connect through the relay takes about 4 s (N4 misses its 1.5 s target). Both are quarantined in [test results](./test-results/README.md).
+- Netns: the netns relay runs QAD and TLS with a private CA, so N3 (full-cone) goes direct and N4 (symmetric) relays, both with a 0.01 s first clip ([test results](./test-results/README.md)). Production relays have no QAD yet, so a direct WAN path and a fast first connect are not verified on the real relays.
 - No Postgres TLS (`tls-rustls` not enabled in sqlx).
 - Email: Gmail SMTP is the only real sender. Gmail's consumer limit (about 500 recipients per day) is enforced by `OTP_DAILY_SEND_CAP` (450 per rolling 24 h). A transactional provider is needed before real traffic (only the `SMTP_*` values change).
 - Root of a fresh device's chain is learned only when a chain through the head is seen. An old genesis replayed to a fresh device triggers a reset prompt, not a silent accept.

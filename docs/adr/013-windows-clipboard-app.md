@@ -70,6 +70,7 @@ target app.
     per data folder: core's `engine.lock` failure shows "already running" without retrying, and
     the folder path is normalized for the single-instance key. Received images are bounded
     (16384 px a side, 64 MP) and reserved device names (CON, NUL, COM1...) are refused in paths.
+15. **Clipboard open retries.** Another process often holds the clipboard right after our change (RDP clipboard redirection `rdpclip.exe`, clipboard managers). OLE Set, Flush and ClearIfCurrent retry `CLIPBRD_E_CANT_OPEN` 10 x 25 ms (about 250 ms). `ClearIfCurrent` re-checks ownership on each attempt, so an entry the user copied meanwhile is kept. The reader's Win32 open uses 6 attempts, 5 x 50 ms (same budget). Sleeping does not pump messages on the STA (checked on Windows), so the retries cannot re-enter the message loop.
 
 ## Consequences
 - Lazy paste throughput with core read-ahead (2026-10-15, two app instances on one Windows 11

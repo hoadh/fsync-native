@@ -7,7 +7,7 @@
 - Four-track [plan](../261015-0410-four-track-hardening/plan.md) Next action 12
 
 ## Overview
-- Priority P1 | Status: Completed (N3, N4 quarantined) | Effort 2.5d | Branch `track-n/netns-matrix` (worktree off main 68d7ae6), merged 05890e3
+- Priority P1 | Status: Completed (N3, N4 un-quarantined 2026-10-17 via Track N3; strict netns 10 PASS on c429406) | Effort 2.5d | Branch `track-n/netns-matrix` (worktree off main 68d7ae6), merged 05890e3
 - One privileged Linux container on this Mac builds fsync-cli, backend and the spike relay for aarch64, wires netns topologies, runs N1-N9, asserts path from veth byte counters, writes metrics JSON.
 - Ownership: `tests/e2e/**`, `docs/test-results/**` only. Product bugs found are filed as findings (report), never fixed here.
 
@@ -104,7 +104,7 @@ Delete: none.
 - [x] lib/netns-topology.sh, lib/assert.sh, lib/cli-session.sh
 - [x] netns-matrix.sh + Dockerfile + run-in-container.sh
 - [x] N1, N2, N5 green (N2 needed K backend-down start)
-- [ ] N3, N4: QUARANTINED, not green (N3 no QAD on local relay; N4 clip 4.0 s vs 1.5 s). Owner Q1/Q2
+- [x] N3, N4 un-quarantined 2026-10-17 (Track N3: test relay CA + QAD hook; N4 root cause was iroh net report waiting ~3 s for QAD, not the dialer). N3 direct clip 0.01 s; N4 relay clip 0.01 s. Owner Q1/Q2 answered by this track
 - [x] N7, N9, N8
 - [x] N6 best-effort, security best-effort (sec SKIP, reason recorded)
 - [x] run-matrix.sh `netns` scenario
@@ -143,7 +143,17 @@ Lead: tick MVP phase-15 todos, link JSON. Later: nightly Linux CI job (needs Git
 ## Results (merged main 026fb5a)
 - Reviews: 8.8, then 9.5 (0 critical). Final run at MIB=64: n1, n2, n5, n3b, n6, n7, n8, n9 PASS. n3, n4 QUARANTINED. sec SKIP.
 - Strict mode (`NETNS_STRICT=1`) red only from n3/n4. Non-strict rc 0.
-- Metrics: `docs/test-results/netns-261016-1643.json` (strict), `netns-261016-1649.json`. Not committed yet.
+- Metrics: `docs/test-results/netns-261016-1643.json` (strict), `netns-261016-1649.json`.
 - Negative check: N1 expect relay FAILs. p0 MIB=16 PASS. Docker: no fsync-netns leftovers.
 - Quarantine causes: N3 no QUIC address discovery on local relay. N4 relay path OK, first connect ~4 s (iroh net report ~3 s, see Track K round 2 B).
-- Open: Q1 (N3 QAD hook) and Q2 (N4 early relay advertising) need owner decision. JSON commit pending.
+- JSON committed in 366c70d.
+
+## Results (2026-10-17, local main, not pushed)
+- Track N3 merged (a2c9a2d; branch commits fa3e2e3, d1c35f3, e955881, 390bd94). Review 9/10, then 9.5 after guard fix.
+  - Feature-gated `test-relay-ca` hook in fsync-core (env `FSYNC_TEST_RELAY_CA`, `NodeBuilder::extra_relay_ca_pem`). Test-only, no prod effect.
+  - Relay TLS + QAD enabled in the netns harness. Private-CA TLS handshake test `relay_private_ca.rs`.
+  - Build-script guards (xcframework + Windows DLL) fail if `test-relay-ca` or `test-hooks` reach fsync-ffi (`cargo tree --format '{p} {f}'`; positive and negative control verified).
+- Results: N3 direct, clip 0.01 s. N4 relay, clip 0.01 s (was ~4 s).
+- Strict netns on d1c35f3 (pre-merge): 10 PASS, 1 SKIP (sec).
+- netns strict on c429406 (tree dirty with plan markdown only): PASS=10 FAIL=0 QUARANTINED=0 SKIP=1 (sec), rc 0, 259 s, `docs/test-results/netns-261017-1821.json`.
+- Prod relays run `RELAY_QAD=0`. QAD enable is a separate owner decision (see plan.md).

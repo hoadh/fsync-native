@@ -1,6 +1,6 @@
 # Codebase Summary
 
-Last updated: 2026-10-15. Repo map for the P0 Rust track, the production deploy stack, and the macOS app (clipboard, files, history, settings). Architecture is in [system-architecture.md](./system-architecture.md); standards in [code-standards.md](./code-standards.md).
+Last updated: 2026-10-17. Repo map for the P0 Rust track, the production deploy stack, and the macOS app (clipboard, files, history, settings). Architecture is in [system-architecture.md](./system-architecture.md); standards in [code-standards.md](./code-standards.md).
 
 ## Repo Map
 
@@ -18,7 +18,7 @@ Last updated: 2026-10-15. Repo map for the P0 Rust track, the production deploy 
 | `apps/macos/scripts` | `build-fsync-mac-app.sh` (signed `FsyncMac.app`), `run-fsync-mac-integration.sh` (Docker Postgres + dev backend + relay + CLI, then the integration tests) |
 | `apps/windows` | .NET 8 solution: `Fsync.CoreBindings` (generated C# + native DLL per RID), `Fsync.App.Core` (bridge, DPAPI secrets, view models), `Fsync.App` (WinUI 3 tray app), xUnit tests, UIA e2e script. See its README |
 | `scripts` | `gen-bindings.sh` (Swift bindings + headers), `build-xcframework.sh` (universal static lib, xcframework), `gen-bindings-cs.ps1` (C# bindings), `build-windows-dll.ps1` (`fsync_ffi.dll` per RID) |
-| `tests/e2e` | `netns/` and `netns-matrix.sh`: N1-N9 in network namespaces (privileged Docker), results in `docs/test-results/`. `p0-exit-demo.sh`: end-to-end demo (backend, CLI, relay in Docker Postgres). `compose-stack-sync.sh`: the production compose stack under Docker (Caddy with a local CA, two CLIs, relay-forced clip and file, backup and restore) |
+| `tests/e2e` | `netns/` and `netns-matrix.sh`: N1-N9 in network namespaces (privileged Docker; the relay runs TLS with a private CA and QAD, see [test results](./test-results/README.md)), results in `docs/test-results/`. `p0-exit-demo.sh`: end-to-end demo (backend, CLI, relay in Docker Postgres). `compose-stack-sync.sh`: the production compose stack under Docker (Caddy with a local CA, two CLIs, relay-forced clip and file, backup and restore) |
 | `spikes/iroh-discovery` | Standalone spike: discovery, relay (`relay [port]`), blob measurements. Not in the workspace |
 | `spikes/ffi-bindings` | Standalone UniFFI crate + C# harness: 10k-callback stress, buffer copy timing (phase 03) |
 | `spikes/macos-clipboard` | Phase 04 spike (own SwiftPM package, not in the workspace): pasteboard watcher, sensitive filter, lazy file writer, `ClipSpikeSelfTest` child-process self-test; results in `results/`. ADR 009 |

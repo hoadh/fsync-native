@@ -2,15 +2,28 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
-## 2026-10-17 - Peer refusal is its own error in the FFI and the apps
+## 2026-10-17 - Peer refusal error, test relay CA and QAD in netns, Windows clipboard retries
+
+### Added
+- Test hook: cargo feature `test-relay-ca` in `fsync-core` (and `fsync-cli`). It trusts an extra CA for relay TLS and QUIC address discovery, from the PEM at env `FSYNC_TEST_RELAY_CA` (or `NodeBuilder::extra_relay_ca_pem`). Test-only: no shipped build enables it. The release scripts `scripts/build-xcframework.sh` and `scripts/build-windows-dll.ps1` fail if `cargo tree -p fsync-ffi` shows `test-relay-ca` or `test-hooks`. See [code standards](./code-standards.md#test-only-features).
+- Netns harness: the local relay runs TLS with a per-run CA and QAD, and the CLI is built with `--features fsync-cli/test-relay-ca`. N3 (full-cone NAT) now goes direct and N4 (symmetric NAT) relays, both within their clip budget. See [test results](./test-results/README.md).
 
 ### Changed
 - FFI: new `FsyncError::PeerRefused` (appended last, index 15) for a single-target push (`send_files`) to a peer that removed or reset this device. `NotPaired` now means only "no such paired device here". `Published` gains `refused: [node]`. Supersedes the 2026-10-16 line "No FFI change: ... folds `refused` into `failed`; the error reuses `NotPaired`". See [FFI contract](./ffi-contract.md).
 - CLI: `clip put` fails with `PeerRefused` when every peer refused; `send` shows the same error.
 - macOS and Windows: new text "That device removed this Mac/PC. Pair again to send to it." instead of "Something went wrong (not-paired)" (macOS) and "That device is not paired." (Windows).
+- Netns N3 and N4 are no longer quarantined. N4 first clip dropped from about 4 s to 0.01 s.
+
+### Fixed
+- Core: first connect through a relay without QAD took about 4 s. iroh's net report waits about 3 s for QAD, and our relay URL was published only after the report. Advertising the relay URL early was rejected: a peer could dial a relay we are not connected to. Not fixed in code. The cure is QAD on the relay (see [deployment guide](./deployment-guide.md#relay-quic-address-discovery)); production relays still run without it.
+- Windows: a clipboard write, flush or clear that met another process holding the clipboard (rdpclip, clipboard managers) failed at once. OLE Set, Flush and ClearIfCurrent now retry `CLIPBRD_E_CANT_OPEN` 10 x 25 ms (about 250 ms). `ClearIfCurrent` re-checks ownership on every attempt, so an entry the user copied meanwhile survives. The clipboard reader's Win32 open uses the same budget (6 attempts, 5 x 50 ms). See [ADR 013](./adr/013-windows-clipboard-app.md).
 
 ### Upgrade
 - Hosts regenerate the Swift and C# bindings. Swift `switch` statements over `FsyncError` need a `PeerRefused` case.
+- Relay operators: QAD stays off in production until the owner decides (see [deployment guide](./deployment-guide.md#relay-quic-address-discovery)).
+
+### Verification
+- Netns 64 MiB at `c429406`, strict: PASS 10, FAIL 0, QUARANTINED 0, SKIP 1 (sec, not expressible through the CLI). `d1c35f3` run: the same counts. See [test results](./test-results/README.md).
 
 ## 2026-10-16 - Core hardening: offline start, fetch retry, redial stages; CLI path tier; netns matrix
 

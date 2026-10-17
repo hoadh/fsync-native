@@ -20,5 +20,11 @@
 - No plaintext clipboard/file bytes ever reach backend or relay.
 - No secrets in repo; `.env.example` only.
 
+## Test-only features
+- `fsync-core` features `test-hooks` (fault injection) and `test-relay-ca` (trust a private relay CA from `FSYNC_TEST_RELAY_CA`, module `net/test_relay_ca.rs`). Neither is default, and neither may reach `fsync-ffi`.
+- `fsync-cli/test-relay-ca` is enabled only by the netns harness (`tests/e2e/netns/run-in-container.sh`).
+- `scripts/build-xcframework.sh` and `scripts/build-windows-dll.ps1` fail the build if `cargo tree -e normal,build -p fsync-ffi` lists either feature. Keep it that way when adding a test feature.
+- Test certificates are generated per run and never committed.
+
 ## Quality gates (CI)
 - `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`.

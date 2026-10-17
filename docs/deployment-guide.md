@@ -1,6 +1,6 @@
 # Deployment Guide
 
-Last updated: 2026-10-15. Short entry point. The full runbook is [deploy/README.md](../deploy/README.md); this page lists what runs where and the rules that are easy to miss.
+Last updated: 2026-10-17. Short entry point. The full runbook is [deploy/README.md](../deploy/README.md); this page lists what runs where and the rules that are easy to miss.
 
 ## Hosts
 
@@ -18,7 +18,7 @@ Both hosts are shared with other sites. Their host Caddy files belong to the own
 | Host Caddy (TLS, ACME) | VPS 443 and 80 | per host, see table above |
 | Backend (`fsync-backend`) | `127.0.0.1:18080` (Ohio only) | `api-fsync.10z.one` |
 | Relay (`iroh-relay`) | `127.0.0.1:18081` (both hosts) | `relay-fsync.10z.one`, `relay-sg-fsync.10z.one` |
-| Relay QUIC address discovery | `udp/7842`, off by default (`RELAY_QAD=1`) | not used by the proxy |
+| Relay QUIC address discovery | `udp/7842`, off on both hosts (`RELAY_QAD=1` to enable, see [below](#relay-quic-address-discovery)) | not used by the proxy |
 | Postgres 17 | compose network only (Ohio only) | none |
 
 Clip and file bytes never reach the backend or Postgres. The relay sees ciphertext only.
@@ -107,6 +107,20 @@ Full steps and host provisioning: [deploy/operations.md](../deploy/operations.md
 (the compose stack, once) and `netns` (N1-N9 in network namespaces, privileged Docker, once; see [test results](./test-results/README.md)) over relay configs `local`, `us`, `sg`, or an https URL. Each cell has a time limit. It is not CI: `us` and `sg`
 are production relays. Last recorded run (MiB=8, `p0`, `local,sg`): both PASS (local 239 s, sg 51 s, sg about 0.38 MiB/s).
 
+## Relay QUIC Address Discovery
+
+QAD (udp/7842) lets a client learn its public address, which is what makes a direct path possible behind NAT.
+Both production relays run with `RELAY_QAD=0`. Setup steps: [deploy/README.md](../deploy/README.md), "Enabling QUIC address discovery"
+(Ohio) and the relay-only section (Singapore).
+
+**Why it matters:** without QAD, iroh's net report waits about 3 s for an address answer that never comes, and our relay URL
+is published only after that report. The first connect through the relay then takes about 4 s (netns N4: 4.03 s without
+QAD, 0.01 s with it). With QAD, the first connect is faster and WAN hole punching is possible.
+
+**Recommendation (decision pending, owner):** enable QAD on both relays. Cost: udp/7842 open in the Lightsail firewall, and
+`RELAY_USER=0` on the relay, because Caddy's certificate key is root-only (0600). Then `docker compose up -d relay`. Until
+decided, production stays as it is; the netns result does not predict WAN behaviour, since production relays have no QAD yet.
+
 ## Rules That Are Easy to Miss
 
 - **DNS-only (grey cloud)** for every public hostname. The relay needs long-lived upgraded connections and UDP, which the Cloudflare proxy does not carry. The backend's per-IP limits need the real client address.
@@ -119,7 +133,7 @@ are production relays. Last recorded run (MiB=8, `p0`, `local,sg`): both PASS (l
 
 ## Client Release Builds
 
-Release clients must carry both relays. A client with no relay is LAN only, and no default is built in.
+Release clients must carry both relays. A client with no relay is LAN only, and no default is built in. The FFI build scripts refuse test-only features (see [code standards](./code-standards.md#test-only-features)).
 
 | Client | Command or setting |
 |--------|--------------------|
