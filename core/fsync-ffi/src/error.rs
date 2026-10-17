@@ -32,6 +32,10 @@ pub enum FsyncError {
     /// `engine.lock` in this data directory. The message is the text `Invalid` used to carry.
     #[error("invalid: another fsync engine is already running on this data directory")]
     EngineAlreadyRunning,
+    /// Added last (positional): the other device removed or reset this one. Unlike `NotPaired`
+    /// the device is still in the local list; pair again to send to it.
+    #[error("the other device removed this one")]
+    PeerRefused,
 }
 
 impl From<svc::FsyncError> for FsyncError {
@@ -51,6 +55,7 @@ impl From<svc::FsyncError> for FsyncError {
             E::NotFound => Self::NotFound,
             E::Invalid(msg) => Self::Invalid { msg },
             E::EngineAlreadyRunning => Self::EngineAlreadyRunning,
+            E::PeerRefused => Self::PeerRefused,
             E::Internal(msg) => Self::Internal { msg },
         }
     }
@@ -73,6 +78,7 @@ impl From<FsyncError> for svc::FsyncError {
             FsyncError::NotFound => E::NotFound,
             FsyncError::Invalid { msg } => E::Invalid(msg),
             FsyncError::EngineAlreadyRunning => E::EngineAlreadyRunning,
+            FsyncError::PeerRefused => E::PeerRefused,
             FsyncError::Internal { msg } => E::Internal(msg),
         }
     }

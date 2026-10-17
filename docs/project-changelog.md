@@ -2,6 +2,16 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-10-17 - Peer refusal is its own error in the FFI and the apps
+
+### Changed
+- FFI: new `FsyncError::PeerRefused` (appended last, index 15) for a single-target push (`send_files`) to a peer that removed or reset this device. `NotPaired` now means only "no such paired device here". `Published` gains `refused: [node]`. Supersedes the 2026-10-16 line "No FFI change: ... folds `refused` into `failed`; the error reuses `NotPaired`". See [FFI contract](./ffi-contract.md).
+- CLI: `clip put` fails with `PeerRefused` when every peer refused; `send` shows the same error.
+- macOS and Windows: new text "That device removed this Mac/PC. Pair again to send to it." instead of "Something went wrong (not-paired)" (macOS) and "That device is not paired." (Windows).
+
+### Upgrade
+- Hosts regenerate the Swift and C# bindings. Swift `switch` statements over `FsyncError` need a `PeerRefused` case.
+
 ## 2026-10-16 - Core hardening: offline start, fetch retry, redial stages; CLI path tier; netns matrix
 
 ### Added
@@ -29,7 +39,7 @@ Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-n
 ## 2026-10-16 - N8: senders learn when a peer refused them
 
 ### Fixed
-- Core: after a peer removed or reset a device, the sender was told "delivered" because clip/1 only had a transport ack (the accept gate closes with 403 after the handshake). Clip offers now use `fsync/clip/2` (bi stream, the receiver answers with an app-level ack byte). "Delivered" means accepted. A 403 close is `Published.refused` (`CoreError::PeerRefused`); `send_files` and `clip put` return `NotPaired`, not `PeerOffline`. Rate-limit and invalid-offer replies stay in `failed`.
+- Core: after a peer removed or reset a device, the sender was told "delivered" because clip/1 only had a transport ack (the accept gate closes with 403 after the handshake). Clip offers now use `fsync/clip/2` (bi stream, the receiver answers with an app-level ack byte). "Delivered" means accepted. A 403 close is `Published.refused` (`CoreError::PeerRefused`); `send_files` and `clip put` returned `NotPaired` (superseded 2026-10-17: now `PeerRefused`), not `PeerOffline`. Rate-limit and invalid-offer replies stay in `failed`.
 - Wire: ALPN bumped, no compatibility. A clip/1 peer fails the handshake at once, never hangs. No FFI change: the app `Published` record folds `refused` into `failed`; the error reuses `NotPaired`.
 
 ### Upgrade

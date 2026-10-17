@@ -31,6 +31,7 @@ pub fn send(c: &Ctx, node: &str, paths: Vec<String>, wait: u64) -> Result<()> {
             Err(FsyncError::PeerOffline) if Instant::now() < end => {
                 std::thread::sleep(Duration::from_secs(1))
             }
+            // `PeerRefused` (the peer removed us) is final: re-pairing is needed, so no retry.
             Err(e) => return Err(e.into()),
         }
     };

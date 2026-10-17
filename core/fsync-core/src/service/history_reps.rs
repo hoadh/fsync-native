@@ -63,6 +63,7 @@ impl FsyncService {
             Ok(d) => Ok(Some(d)),
             Err(
                 e @ (FsyncError::NotPaired
+                | FsyncError::PeerRefused
                 | FsyncError::PeerOffline
                 | FsyncError::Network(_)
                 | FsyncError::NotFound),

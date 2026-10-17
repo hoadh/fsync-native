@@ -3265,11 +3265,18 @@ class FfiConverterTypePairingPeer: FfiConverterRustBuffer<PairingPeer> {
 
 
 
+/// <param name="refused">
+/// Peers that no longer trust this device (it was removed or reset there).
+/// </param>
 public record Published (
     string @itemId, 
     bool @echo, 
     string[] @delivered, 
-    string[] @failed
+    string[] @failed, 
+    /// <summary>
+    /// Peers that no longer trust this device (it was removed or reset there).
+    /// </summary>
+    string[] @refused
 ) {
 }
 
@@ -3281,7 +3288,8 @@ class FfiConverterTypePublished: FfiConverterRustBuffer<Published> {
             @itemId: FfiConverterString.INSTANCE.Read(stream),
             @echo: FfiConverterBoolean.INSTANCE.Read(stream),
             @delivered: FfiConverterSequenceString.INSTANCE.Read(stream),
-            @failed: FfiConverterSequenceString.INSTANCE.Read(stream)
+            @failed: FfiConverterSequenceString.INSTANCE.Read(stream),
+            @refused: FfiConverterSequenceString.INSTANCE.Read(stream)
         );
     }
 
@@ -3290,7 +3298,8 @@ class FfiConverterTypePublished: FfiConverterRustBuffer<Published> {
             + FfiConverterString.INSTANCE.AllocationSize(value.@itemId)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.@echo)
             + FfiConverterSequenceString.INSTANCE.AllocationSize(value.@delivered)
-            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.@failed);
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.@failed)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.@refused);
     }
 
     public override void Write(Published value, BigEndianStream stream) {
@@ -3298,6 +3307,7 @@ class FfiConverterTypePublished: FfiConverterRustBuffer<Published> {
             FfiConverterBoolean.INSTANCE.Write(value.@echo, stream);
             FfiConverterSequenceString.INSTANCE.Write(value.@delivered, stream);
             FfiConverterSequenceString.INSTANCE.Write(value.@failed, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.@refused, stream);
     }
 }
 
@@ -3912,6 +3922,16 @@ public class FsyncException: UniffiException {
     }
     
     
+    /// <summary>
+    /// Added last (positional): the other device removed or reset this one. Unlike `NotPaired`
+    /// the device is still in the local list; pair again to send to it.
+    /// </summary>
+    
+    public class PeerRefused : FsyncException {
+        public PeerRefused() : base() {}
+    }
+    
+    
 
     
 }
@@ -3954,6 +3974,8 @@ class FfiConverterTypeFsyncError : FfiConverterRustBuffer<FsyncException>, CallS
                     FfiConverterString.INSTANCE.Read(stream));
             case 14:
                 return new FsyncException.EngineAlreadyRunning();
+            case 15:
+                return new FsyncException.PeerRefused();
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeFsyncError.Read()", value));
         }
@@ -4007,6 +4029,9 @@ class FfiConverterTypeFsyncError : FfiConverterRustBuffer<FsyncException>, CallS
 
             case FsyncException.EngineAlreadyRunning variant_value:
                 return 4;
+
+            case FsyncException.PeerRefused variant_value:
+                return 4;
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeFsyncError.AllocationSize()", value));
         }
@@ -4059,6 +4084,9 @@ class FfiConverterTypeFsyncError : FfiConverterRustBuffer<FsyncException>, CallS
                 break;
             case FsyncException.EngineAlreadyRunning variant_value:
                 stream.WriteInt(14);
+                break;
+            case FsyncException.PeerRefused variant_value:
+                stream.WriteInt(15);
                 break;
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeFsyncError.Write()", value));

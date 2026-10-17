@@ -2356,14 +2356,22 @@ public struct Published {
     public var echo: Bool
     public var delivered: [String]
     public var failed: [String]
+    /**
+     * Peers that no longer trust this device (it was removed or reset there).
+     */
+    public var refused: [String]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(itemId: String, echo: Bool, delivered: [String], failed: [String]) {
+    public init(itemId: String, echo: Bool, delivered: [String], failed: [String], 
+        /**
+         * Peers that no longer trust this device (it was removed or reset there).
+         */refused: [String]) {
         self.itemId = itemId
         self.echo = echo
         self.delivered = delivered
         self.failed = failed
+        self.refused = refused
     }
 }
 
@@ -2386,6 +2394,9 @@ extension Published: Equatable, Hashable {
         if lhs.failed != rhs.failed {
             return false
         }
+        if lhs.refused != rhs.refused {
+            return false
+        }
         return true
     }
 
@@ -2394,6 +2405,7 @@ extension Published: Equatable, Hashable {
         hasher.combine(echo)
         hasher.combine(delivered)
         hasher.combine(failed)
+        hasher.combine(refused)
     }
 }
 
@@ -2409,7 +2421,8 @@ public struct FfiConverterTypePublished: FfiConverterRustBuffer {
                 itemId: FfiConverterString.read(from: &buf), 
                 echo: FfiConverterBool.read(from: &buf), 
                 delivered: FfiConverterSequenceString.read(from: &buf), 
-                failed: FfiConverterSequenceString.read(from: &buf)
+                failed: FfiConverterSequenceString.read(from: &buf), 
+                refused: FfiConverterSequenceString.read(from: &buf)
         )
     }
 
@@ -2418,6 +2431,7 @@ public struct FfiConverterTypePublished: FfiConverterRustBuffer {
         FfiConverterBool.write(value.echo, into: &buf)
         FfiConverterSequenceString.write(value.delivered, into: &buf)
         FfiConverterSequenceString.write(value.failed, into: &buf)
+        FfiConverterSequenceString.write(value.refused, into: &buf)
     }
 }
 
@@ -3397,6 +3411,11 @@ public enum FsyncError: Swift.Error {
      * `engine.lock` in this data directory. The message is the text `Invalid` used to carry.
      */
     case EngineAlreadyRunning
+    /**
+     * Added last (positional): the other device removed or reset this one. Unlike `NotPaired`
+     * the device is still in the local list; pair again to send to it.
+     */
+    case PeerRefused
 }
 
 
@@ -3435,6 +3454,7 @@ public struct FfiConverterTypeFsyncError: FfiConverterRustBuffer {
             msg: try FfiConverterString.read(from: &buf)
             )
         case 14: return .EngineAlreadyRunning
+        case 15: return .PeerRefused
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3505,6 +3525,10 @@ public struct FfiConverterTypeFsyncError: FfiConverterRustBuffer {
         
         case .EngineAlreadyRunning:
             writeInt(&buf, Int32(14))
+        
+        
+        case .PeerRefused:
+            writeInt(&buf, Int32(15))
         
         }
     }

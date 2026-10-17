@@ -21,6 +21,7 @@ fn all_variants() -> Vec<Svc> {
         Svc::NotFound,
         Svc::Invalid("bad peer id".into()),
         Svc::EngineAlreadyRunning,
+        Svc::PeerRefused,
         Svc::Internal("unreachable state".into()),
     ];
     let distinct: std::collections::HashSet<_> = v.iter().map(variant_index).collect();
@@ -29,7 +30,7 @@ fn all_variants() -> Vec<Svc> {
     v
 }
 
-const VARIANT_COUNT: usize = 14;
+const VARIANT_COUNT: usize = 15;
 
 /// Exhaustive on purpose: adding a variant breaks the build here.
 fn variant_index(e: &Svc) -> usize {
@@ -48,6 +49,7 @@ fn variant_index(e: &Svc) -> usize {
         Svc::Internal(_) => 11,
         Svc::ReauthRequired => 12,
         Svc::EngineAlreadyRunning => 13,
+        Svc::PeerRefused => 14,
     }
 }
 
@@ -64,4 +66,26 @@ fn ffi_messages_match_service_messages() {
     for e in all_variants() {
         assert_eq!(Ffi::from(e.clone()).to_string(), e.to_string());
     }
+}
+
+/// A peer that removed us is its own error, not "not paired"; `Published` keeps `refused` apart
+/// from `failed`.
+#[test]
+fn peer_refusal_is_distinct_and_published_keeps_refused_apart() {
+    use fsync_core::{error::CoreError, service::Published as SvcPublished};
+    assert_eq!(Svc::from(CoreError::PeerRefused), Svc::PeerRefused);
+    assert_eq!(Svc::from(CoreError::NotTrusted("x".into())), Svc::NotPaired);
+    assert_ne!(
+        Ffi::from(Svc::PeerRefused).to_string(),
+        Ffi::from(Svc::NotPaired).to_string()
+    );
+    let p: fsync_ffi::Published = SvcPublished {
+        item_id: "i".into(),
+        echo: false,
+        delivered: vec!["a".into()],
+        failed: vec!["b".into()],
+        refused: vec!["c".into()],
+    }
+    .into();
+    assert_eq!((p.failed, p.refused), (vec!["b".into()], vec!["c".into()]));
 }

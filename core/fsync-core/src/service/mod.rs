@@ -31,6 +31,8 @@ mod presence;
 mod revoke;
 mod revoke_session;
 #[cfg(test)]
+mod send_refused_tests;
+#[cfg(test)]
 mod stop_leak_tests;
 mod transfers;
 mod transfers_inner;

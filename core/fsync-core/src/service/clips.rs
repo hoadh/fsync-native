@@ -9,7 +9,7 @@ use super::{
     walk,
 };
 use crate::clip::{ClipInput, PublishOpts, PublishOutcome, RepInput};
-use fsync_proto::ClipKind;
+use fsync_proto::{ClipKind, NodeId};
 use std::{path::PathBuf, sync::Arc};
 
 pub(super) fn now() -> u64 {
@@ -59,6 +59,18 @@ fn outcome(o: PublishOutcome) -> Published {
             refused: p.refused.iter().map(|n| n.to_string()).collect(),
         },
     }
+}
+
+/// Outcome of a single-target push: a peer that no longer trusts us is `PeerRefused` (not
+/// offline: re-pairing is needed), anything else that did not take the offer is `PeerOffline`.
+fn push_verdict(node: &NodeId, p: &crate::clip::Published) -> SvcResult<()> {
+    if p.refused.contains(node) {
+        return Err(FsyncError::PeerRefused);
+    }
+    if !p.delivered.contains(node) {
+        return Err(FsyncError::PeerOffline);
+    }
+    Ok(())
 }
 
 impl Inner {
@@ -121,13 +133,7 @@ impl Inner {
                 "push was suppressed as an echo".into(),
             ));
         };
-        if p.refused.contains(&node) {
-            // The peer no longer trusts us: not offline, re-pairing is needed.
-            return Err(FsyncError::NotPaired);
-        }
-        if !p.delivered.contains(&node) {
-            return Err(FsyncError::PeerOffline);
-        }
+        push_verdict(&node, &p)?;
         let (id, evs) = lock(&self.xfers)?.register_send(p.item_id, sizes);
         self.emit_all(evs);
         Ok(id)
@@ -140,7 +146,9 @@ impl FsyncService {
     }
 
     /// Sends files/folders to one paired device ("Send to..."); progress and completion arrive
-    /// as `Send` transfer events for the returned id. `NotPaired` if the peer no longer trusts us, `PeerOffline` if it did not take the offer.
+    /// as `Send` transfer events for the returned id. `NotPaired` if we have no such paired
+    /// device, `PeerRefused` if the peer no longer trusts us, `PeerOffline` if it did not take
+    /// the offer.
     pub fn send_files(&self, node_id: &str, paths: Vec<String>) -> SvcResult<u64> {
         self.run(self.inner.send_files(node_id, paths))
     }

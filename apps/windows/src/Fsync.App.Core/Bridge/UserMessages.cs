@@ -11,6 +11,7 @@ public static class UserMessages
         FsyncException.Auth => "Please sign in again.",
         FsyncException.ReauthRequired => "For this, sign in again first.",
         FsyncException.PeerOffline => "That device is offline.",
+        FsyncException.PeerRefused => "That device removed this PC. Pair again to send to it.",
         FsyncException.NotPaired => "That device is not paired.",
         FsyncException.Cancelled => "Cancelled.",
         FsyncException.Integrity => "The data failed verification and was discarded.",

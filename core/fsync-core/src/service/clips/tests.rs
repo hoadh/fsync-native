@@ -37,3 +37,39 @@ fn preview_is_cut_and_only_for_text() {
     assert_eq!(p.chars().count(), 200);
     assert!(preview_of(&clip("image/png", b"\x89PNG"), ClipKind::Image).is_none());
 }
+
+fn node(c: char) -> NodeId {
+    c.to_string().repeat(64).parse().unwrap()
+}
+
+fn published(
+    delivered: &[NodeId],
+    failed: &[NodeId],
+    refused: &[NodeId],
+) -> crate::clip::Published {
+    crate::clip::Published {
+        item_id: uuid::Uuid::nil(),
+        delivered: delivered.to_vec(),
+        failed: failed.to_vec(),
+        refused: refused.to_vec(),
+    }
+}
+
+#[test]
+fn single_target_push_tells_refused_from_offline_from_delivered() {
+    let (a, b) = (node('a'), node('b'));
+    assert_eq!(push_verdict(&a, &published(&[a], &[], &[])), Ok(()));
+    assert_eq!(
+        push_verdict(&a, &published(&[], &[], &[a])),
+        Err(FsyncError::PeerRefused)
+    );
+    assert_eq!(
+        push_verdict(&a, &published(&[], &[a], &[])),
+        Err(FsyncError::PeerOffline)
+    );
+    // Another peer's refusal does not decide ours.
+    assert_eq!(
+        push_verdict(&a, &published(&[], &[a], &[b])),
+        Err(FsyncError::PeerOffline)
+    );
+}

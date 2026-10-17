@@ -59,6 +59,8 @@ pub struct Published {
     pub echo: bool,
     pub delivered: Vec<String>,
     pub failed: Vec<String>,
+    /// Peers that no longer trust this device (it was removed or reset there).
+    pub refused: Vec<String>,
 }
 
 impl From<proto::ClipKind> for ClipKind {
@@ -129,9 +131,8 @@ impl From<svc::Published> for Published {
             item_id: p.item_id,
             echo: p.echo,
             delivered: p.delivered,
-            // The app record has no `refused` list (no FFI churn; no app reads these lists):
-            // a refusing peer counts as not delivered.
-            failed: p.failed.into_iter().chain(p.refused).collect(),
+            failed: p.failed,
+            refused: p.refused,
         }
     }
 }
