@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # N8 (consumes the pairing, runs last): A resets the account trust (fresh login code first). B is
 # no longer trusted by A: B's clip and file push must each be refused within 30 s with the typed
-# refusal ("not paired with that device", never delivered, never offline) and A receives nothing.
+# refusal ("the other device removed this one", never delivered, never offline) and A receives nothing.
 # This is also the "dial from a no-longer-paired NodeId" security check.
 # One engine per data dir (engine.lock): A's receivers run one after the other, not together.
 scenario_n8() {
@@ -14,13 +14,13 @@ scenario_n8() {
   local w=$!; track "$w"
   wait_for '"event":"ready"' "$dir/a-watch.out" 60
   # B does not know it was removed, so it keeps trying. Every put must be told it was refused
-  # ("not paired with that device", the typed refusal), never delivered and never "peer is offline".
+  # ("the other device removed this one", the typed refusal), never delivered and never "peer is offline".
   local t0 put_rc k clip_s=0
   for k in 1 2 3; do
     put_rc=0; t0=$SECONDS
     cli B clip put --text "from-removed-B-$k" --wait 5 >"$dir/b-put-$k.out" 2>"$dir/b-put-$k.err" || put_rc=$?
     [[ $put_rc -eq 0 ]] && fail "B's clip put $k was reported delivered after A reset trust (N8 regression): $(head -c 300 "$dir/b-put-$k.out")"
-    grep -q "not paired with that device" "$dir/b-put-$k.err" || fail "B's put $k: expected the refusal 'not paired with that device', got: $(head -c 300 "$dir/b-put-$k.err")"
+    grep -q "the other device removed this one" "$dir/b-put-$k.err" || fail "B's put $k: expected the refusal 'the other device removed this one', got: $(head -c 300 "$dir/b-put-$k.err")"
     [[ $((SECONDS - t0)) -gt $clip_s ]] && clip_s=$((SECONDS - t0))   # slowest single put
   done
   sleep 2   # late-delivery window for the negative check below (not a timing assertion)
@@ -39,7 +39,7 @@ scenario_n8() {
   if cli B send devA "$dir/f.bin" --wait 20 >"$dir/b-send.out" 2>"$dir/b-send.err"; then
     fail "B's file push was accepted after trust reset"
   fi
-  grep -q "not paired with that device" "$dir/b-send.err" || fail "B's file push: expected the refusal 'not paired with that device', got: $(head -c 300 "$dir/b-send.err")"
+  grep -q "the other device removed this one" "$dir/b-send.err" || fail "B's file push: expected the refusal 'the other device removed this one', got: $(head -c 300 "$dir/b-send.err")"
   local file_s=$((SECONDS - t0))
   cli_kill A; wait "$f" 2>/dev/null || true
   grep -q '"event":"fetched"' "$dir/a-fetch.out" && fail "A received a file from removed B"
