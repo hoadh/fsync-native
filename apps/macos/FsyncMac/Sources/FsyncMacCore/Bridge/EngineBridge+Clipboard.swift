@@ -28,6 +28,10 @@ extension EngineBridge {
             MainActor.assumeIsolated { self?.refreshHistory() }
         }.store(in: &modelSubscriptions)
         files.onSent = { [weak self] in self?.refreshHistory() }
+        files.onNotice = { [weak self] in self?.incomingFiles.send($0) }
+        files.isPeerTrusted = { [weak self] id in
+            self?.devicesModel?.devices.contains { $0.nodeId == id && !$0.isSelf } ?? false
+        }
     }
 
     /// Runs on every successful settings load or edit. The first successful load while `.ready` starts
@@ -45,6 +49,7 @@ extension EngineBridge {
 
     private func phaseChanged(for phase: AppPhase) {
         guard phase == .ready else {
+            navigation.reset()
             clipSync?.stop()
             filesSync?.stop()
             hotkey?.unregister()
