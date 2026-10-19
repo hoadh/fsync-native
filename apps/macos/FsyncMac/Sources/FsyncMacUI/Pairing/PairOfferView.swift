@@ -8,7 +8,7 @@ struct PairOfferView: View {
     @ObservedObject var model: PairingModel
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             if case .offering(let offer, let mode) = model.state {
                 Picker("", selection: Binding(get: { mode }, set: { new in Task { await model.offer(new) } })) {
                     Text("Code").tag(PairingMode.code)

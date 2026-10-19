@@ -37,13 +37,14 @@ struct TrustResetPendingView: View {
         }
     }
 
+    private var names: [String] { TrustResetMapping.displayNames(info.deviceNames) }
+
     private var deviceList: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("New device list (\(info.devices))").font(.headline)
-            // Core already rejects control/bidi characters and names over 64 chars
-            // (fsync-proto check_shape), so names are not filtered again here.
+            // Names are untrusted: sanitized for display (core's check_shape is not relied on).
             let rows = VStack(alignment: .leading, spacing: 4) {
-                ForEach(Array(info.deviceNames.enumerated()), id: \.offset) { _, name in
+                ForEach(Array(names.enumerated()), id: \.offset) { _, name in
                     // Only names are known, not platforms, so the bullet is neutral.
                     Label {
                         // Verbatim: names are untrusted text, no markdown or links.
@@ -55,7 +56,7 @@ struct TrustResetPendingView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Group {
-                if info.deviceNames.count > Self.visibleRows {
+                if names.count > Self.visibleRows {
                     ScrollView { rows }.frame(maxHeight: 150)
                 } else {
                     rows
@@ -95,8 +96,8 @@ struct TrustResetPendingView: View {
 
     /// Lists what will be trusted so the second step shows it, not just a warning.
     private var dialogMessage: String {
-        let shown = info.deviceNames.prefix(Self.visibleRows)
-        let more = info.deviceNames.count - shown.count
+        let shown = names.prefix(Self.visibleRows)
+        let more = names.count - shown.count
         let list = shown.joined(separator: "\n") + (more > 0 ? "\nand \(more) more" : "")
         let count = info.devices == 1 ? "1 device" : "\(info.devices) devices"
         return "This replaces the devices this Mac trusts with these \(count):\n\(list)\n\nOnly continue if you or someone you trust did the reset."

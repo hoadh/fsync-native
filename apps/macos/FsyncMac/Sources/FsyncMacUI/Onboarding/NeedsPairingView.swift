@@ -13,14 +13,17 @@ public struct NeedsPairingView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 14) {
-            Text("Pair this Mac").font(.title2)
+        VStack(spacing: 16) {
+            Image(systemName: "link.badge.plus").font(.system(size: 32)).foregroundStyle(.tint).accessibilityHidden(true)
+            Text("Pair this Mac").font(.title2).accessibilityAddTraits(.isHeader)
             Text("On a device you already use, choose Add device and enter this code.")
                 .foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
             if let pairing { PairingFlowView(model: pairing, role: .offer) }
             if let recovery { RecoveryLink(model: recovery) }
         }
-        .padding(.horizontal, 30).padding(.vertical, 20)
+        .frame(maxWidth: 380)
+        .padding(.horizontal, 30).padding(.vertical, 24)
     }
 }
 

@@ -6,37 +6,10 @@ import XCTest
 @testable import FsyncMacCore
 @testable import FsyncMacUI
 
-private final class QuietDelegate: EngineDelegate, @unchecked Sendable {
-    func onRemoteClip(item: ClipItem) {}
-    func onDeviceStatus(device: Device) {}
-    func onTransfer(event: TransferEvent) {}
-    func onIncomingFiles(offer: ClipItem) {}
-    func onPairingEvent(event: PairingEvent) {}
-    func onAccountEvent(event: AccountEvent) {}
-    func onSessionChanged(tokens: SessionTokens) {}
-    func onError(error: FsyncError) {}
-}
-
 @MainActor
 final class OnboardingRenderTests: XCTestCase {
-    private func render<V: View>(_ view: V, _ name: String) throws {
-        let renderer = ImageRenderer(content: view)
-        renderer.scale = 2
-        let image = try XCTUnwrap(renderer.nsImage, name)
-        XCTAssertGreaterThan(image.size.width, 100, name)
-        XCTAssertGreaterThan(image.size.height, 50, name)
-    }
-
-    private func makeEngine() throws -> FsyncEngine {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
-        let cfg = EngineConfig(
-            dataDir: dir.path, apiBase: "http://127.0.0.1:9", relayUrl: nil, deviceName: "t", platform: .mac,
-            deviceSecret: Data(repeating: 7, count: 32), historyKey: Data(repeating: 9, count: 32),
-            forceRelay: false, allowInsecureHttp: true)
-        return try FsyncEngine(cfg: cfg, delegate: QuietDelegate())
-    }
+    private func render<V: View>(_ view: V, _ name: String) throws { try RenderSupport.render(view, name) }
+    private func makeEngine() throws -> FsyncEngine { try RenderSupport.makeEngine(for: self) }
 
     func testOnboardingViewsRender() throws {
         let engine = try makeEngine()
@@ -50,13 +23,7 @@ final class OnboardingRenderTests: XCTestCase {
         try render(RecoverySheet(model: recovery), "recovery final")
     }
 
-    private func devices(_ engine: FsyncEngine) -> DevicesModel {
-        let model = DevicesModel(engine: engine, onSignInRequired: {})
-        model.merge(Device(nodeId: "s", name: "This Mac", platform: .mac, status: .offline, online: false, lastSeenMs: 0, isSelf: true))
-        model.merge(Device(nodeId: "a", name: "Work PC", platform: .win, status: .lan, online: true, lastSeenMs: 0, isSelf: false))
-        model.merge(Device(nodeId: "b", name: "CLI", platform: .cli, status: .offline, online: false, lastSeenMs: 1_700_000_000_000, isSelf: false))
-        return model
-    }
+    private func devices(_ engine: FsyncEngine) -> DevicesModel { RenderSupport.devices(engine) }
 
     func testPairingViewsRender() throws {
         let engine = try makeEngine()

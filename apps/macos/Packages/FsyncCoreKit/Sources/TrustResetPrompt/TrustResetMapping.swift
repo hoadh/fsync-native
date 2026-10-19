@@ -36,4 +36,22 @@ enum TrustResetMapping {
     static func dialogIsPresented(confirmingId: String?, displayedId: String?) -> Bool {
         confirmingId != nil && confirmingId == displayedId
     }
+
+    /// Spec section 5 sanitizer (same algorithm as `PeerText.sanitize`, which lives in FsyncMacCore and
+    /// cannot be imported here): drops control and format scalars, trims, caps at 40 characters.
+    static func sanitize(_ text: String, limit: Int = 40) -> String {
+        let cleaned = String(String.UnicodeScalarView(text.unicodeScalars.filter {
+            $0.properties.generalCategory != .control && $0.properties.generalCategory != .format
+        })).trimmingCharacters(in: .whitespaces)
+        guard cleaned.count > limit else { return cleaned }
+        return String(cleaned.prefix(limit)) + "…"
+    }
+
+    /// Names of the new device list as shown: sanitized, empty ones replaced by a neutral label.
+    static func displayNames(_ names: [String]) -> [String] {
+        names.map { name in
+            let clean = sanitize(name)
+            return clean.isEmpty ? "another device" : clean
+        }
+    }
 }

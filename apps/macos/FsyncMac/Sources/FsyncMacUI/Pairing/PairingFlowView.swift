@@ -25,6 +25,7 @@ public struct PairingFlowView: View {
             case .waitingForPeer:
                 ProgressView()
                 Text("Waiting for the other device…").foregroundStyle(.secondary)
+                Button("Cancel") { Task { await model.cancel() } }.keyboardShortcut(.cancelAction)
             case .done(let name):
                 Image(systemName: "checkmark.circle.fill").font(.system(size: 36)).foregroundStyle(.green)
                 Text(verbatim: "Paired with \(name)").font(.title3)
@@ -33,7 +34,7 @@ public struct PairingFlowView: View {
                 Text("Pairing didn't finish").font(.headline)
                 Text(verbatim: text).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 HStack {
-                    if role == .join { Button("Cancel") { model.dismiss() } }
+                    if role == .join { Button("Cancel") { model.dismiss() }.keyboardShortcut(.cancelAction) }
                     Button("Try again") { retry() }.keyboardShortcut(.defaultAction)
                 }
             }

@@ -13,6 +13,7 @@ public struct OtpView: View {
 
     public var body: some View {
         VStack(spacing: 14) {
+            Image(systemName: "envelope.badge").font(.system(size: 32)).foregroundStyle(.tint).accessibilityHidden(true)
             Text("Enter your code").font(.title2)
             Text("Sent to \(email)").foregroundStyle(.secondary)
             TextField("123456", text: $model.code)
@@ -24,11 +25,13 @@ public struct OtpView: View {
                 .focused($focused)
                 .disabled(model.isBusy)
                 .onSubmit { Task { await model.verify() } }
-                .onChange(of: model.code) { value in
+                .onChange(of: model.code) { _, value in
                     if value.count == LoginModel.codeLength { Task { await model.verify() } }
                 }
             if model.isBusy { ProgressView().controlSize(.small) }
-            if let error = model.errorMessage { Text(error).foregroundStyle(.red).font(.callout) }
+            if let error = model.errorMessage {
+                Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red).font(.callout)
+            }
             HStack {
                 Button(model.resendSecondsLeft > 0 ? "Resend code (\(model.resendSecondsLeft)s)" : "Resend code") {
                     Task { await model.resend() }
@@ -38,6 +41,7 @@ public struct OtpView: View {
             }
             .buttonStyle(.link)
         }
+        .frame(maxWidth: 340)
         .onAppear { focused = true }
     }
 }

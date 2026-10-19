@@ -8,7 +8,7 @@ struct LoginFlowView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            if let banner { Text(banner).font(.callout).foregroundStyle(.secondary) }
+            if let banner { Text(banner).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center) }
             switch model.step {
             case .email: LoginView(model: model)
             case .code(let email): OtpView(model: model, email: email)
@@ -28,6 +28,7 @@ public struct LoginView: View {
 
     public var body: some View {
         VStack(spacing: 14) {
+            Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 32)).foregroundStyle(.tint).accessibilityHidden(true)
             Text("Sign in to fsync").font(.title2)
             Text("We'll email you a 6-digit code.").foregroundStyle(.secondary)
             TextField("Email", text: $model.email)
@@ -35,11 +36,14 @@ public struct LoginView: View {
                 .focused($focused)
                 .onSubmit { Task { await model.sendCode() } }
                 .disabled(model.isBusy)
-            if let error = model.errorMessage { Text(error).foregroundStyle(.red).font(.callout) }
+            if let error = model.errorMessage {
+                Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red).font(.callout)
+            }
             Button("Send code") { Task { await model.sendCode() } }
                 .keyboardShortcut(.defaultAction)
                 .disabled(!model.canSendCode)
         }
+        .frame(maxWidth: 340)
         .onAppear { focused = true }
     }
 }
