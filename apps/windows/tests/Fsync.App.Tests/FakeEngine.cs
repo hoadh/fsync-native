@@ -45,19 +45,23 @@ internal sealed class FakeEngine : IFsyncEngine
     public readonly List<ulong> Cancelled = [];
     public void Cancel(ulong transferId) { lock (Cancelled) Cancelled.Add(transferId); Log("Cancel"); }
     public void Clear(bool keepPinned) => throw new NotImplementedException();
-    public AccountState ConfirmTrustReset(string resetId) => throw new NotImplementedException();
-    public void DeclineTrustReset(string resetId) => throw new NotImplementedException();
+    public Func<TrustResetInfo[]> OnPendingTrustResets = () => [];
+    public Func<string, AccountState> OnConfirmTrustReset = _ => throw new FsyncException.NotFound();
+    public Action<string> OnDeclineTrustReset = _ => throw new FsyncException.NotFound();
+    public Func<AccountState> OnResetAccountTrust = () => throw new FsyncException.Auth();
+    public AccountState ConfirmTrustReset(string resetId) => Log($"ConfirmTrustReset {resetId}", () => OnConfirmTrustReset(resetId));
+    public void DeclineTrustReset(string resetId) { Log($"DeclineTrustReset {resetId}"); OnDeclineTrustReset(resetId); }
     public void Delete(string itemId) => throw new NotImplementedException();
     public ulong FetchFileTo(string itemId, uint fileId, string destDir) => Log($"FetchFileTo {fileId}", () => OnFetchFileTo(itemId, fileId, destDir));
     public byte[] FetchRep(string itemId, uint idx) => throw new NotImplementedException();
     public Func<string, Rep[]> OnHistoryItemReps = _ => throw new FsyncException.NotFound();
     public Rep[] HistoryItemReps(string itemId) => Log($"HistoryItemReps {itemId}", () => OnHistoryItemReps(itemId));
     public HistoryPage History(string? query, string? cursor, uint limit) => throw new NotImplementedException();
-    public TrustResetInfo[] PendingTrustResets() => [];
+    public TrustResetInfo[] PendingTrustResets() => Log("PendingTrustResets", OnPendingTrustResets);
     public void Pin(string itemId, bool pinned) => throw new NotImplementedException();
     public Published PublishClip(LocalClip clip) => throw new NotImplementedException();
     public byte[] ReadFileRange(string itemId, uint fileId, ulong offset, uint len) => throw new NotImplementedException();
-    public AccountState ResetAccountTrust() => throw new NotImplementedException();
+    public AccountState ResetAccountTrust() => Log("ResetAccountTrust", OnResetAccountTrust);
     public ulong SendFiles(string nodeId, string[] paths) => throw new NotImplementedException();
     public void SetSettings(Settings settings) => throw new NotImplementedException();
     public Settings Settings() => throw new NotImplementedException();
@@ -66,7 +70,11 @@ internal sealed class FakeEngine : IFsyncEngine
 /// <summary>Bridge over a FakeEngine with a temp DPAPI secrets file and inline dispatch.</summary>
 internal sealed class Harness : IDisposable
 {
-    public readonly FakeEngine Engine = new();
+    /// <summary>The engine the bridge uses now (replaced on a recreate when <see cref="NewEngine"/> is set).</summary>
+    public FakeEngine Engine { get; private set; } = new();
+    /// <summary>When set, every engine creation after the first gets a fresh FakeEngine (ResetHistoryAsync).</summary>
+    public Func<FakeEngine>? NewEngine;
+    public int EnginesCreated { get; private set; }
     public readonly string Dir = Path.Combine(Path.GetTempPath(), "fsync-app-" + Guid.NewGuid().ToString("N"));
     public readonly SecretStore Secrets;
     public readonly EngineBridge Bridge;
@@ -79,8 +87,15 @@ internal sealed class Harness : IDisposable
         Secrets = new SecretStore(Path.Combine(Dir, "secrets.dat"));
         if (session is not null) Secrets.SaveSession(session, "me@example.com");
         var settings = new AppSettings(Dir, "http://127.0.0.1:9", null, "test-pc");
-        Bridge = new EngineBridge(settings, Secrets, new InlineDispatcher(), (_, d) => { Engine.Delegate = d; return Engine; },
+        Bridge = new EngineBridge(settings, Secrets, new InlineDispatcher(), (_, d) => Create(d),
             (api, refresh, insecure) => { lock (Revokes) Revokes.Add((api, refresh, insecure)); OnRevoke(api, refresh, insecure); });
+    }
+
+    private FakeEngine Create(EngineDelegate d)
+    {
+        if (EnginesCreated++ > 0 && NewEngine is { } make) Engine = make();
+        Engine.Delegate = d;
+        return Engine;
     }
 
     public void Dispose()
