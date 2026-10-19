@@ -23,6 +23,16 @@ public sealed partial class TransfersViewModel : ObservableObject, IDisposable
     /// <summary>Files of an offer whose pull already started (a second Accept skips them).</summary>
     private readonly Dictionary<string, HashSet<uint>> _started = [];
     private readonly HashSet<string> _accepting = [];
+    /// <summary>Offer ids already announced (bounded), so a repeated offer raises no second notice.</summary>
+    private const int SeenOfferLimit = 256;
+    private readonly HashSet<string> _seenOffers = [];
+    private readonly Queue<string> _seenOrder = new();
+
+    /// <summary>
+    /// A new offer arrived (once per item id): the offer and whether it is being accepted automatically.
+    /// Notices use this decision; they never re-derive the auto-accept rule. UI thread.
+    /// </summary>
+    public event Action<ClipItem, bool>? OfferReceived;
 
     public ObservableCollection<TransferItem> Transfers { get; } = [];
     public ObservableCollection<IncomingOffer> Offers { get; } = [];
@@ -64,7 +74,18 @@ public sealed partial class TransfersViewModel : ObservableObject, IDisposable
     {
         var o = new IncomingOffer(offer);
         Offers.Insert(0, o);
-        if (_autoAccept() && offer.totalSize <= AutoAcceptLimit) _ = AcceptAsync(o);
+        var autoAccepted = _autoAccept() && offer.totalSize <= AutoAcceptLimit;
+        if (autoAccepted) _ = AcceptAsync(o);
+        if (RememberOffer(offer.itemId)) OfferReceived?.Invoke(offer, autoAccepted);
+    }
+
+    /// <summary>True the first time an item id is seen; the set keeps the newest <see cref="SeenOfferLimit"/> ids.</summary>
+    private bool RememberOffer(string itemId)
+    {
+        if (!_seenOffers.Add(itemId)) return false;
+        _seenOrder.Enqueue(itemId);
+        if (_seenOrder.Count > SeenOfferLimit) _seenOffers.Remove(_seenOrder.Dequeue());
+        return true;
     }
 
     /// <summary>
