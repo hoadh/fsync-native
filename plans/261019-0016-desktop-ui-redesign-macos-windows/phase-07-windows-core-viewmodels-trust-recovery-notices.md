@@ -2,6 +2,7 @@
 machine: waso
 owns: ["apps/windows/src/Fsync.App.Core/ViewModels/TrustResetPromptViewModel.cs", "apps/windows/src/Fsync.App.Core/ViewModels/TrustResetMessages.cs", "apps/windows/src/Fsync.App.Core/ViewModels/AccountRecoveryViewModel.cs", "apps/windows/src/Fsync.App.Core/ViewModels/IncomingFilesNotice.cs", "apps/windows/src/Fsync.App.Core/ViewModels/IncomingFilesNoticeCoalescer.cs", "apps/windows/src/Fsync.App.Core/ViewModels/ToastAction.cs", "apps/windows/src/Fsync.App.Core/Services/PeerText.cs", "apps/windows/src/Fsync.App.Core/Bridge/EngineBridge.Trust.cs", "apps/windows/src/Fsync.App.Core/Files/TransfersViewModel.cs", "apps/windows/tests/Fsync.App.Tests/FakeEngine.cs", "apps/windows/tests/Fsync.App.Tests/TrustResetPromptViewModelTests.cs", "apps/windows/tests/Fsync.App.Tests/AccountRecoveryViewModelTests.cs", "apps/windows/tests/Fsync.App.Tests/IncomingFilesNoticeTests.cs", "apps/windows/tests/Fsync.App.Tests/PeerTextTests.cs", "apps/windows/tests/Fsync.App.Tests/ToastActionTests.cs", "apps/windows/tests/Fsync.App.Tests/EngineRecreateViewModelTests.cs"]
 dependsOn: [01]
+status: in-progress
 ---
 
 # Phase 07: Windows core view models: trust reset, recovery, notices (waso)
