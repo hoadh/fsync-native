@@ -71,8 +71,6 @@ final class OnboardingRenderTests: XCTestCase {
         XCTAssertEqual(files.offers.count, 1)
         try render(FilesMenuSection(files: files, transfers: transfers).padding(20), "files section")
         try render(DeviceRowView(device: try XCTUnwrap(devices.devices.first), onRemove: nil, onSend: { _ in }).padding(20), "device row send")
-        let pairing = PairingModel(engine: engine, onPaired: { _ in }, onSignInRequired: {})
-        try render(ReadyView(devices: devices, pairing: pairing, banner: nil, signOut: {}), "ready home")
     }
 
     func testSettingsRender() throws {

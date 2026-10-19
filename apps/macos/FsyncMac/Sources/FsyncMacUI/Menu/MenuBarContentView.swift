@@ -2,7 +2,8 @@ import FsyncMacCore
 import SwiftUI
 import TrustResetPrompt
 
-/// The popover for a trusted Mac: status, devices, actions. Dialogs live in the main window.
+/// The popover for a trusted Mac, top to bottom: status, clipboard, incoming files, devices, app actions.
+/// Dialogs live in the main window.
 struct MenuBarContentView: View {
     @ObservedObject var devices: DevicesModel
     @ObservedObject var trust: TrustResetPromptModel
@@ -11,6 +12,7 @@ struct MenuBarContentView: View {
     var transfers: TransfersModel?
     let banner: String?
     let openHistory: () -> Void
+    var openTransfers: () -> Void = {}
     let openMain: () -> Void
     let openSettings: () -> Void
     let addDevice: () -> Void
@@ -21,7 +23,8 @@ struct MenuBarContentView: View {
             StatusHeaderView(summary: devices.summary)
             if let banner { Text(banner).font(.caption).foregroundStyle(.secondary) }
             if !trust.pending.isEmpty {
-                Button("Review device list change…", action: openMain).foregroundStyle(.orange)
+                Button("Review device list change…", action: openMain)
+                    .buttonStyle(MenuRowButtonStyle()).foregroundStyle(.orange)
             }
             Divider()
             if let sync {
@@ -29,17 +32,20 @@ struct MenuBarContentView: View {
                 Divider()
             }
             if let files, let transfers {
-                FilesMenuSection(files: files, transfers: transfers)
+                FilesMenuSection(files: files, transfers: transfers, openTransfers: openTransfers)
             }
             DeviceListView(devices: devices.devices, onRemove: nil, onSend: files.map { files in
                 { device, urls in Task { await files.send(urls, to: device.nodeId) } }
             })
             Divider()
-            Button("Add device…", action: addDevice)
-            Button("Open fsync", action: openMain)
-            Button("Settings…", action: openSettings)
-            SignOutButton(action: signOut)
-            Button("Quit fsync") { NSApplication.shared.terminate(nil) }
+            VStack(alignment: .leading, spacing: 0) {
+                Button("Pair device…", action: addDevice)
+                Button("Open fsync", action: openMain)
+                Button("Settings…", action: openSettings)
+                SignOutButton(action: signOut)
+                Button("Quit fsync") { NSApplication.shared.terminate(nil) }
+            }
+            .buttonStyle(MenuRowButtonStyle())
         }
         .onAppear { Task { await devices.reload() } }
     }

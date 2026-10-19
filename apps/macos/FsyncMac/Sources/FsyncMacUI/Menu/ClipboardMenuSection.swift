@@ -18,7 +18,7 @@ struct ClipboardMenuSection: View {
                 Text(verbatim: "Send clipboard  \(HotkeyManager.sendClipboardLabel)")
             }
             .disabled(!sync.isRunning)
-            Button("History…", action: openHistory)
+            Button("History…", action: openHistory).buttonStyle(MenuRowButtonStyle())
             if let activity = sync.activity {
                 Text(verbatim: "\(activity.direction == .sent ? "Sent" : "Received"): \(PeerText.sanitize(activity.summary, limit: 80))")
                     .font(.caption).lineLimit(1).foregroundStyle(.secondary)

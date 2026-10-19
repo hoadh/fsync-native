@@ -2,10 +2,12 @@ import FsyncCoreKit
 import FsyncMacCore
 import SwiftUI
 
-/// Files other devices want to send, running transfers and the last file error.
+/// Files other devices want to send, running transfers and the last file error. "Transfers…" shows only while
+/// there is an offer or a running transfer.
 struct FilesMenuSection: View {
     @ObservedObject var files: FilesSync
     @ObservedObject var transfers: TransfersModel
+    var openTransfers: (() -> Void)?
 
     var body: some View {
         let active = transfers.active
@@ -29,6 +31,9 @@ struct FilesMenuSection: View {
                 }
                 if let message = files.message {
                     Text(message).font(.caption).foregroundStyle(.orange).onTapGesture { files.dismissMessage() }
+                }
+                if let openTransfers, !files.offers.isEmpty || !active.isEmpty {
+                    Button("Transfers…", action: openTransfers).buttonStyle(MenuRowButtonStyle())
                 }
             }
             Divider()

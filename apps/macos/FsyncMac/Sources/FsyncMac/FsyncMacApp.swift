@@ -1,5 +1,6 @@
 import FsyncMacCore
 import FsyncMacUI
+import AppKit
 import SwiftUI
 
 @main
@@ -12,7 +13,9 @@ struct FsyncMacApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuPopover(bridge: bridge, openMain: showMain, openSettings: showSettings, openHistory: showHistory)
+            MenuPopover(
+                bridge: bridge, openMain: showMain, openSettings: showSettings, openHistory: showHistory,
+                openTransfers: showTransfers, addDevice: addDevice)
         } label: {
             Image(systemName: bridge.anyPeerOnline ? "doc.on.clipboard.fill" : "doc.on.clipboard")
                 .onReceive(bridge.$phase) { phase in
@@ -36,41 +39,52 @@ struct FsyncMacApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("fsync", id: "main") {
-            RootView(bridge: bridge)
-        }
+        // Declared before `Settings`: it owns `openSettings` (see SettingsOpener.swift). Never visible.
+        Window("", id: WindowIDs.SceneIDs.settingsOpener) { SettingsOpenerView() }
+            .windowStyle(.hiddenTitleBar)
+            .defaultSize(width: 1, height: 1)
 
-        Window("Clipboard history", id: "history") {
-            if let history = bridge.historyModel, let devices = bridge.devicesModel, bridge.phase == .ready {
-                HistoryView(history: history, devices: devices, sync: bridge.clipSync)
-            } else {
-                Text("Sign in to see your history.").padding(40)
-            }
+        Window("fsync", id: WindowIDs.SceneIDs.main) {
+            RootView(bridge: bridge)
+                .background(WindowIdentifier(WindowIDs.main))
         }
+        .defaultSize(width: 760, height: 520)
+        .windowResizability(.contentMinSize)
 
         Settings { SettingsView(bridge: bridge) }
     }
 
     private func showSettings() {
-        NSApp.activate(ignoringOtherApps: true)
-        // SettingsLink needs macOS 14 and a view hierarchy; the responder-chain action works from a menu on both.
-        let name = if #available(macOS 14, *) { "showSettingsWindow:" } else { "showPreferencesWindow:" }
-        NSApp.sendAction(Selector(name), to: nil, from: nil)
+        // The opener window may not exist yet (a Window scene opens lazily); creating it is harmless, it hides itself.
+        if !NSApp.windows.contains(where: WindowIDs.isSettingsOpener) { openWindow(id: WindowIDs.SceneIDs.settingsOpener) }
+        SettingsRequest.send()
     }
 
     private func showHistory() {
-        // SwiftUI keeps a closed window's view alive, so its `.task` does not run again on reopen.
-        bridge.refreshHistory()
-        openWindow(id: "history")
-        NSApp.activate(ignoringOtherApps: true)
+        bridge.navigation.show(.history)  // the bridge refreshes the list on this assignment
+        showMain()
+    }
+
+    private func showTransfers() {
+        bridge.navigation.show(.transfers)
+        showMain()
+    }
+
+    private func addDevice() {
+        bridge.navigation.presentPairing()
+        showMain()
     }
 
     private func showMain() {
-        openWindow(id: "main")
-        NSApp.activate(ignoringOtherApps: true)
-        // An accessory app's new window can stay behind other apps; bring it forward explicitly.
-        DispatchQueue.main.async {
-            NSApp.windows.first { $0.title == "fsync" && $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+        openWindow(id: WindowIDs.SceneIDs.main)
+        NSApp.activate()
+        // An accessory app's new window can stay behind other apps; bring it forward explicitly. The
+        // identifier is set when the window's view appears, so retry once on the next turn if it is not there yet.
+        func front() -> Bool {
+            guard let window = WindowIDs.window(WindowIDs.main) else { return false }
+            window.makeKeyAndOrderFront(nil)
+            return true
         }
+        DispatchQueue.main.async { if !front() { DispatchQueue.main.async { _ = front() } } }
     }
 }

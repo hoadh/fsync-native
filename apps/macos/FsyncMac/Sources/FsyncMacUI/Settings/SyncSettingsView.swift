@@ -9,28 +9,36 @@ struct SyncSettingsView: View {
 
     var body: some View {
         Form {
-            Picker("Clipboard", selection: Binding(get: { settings.settings.clipMode }, set: { mode in
-                Task { await settings.update { $0.clipMode = mode } }
-            })) {
-                Text("Share automatically").tag(ClipMode.auto)
-                Text("Only when I send").tag(ClipMode.manual)
+            Section {
+                Picker("Clipboard", selection: Binding(get: { settings.settings.clipMode }, set: { mode in
+                    Task { await settings.update { $0.clipMode = mode } }
+                })) {
+                    Text("Share automatically").tag(ClipMode.auto)
+                    Text("Only when I send").tag(ClipMode.manual)
+                }
+                .pickerStyle(.radioGroup)
+                if let text = access.explanation, settings.settings.clipMode == .auto {
+                    Text(text).font(.caption).foregroundStyle(.orange)
+                }
+            } footer: {
+                Text(settings.settings.clipMode == .auto
+                    ? "What you copy goes to your other devices, and what they copy lands on your clipboard."
+                    : "Send with \(HotkeyManager.sendClipboardLabel) or the menu. Clips from other devices wait under \"Paste from\".")
             }
-            .pickerStyle(.radioGroup)
-            Text(settings.settings.clipMode == .auto
-                ? "What you copy goes to your other devices, and what they copy lands on your clipboard."
-                : "Send with \(HotkeyManager.sendClipboardLabel) or the menu. Clips from other devices wait under \"Paste from\".")
-                .font(.caption).foregroundStyle(.secondary)
-            Toggle("Receive files from my devices without asking", isOn: Binding(
-                get: { settings.settings.autoAcceptFiles },
-                set: { value in Task { await settings.update { $0.autoAcceptFiles = value } } }))
-            Text("Files go to your Downloads folder. Otherwise each transfer waits for you under the menu.")
-                .font(.caption).foregroundStyle(.secondary)
-            if let text = access.explanation, settings.settings.clipMode == .auto {
-                Text(text).font(.caption).foregroundStyle(.orange)
+            Section {
+                Toggle("Receive files from my devices without asking", isOn: Binding(
+                    get: { settings.settings.autoAcceptFiles },
+                    set: { value in Task { await settings.update { $0.autoAcceptFiles = value } } }))
+            } header: {
+                Text("Files")
+            } footer: {
+                Text("Files go to your Downloads folder. Otherwise each transfer waits for you under Transfers.")
             }
-            if let error = settings.errorMessage { Text(error).font(.caption).foregroundStyle(.red) }
+            if let error = settings.errorMessage {
+                Section { Text(error).font(.caption).foregroundStyle(.red) }
+            }
         }
-        .padding(20)
+        .formStyle(.grouped)
         .onAppear { access = PasteboardAccess.current() }
     }
 }
