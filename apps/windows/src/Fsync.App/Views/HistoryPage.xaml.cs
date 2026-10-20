@@ -75,7 +75,8 @@ public sealed partial class HistoryPage : Page, INotifyPropertyChanged
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is not (nameof(HistoryViewModel.Status) or nameof(HistoryViewModel.Error))) return;
+        if (e.PropertyName is not (nameof(HistoryViewModel.Status) or nameof(HistoryViewModel.Error)
+            or nameof(HistoryViewModel.LoadedQuery))) return;
         UpdateShowEmpty();
         PropertyChanged?.Invoke(this, new(nameof(StatusCaption)));
     }

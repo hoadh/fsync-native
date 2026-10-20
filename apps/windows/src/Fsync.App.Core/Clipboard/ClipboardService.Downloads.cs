@@ -19,6 +19,10 @@ public sealed partial class ClipboardService
     /// <summary>Transfers this service cancelled (diagnostics, tests).</summary>
     internal ConcurrentQueue<ulong> CancelledTransfers { get; } = new();
 
+    /// <summary>LastActivity (tray tooltip) while an eager paste downloads; the sender is sanitized (spec section 5).</summary>
+    internal static string DownloadingActivity(int files, ClipItem item) =>
+        $"Downloading {files} file(s) from {PeerText.DisplayName(item.fromName)}";
+
     /// <summary>
     /// Downloads the clip's files into inbox\&lt;item&gt; (a file already there with the right size is
     /// reused) and returns the top-level paths for CF_HDROP. One budget (<see cref="EagerTimeout"/>)
@@ -54,7 +58,7 @@ public sealed partial class ClipboardService
                 }
                 waits.Add(Register(ids[^1])); // at once: its outcome is kept and the finally can cancel it
             }
-            if (waits.Count > 0) Post(() => LastActivity = $"Downloading {waits.Count} file(s) from {item.fromName}");
+            if (waits.Count > 0) Post(() => LastActivity = DownloadingActivity(waits.Count, item));
             await Task.WhenAll(waits).WaitAsync(budget.Token);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)

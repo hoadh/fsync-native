@@ -55,10 +55,11 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
             <ListView.Footer>
-                <!-- No items after a load: nothing copied, or nothing for the search. -->
-                <controls:EmptyState Margin="0,24,0,0" Glyph="{x:Bind controls:PageText.HistoryEmptyGlyph(ViewModel.Query), Mode=OneWay}"
-                                     Title="{x:Bind controls:PageText.HistoryEmptyTitle(ViewModel.Query), Mode=OneWay}"
-                                     Body="{x:Bind controls:PageText.HistoryEmptyBody(ViewModel.Query), Mode=OneWay}"
+                <!-- No items after a load: nothing copied, or nothing for the search. Follows LoadedQuery
+                     (search of the last finished load), not Query: no "No matches" while typing. -->
+                <controls:EmptyState Margin="0,24,0,0" Glyph="{x:Bind controls:PageText.HistoryEmptyGlyph(ViewModel.LoadedQuery), Mode=OneWay}"
+                                     Title="{x:Bind controls:PageText.HistoryEmptyTitle(ViewModel.LoadedQuery), Mode=OneWay}"
+                                     Body="{x:Bind controls:PageText.HistoryEmptyBody(ViewModel.LoadedQuery), Mode=OneWay}"
                                      Visibility="{x:Bind local:Ui.Show(ShowEmpty), Mode=OneWay}" />
             </ListView.Footer>
         </ListView>

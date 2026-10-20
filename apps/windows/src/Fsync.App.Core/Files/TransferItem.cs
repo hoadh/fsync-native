@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Fsync.App.Services;
 using Fsync.Core;
 
 namespace Fsync.App.Files;
@@ -62,8 +63,11 @@ public sealed partial class TransferItem : ObservableObject
 public sealed record IncomingOffer(ClipItem Item)
 {
     public string Title => Item.files.Length == 1
-        ? $"{Item.fromName} sent {Item.files[0].name} ({TransferItem.Size(Item.totalSize)})"
-        : $"{Item.fromName} sent {Item.files.Length} files ({TransferItem.Size(Item.totalSize)})";
+        ? $"{Sender} sent {Item.files[0].name} ({TransferItem.Size(Item.totalSize)})"
+        : $"{Sender} sent {Item.files.Length} files ({TransferItem.Size(Item.totalSize)})";
+
+    /// <summary>Peer-supplied sender name, sanitized (spec section 5).</summary>
+    private string Sender => PeerText.DisplayName(Item.fromName);
 
     public override string ToString() => Title;
 }

@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Fsync.App.Bridge;
 using Fsync.App.Clipboard;
+using Fsync.App.Services;
 using Fsync.Core;
 
 namespace Fsync.App.ViewModels;
@@ -17,7 +18,8 @@ public sealed partial class HistoryRow(HistoryItem item, string peerName, bool c
         ClipKind.Files => "Files",
         _ => "(no preview)",
     };
-    public string Meta => $"{(Item.outgoing ? "Copied here" : $"From {peerName}")} · {When(Item.createdMs)} · {Files.TransferItem.Size(Item.totalSize)}";
+    /// <summary>Who, when, size; the peer name is peer-supplied, so it is sanitized (spec section 5).</summary>
+    public string Meta => $"{(Item.outgoing ? "Copied here" : $"From {PeerText.DisplayName(peerName)}")} ·{When(Item.createdMs)} · {Files.TransferItem.Size(Item.totalSize)}";
     public bool CanCopy { get; } = canCopy;
     [ObservableProperty] private bool _pinned = item.pinned;
 
@@ -50,6 +52,11 @@ public sealed partial class HistoryViewModel(EngineBridge bridge, ClipboardServi
     [ObservableProperty] private bool _hasMore;
     [ObservableProperty] private string? _error;
     [ObservableProperty] private string? _status;
+    /// <summary>
+    /// The search of the last load that finished (null: no search). The empty state follows this, not
+    /// <see cref="Query"/>, so it does not say "No matches" while the user is still typing.
+    /// </summary>
+    [ObservableProperty] private string? _loadedQuery;
 
     [RelayCommand]
     public async Task RefreshAsync()
@@ -85,6 +92,7 @@ public sealed partial class HistoryViewModel(EngineBridge bridge, ClipboardServi
                 Items.Add(new HistoryRow(i, i.peer is { } p && _names.TryGetValue(p, out var n) ? n : "another device", clipboard.CanCopyBack(i)));
             _cursor = page.nextCursor;
             HasMore = _cursor is not null;
+            LoadedQuery = q;
             Error = null;
             Status = Items.Count == 0 ? (q is null ? "Nothing copied yet." : "No matches.") : null;
         }

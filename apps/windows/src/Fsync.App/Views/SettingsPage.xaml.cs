@@ -40,9 +40,20 @@ public sealed partial class SettingsPage : Page, INotifyPropertyChanged
     private async void OnResetAccount(object sender, RoutedEventArgs e)
     {
         RecoveryError = null;
+        // The list may be stale: refresh it. The view model is shared with the Devices page, so a failure
+        // here must not leave its error banner behind; the previous Error comes back (a success clears it).
         var devices = App.Current.Devices;
-        try { await devices.RefreshCommand.ExecuteAsync(null); } // the list may be stale; RefreshAsync keeps its own errors
-        catch (Exception ex) { AppLog.Warn($"settings: device refresh before reset failed {ex.GetType().Name}"); }
+        var previousError = devices.Error;
+        try
+        {
+            await devices.RefreshCommand.ExecuteAsync(null);
+            if (devices.Error is not null) devices.Error = previousError;
+        }
+        catch (Exception ex)
+        {
+            devices.Error = previousError;
+            AppLog.Warn($"settings: device refresh before reset failed {ex.GetType().Name}");
+        }
         var others = devices.Devices.Where(d => !d.IsSelf).Select(d => d.Name).ToList();
         RecoveryError = await AccountRecoveryFlow.RunAsync(App.Current.Recovery, App.Current.Bridge, XamlRoot, others);
     }

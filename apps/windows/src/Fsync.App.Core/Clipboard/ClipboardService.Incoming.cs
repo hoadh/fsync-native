@@ -30,7 +30,7 @@ public sealed partial class ClipboardService
         if (IsManual)
         {
             Pending = item;
-            LastActivity = $"{Kind(item)} from {item.fromName}: press {PasteHotKeyText} to paste";
+            LastActivity = PendingActivity(item);
             return;
         }
         Observe(WriteAsync(item), "write");
@@ -72,7 +72,13 @@ public sealed partial class ClipboardService
 
     /// <summary>Writes a received clip; returns false when superseded or failed.</summary>
     public Task<bool> WriteAsync(ClipItem item) =>
-        WriteCoreAsync(item.itemId, $"{Kind(item)} from {item.fromName}", ct => BuildAsync(item, ct));
+        WriteCoreAsync(item.itemId, ReceivedActivity(item), ct => BuildAsync(item, ct));
+
+    /// <summary>LastActivity (tray tooltip) after a received clip was written; the sender is sanitized (spec section 5).</summary>
+    internal static string ReceivedActivity(ClipItem item) => $"{Kind(item)} from {PeerText.DisplayName(item.fromName)}";
+
+    /// <summary>LastActivity in manual mode while a received clip waits for the paste hotkey.</summary>
+    internal static string PendingActivity(ClipItem item) => $"{ReceivedActivity(item)}: press {PasteHotKeyText} to paste";
 
     private async Task<(List<ClipEntry> Entries, List<VirtualFile> Files)> BuildAsync(ClipItem item, CancellationToken ct)
     {
