@@ -13,7 +13,7 @@ dependsOn: [03]
 - Phase 02: `bridge.navigation` (section `MainSection?`); phase 03: `DevicesPageView`, `HistoryView`, `TransfersPageView`, `PairingSheet`
 
 ## Overview
-- Priority: P1. Status: pending.
+- Priority: P1. Status: completed (commit e7853109, pushed to origin). Spike PASS on macOS 26 (`reports/macos-settings-spike-261019.md`); `.regular` policy not needed. macOS 14 untested (risk accepted).
 - Task 0 is a blocking spike (openSettings). Then: main `Window` with NavigationSplitView + gating, pairing sheet, history window removed, Settings window, restyled popover, window lookup by identifier.
 - Not here: notifications (05); CommandMenu, ActivationPolicyController, symbolEffect, icon states, Quick Look (06). Liquid Glass / GlassChrome deleted entirely. The sidebar/toolbar adopt the system look automatically when built with a newer SDK. <!-- red-team #6 -->
 
@@ -75,13 +75,15 @@ showMain(): openWindow("main") → activate → NSApp.windows.first { identifier
 7. `swift build && swift test`; `swift run FsyncMac` smoke.
 
 ## Todo List
-- [ ] Spike openSettings on macOS 26 (report; gate)
-- [ ] Split view + sidebar + toolbar + pairing sheet
-- [ ] RootView gating, ReadyView deleted
-- [ ] History window removed, menubar routes via navigation, showMain by identifier
-- [ ] Settings via opener; grouped forms
-- [ ] Popover restyle
-- [ ] ShellRenderTests
+- [x] Spike openSettings on macOS 26 (report; gate)
+- [x] Split view + sidebar + toolbar + pairing sheet
+- [x] RootView gating, ReadyView deleted
+- [x] History window removed, menubar routes via navigation, showMain by identifier
+- [x] Settings via opener; grouped forms
+- [x] Popover restyle
+- [x] ShellRenderTests
+
+Note: manual `swift run FsyncMac` smoke on macOS 26 (popover, History…, ⌘,) not recorded in a report; owner to confirm. macOS 14 untested (accepted risk, QA checklist).
 
 ## Success Criteria
 - Spike report exists with PASS on macOS 26; macOS 14 listed as untested risk.

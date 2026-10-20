@@ -2,7 +2,7 @@
 machine: waso
 owns: ["apps/windows/src/Fsync.App/App.xaml", "apps/windows/src/Fsync.App/App.xaml.cs", "apps/windows/src/Fsync.App/MainWindow.xaml", "apps/windows/src/Fsync.App/MainWindow.xaml.cs", "apps/windows/src/Fsync.App/Views/Dialogs.cs", "apps/windows/src/Fsync.App/Views/Ui.cs", "apps/windows/src/Fsync.App/Styles/Tokens.xaml", "apps/windows/src/Fsync.App/Shell/TitleBarSetup.cs", "apps/windows/src/Fsync.App/Shell/BackdropSetup.cs", "apps/windows/src/Fsync.App/Shell/NavigationRoutes.cs", "apps/windows/tests/e2e/Uia.psm1", "apps/windows/tests/e2e/pair-with-cli.ps1", "apps/windows/tests/e2e/clipboard-with-cli.ps1"]
 dependsOn: [07]
-status: in-progress
+status: completed
 reviewedSha: 7fe3621b9929225df73667667837dcd5b9076ba1
 reviewScore: 9.5
 ---
@@ -19,7 +19,7 @@ reviewScore: 9.5
 - Phase 07 VMs (not wired yet: phase 09)
 
 ## Overview
-- Priority: P1. Status: pending.
+- Priority: P1. Status: completed (review 9.5 at 7fe3621; collected rig-int b5ebece; tests 170/170; owner e2e gate PASS, shell scope).
 - Left NavigationView with footer Settings, Mica backdrop, custom title bar, design tokens, window/VM lifecycle, `Dialogs.ConfirmAsync`, and e2e helper updates for the renamed nav items. Ends with a mandatory owner e2e gate.
 
 ## Key Insights
@@ -66,12 +66,16 @@ App (VMs, bridge, PendingSend, VisiblePage, IsWindowActive)
 6. Phase test command on waso.
 
 ## Todo List
-- [ ] Tokens + routes
-- [ ] Left nav + footer Settings + title bar + Mica
-- [ ] Lifecycle + seams + App members
-- [ ] Dialogs.ConfirmAsync (Close default) + Ui helpers
-- [ ] e2e helpers by AutomationId
-- [ ] Owner e2e gate report
+- [x] Tokens + routes
+- [x] Left nav + footer Settings + title bar + Mica
+- [x] Lifecycle + seams + App members
+- [x] Dialogs.ConfirmAsync (Close default) + Ui helpers
+- [x] e2e helpers by AutomationId
+- [x] Owner e2e gate report (`reports/windows-e2e-gate-261020.md`: PASS shell scope; NavDevices/NavHistory/NavFiles/NavPairing/NavSettings found, names verified, pair-with-cli 9/9, clipboard-with-cli 13/13)
+
+Deferred / carried:
+- Min window size (`OverlappedPresenter` vs WM_GETMINMAXINFO subclass): not done, plan Unresolved Q2. Not a todo item.
+- "No page title equals a nav item name" check: FAIL as written at gate (Files, Pair a device, Settings titles). Owned by phase 10 renames (`TransfersPage.xaml`, `PairingPage.xaml`, `SettingsPage.xaml` are phase 10 files). Re-check at phase 10 gate.
 
 ## Success Criteria
 - waso: `dotnet build apps/windows/src/Fsync.App -c Release -p:Platform=x64 -r win-x64 && dotnet test apps/windows/tests/Fsync.App.Tests -c Release`, no failures outside the baseline list.

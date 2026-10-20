@@ -12,7 +12,7 @@ dependsOn: [02]
 - Phase 02 APIs: `FilesSync.canRetry/retry`, `TransferRow.revealURL`, `DropSendRequest.validate`
 
 ## Overview
-- Priority: P1. Status: pending.
+- Priority: P1. Status: completed (commit 2c68249, pushed to origin).
 - Build the detail pages the shell (phase 04) hosts: Devices page, History page, Transfers page, pairing sheet, restyled onboarding gates. Pages compile and render standalone.
 - Quick Look and `symbolEffect` moved to stretch phase 06. <!-- red-team #6 -->
 
@@ -68,14 +68,14 @@ Models from FsyncMacCore (ObservableObject). Views call model methods; no engine
 8. `swift build && swift test` in FsyncMac; `swift test` in FsyncCoreKit.
 
 ## Todo List
-- [ ] RenderTestSupport
-- [ ] DevicesPageView + drop confirmation + empty state
-- [ ] HistoryView restyle + states
-- [ ] TransfersPageView (offers, table, Cancel/Retry/Show in Finder/Clear finished, Send files…)
-- [ ] PairingSheet
-- [ ] Onboarding restyle
-- [ ] TrustResetPrompt displayNames sanitizer + tests
-- [ ] PagesRenderTests + symbol test
+- [x] RenderTestSupport
+- [x] DevicesPageView + drop confirmation + empty state
+- [x] HistoryView restyle + states
+- [x] TransfersPageView (offers, table, Cancel/Retry/Show in Finder/Clear finished, Send files…)
+- [x] PairingSheet
+- [x] Onboarding restyle
+- [x] TrustResetPrompt displayNames sanitizer + tests
+- [x] PagesRenderTests + symbol test
 
 ## Success Criteria
 - `cd apps/macos/FsyncMac && swift build && swift test` green; new render tests run (not skipped).

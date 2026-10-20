@@ -12,7 +12,7 @@ dependsOn: [05]
 - MVP outputs: phases 02-05
 
 ## Overview
-- Priority: P3. Status: pending. Optional: the redesign ships without it. Each item is independently droppable. Run only after phase 05 is Completed.
+- Priority: P3. Status: Skipped (owner decision: optional stretch, not run; no code, no commits). Optional: the redesign ships without it. Each item is independently droppable. Run only after phase 05 is Completed.
 - Items:
   - (a) Quick Look on finished transfer rows and history file rows;
   - (b) `symbolEffect` on the menubar label and active transfer progress;

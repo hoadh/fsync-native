@@ -13,7 +13,7 @@ dependsOn: []
 - Sanitizer reference: `apps/macos/FsyncMac/Sources/FsyncMacCore/Features/Devices/PeerText.swift`
 
 ## Overview
-- Priority: P1 (blocks every other phase). Status: pending.
+- Priority: P1 (blocks every other phase). Status: completed (commit 66863e0, pushed to origin).
 - One compact spec that both tracks implement. It covers only what implementers would otherwise guess: the shared copy table, e2e-locked strings, the AutomationId list, the icon map, notification rules, the sanitizer spec and the state matrix. Docs only. <!-- red-team #15 -->
 - Dropped from the earlier draft: `docs/design-guidelines.md` and long IA prose. The IA lives in plan.md Decisions and the shell phases. No new ADR. ADR 003 is amended only because of the macOS 14 bump. <!-- red-team #15 -->
 
@@ -48,12 +48,12 @@ Docs only. Data flow: spec → read by phases 02-11 (copy, ids, rules) → recon
 4. Commit and push to `feat/desktop-ui-redesign` together with the plan dir (plan.md Remote loop step 0). <!-- red-team #3 -->
 
 ## Todo List
-- [ ] Copy table with e2e-locked column + renamed page titles
-- [ ] AutomationId list, icon map
-- [ ] Notification rules + sanitizer spec + vectors
-- [ ] State matrix, destructive dialog rule
-- [ ] ADR 003 amendment
-- [ ] Plan dir + spec committed and pushed
+- [x] Copy table with e2e-locked column + renamed page titles
+- [x] AutomationId list, icon map
+- [x] Notification rules + sanitizer spec + vectors
+- [x] State matrix, destructive dialog rule
+- [x] ADR 003 amendment
+- [x] Plan dir + spec committed and pushed
 
 ## Success Criteria
 - Every locked string from the e2e scripts appears verbatim in the copy table (grep checklist in the commit message or the phase report).

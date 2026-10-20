@@ -11,7 +11,7 @@ dependsOn: [01]
 - Windows reference for Retry: `apps/windows/src/Fsync.App.Core/Files/TransfersViewModel.Pulls.cs`
 
 ## Overview
-- Priority: P1. Status: pending.
+- Priority: P1. Status: completed (commit 06b5cc6, pushed to origin).
 - Headless groundwork: deployment target bump, navigation state, Transfers Retry/Reveal with guards, incoming-files notice stream (sanitized, coalesced, ordered), drop validation, history refresh on navigation. No SwiftUI. Unit-tested.
 - Moved out to stretch phase 06: `MenuBarIconState` and the bridge `menuBarIconState`. <!-- red-team #6 #8 -->
 
@@ -66,12 +66,12 @@ navigation.$section == .history -> bridge.refreshHistory()
 6. `swift test`; fix.
 
 ## Todo List
-- [ ] Target bump
-- [ ] MainNavigation (optional section) + history-refresh sink + tests
-- [ ] Retry/Reveal + in-flight guard + pruning + tests
-- [ ] IncomingFilesNotice + coalescer + receive ordering + bridge wiring test
-- [ ] DropSendRequest + tests
-- [ ] All files < 200 lines
+- [x] Target bump
+- [x] MainNavigation (optional section) + history-refresh sink + tests
+- [x] Retry/Reveal + in-flight guard + pruning + tests
+- [x] IncomingFilesNotice + coalescer + receive ordering + bridge wiring test
+- [x] DropSendRequest + tests
+- [x] All files < 200 lines
 
 ## Success Criteria
 - `cd apps/macos/FsyncMac && swift build && swift test` green (baseline 222 run / 18 skipped + new tests, 0 failures).

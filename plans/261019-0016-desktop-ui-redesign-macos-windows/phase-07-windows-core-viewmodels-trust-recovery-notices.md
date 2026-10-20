@@ -2,7 +2,7 @@
 machine: waso
 owns: ["apps/windows/src/Fsync.App.Core/ViewModels/TrustResetPromptViewModel.cs", "apps/windows/src/Fsync.App.Core/ViewModels/TrustResetMessages.cs", "apps/windows/src/Fsync.App.Core/ViewModels/AccountRecoveryViewModel.cs", "apps/windows/src/Fsync.App.Core/ViewModels/IncomingFilesNotice.cs", "apps/windows/src/Fsync.App.Core/ViewModels/IncomingFilesNoticeCoalescer.cs", "apps/windows/src/Fsync.App.Core/ViewModels/ToastAction.cs", "apps/windows/src/Fsync.App.Core/Services/PeerText.cs", "apps/windows/src/Fsync.App.Core/Bridge/EngineBridge.Trust.cs", "apps/windows/src/Fsync.App.Core/Files/TransfersViewModel.cs", "apps/windows/tests/Fsync.App.Tests/FakeEngine.cs", "apps/windows/tests/Fsync.App.Tests/TrustResetPromptViewModelTests.cs", "apps/windows/tests/Fsync.App.Tests/AccountRecoveryViewModelTests.cs", "apps/windows/tests/Fsync.App.Tests/IncomingFilesNoticeTests.cs", "apps/windows/tests/Fsync.App.Tests/PeerTextTests.cs", "apps/windows/tests/Fsync.App.Tests/ToastActionTests.cs", "apps/windows/tests/Fsync.App.Tests/EngineRecreateViewModelTests.cs"]
 dependsOn: [01]
-status: in-progress
+status: completed
 reviewedSha: 76f001cc64eb741b6ede2b824b47569ddb5ec396
 reviewScore: 10
 ---
@@ -22,7 +22,7 @@ reviewScore: 10
 3. Baseline: `R run waso --ref <base-sha> -- '<win cmd>'` at the commit phase 07 will be dispatched from. Write `reports/windows-test-baseline-<date>.md` (sha, DLL sha256 or "absent, accepted", exact failing test names). Gate for every waso phase: no failures outside this list.
 
 ## Overview
-- Priority: P1. Status: pending.
+- Priority: P1. Status: completed (review 10; collected rig-int 3a8e6a3; tests 170/170, 0 failures).
 - Headless logic (no WinUI) for the parity items: `TrustResetPromptViewModel`, `AccountRecoveryViewModel`, `IncomingFilesNotice` + coalescer, `PeerText.Sanitize`, `ToastAction`, bridge `ApplyAccountState`, and the auto-accept decision exposed by `TransfersViewModel`. xUnit on `FakeEngine`. FFI unchanged.
 - Stretch items (IsFirstDevice, pairing countdown) moved to phase 11. <!-- red-team #6 -->
 
@@ -74,12 +74,12 @@ OnIncomingFiles → decision → OfferReceived(offer, auto) → [App, phase 09] 
 6. Phase test command; compare failures to the baseline list.
 
 ## Todo List
-- [ ] FakeEngine scriptable
-- [ ] TrustResetPromptViewModel (seq, Ready refresh, confirm binding) + tests
-- [ ] AccountRecoveryViewModel + EngineBridge.Trust + tests
-- [ ] Engine recreate tests
-- [ ] PeerText, IncomingFilesNotice, coalescer, ToastAction + tests
-- [ ] TransfersViewModel.OfferReceived + tests
+- [x] FakeEngine scriptable
+- [x] TrustResetPromptViewModel (seq, Ready refresh, confirm binding) + tests
+- [x] AccountRecoveryViewModel + EngineBridge.Trust + tests
+- [x] Engine recreate tests
+- [x] PeerText, IncomingFilesNotice, coalescer, ToastAction + tests
+- [x] TransfersViewModel.OfferReceived + tests
 
 ## Success Criteria
 - waso: `dotnet build apps/windows/src/Fsync.App -c Release -p:Platform=x64 -r win-x64 && dotnet test apps/windows/tests/Fsync.App.Tests -c Release`, with no failures outside `reports/windows-test-baseline-<date>.md`. All new tests pass.

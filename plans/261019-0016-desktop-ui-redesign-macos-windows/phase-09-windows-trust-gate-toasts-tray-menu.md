@@ -2,9 +2,12 @@
 machine: waso
 owns: ["apps/windows/src/Fsync.App/App.Parity.cs", "apps/windows/src/Fsync.App/MainWindow.TrustGate.cs", "apps/windows/src/Fsync.App/Notifications/ToastNotifier.cs", "apps/windows/src/Fsync.App/Views/TrustResetPage.xaml", "apps/windows/src/Fsync.App/Views/TrustResetPage.xaml.cs", "apps/windows/src/Fsync.App/TrayHost.cs", "apps/windows/src/Fsync.App/Program.cs"]
 dependsOn: [08]
+status: in-progress
 ---
 
 # Phase 09: Windows trust gate, toasts, tray menu (waso)
+
+> Owns deviation (owner-accepted 2026-10-20): ed59ba2 also edits phase-08 files `App.xaml.cs` (pass `Transfers` to `TrayHost`) and `Views/Dialogs.cs` (optional `created` callback on `ConfirmAsync` so `ConfirmAborted` can `Hide()` the dialog). Additive, minimal.
 <!-- red-team #5: split from old Windows shell phase -->
 <!-- red-team #12: owns exact; no csproj, no app.manifest -->
 
