@@ -39,11 +39,10 @@ public partial class App : Application
     internal Type? VisiblePage { get; set; }
     /// <summary>True while the main window is open and in the foreground.</summary>
     internal bool IsWindowActive { get; set; }
-    private bool _engineReady;
-
     /// <summary>
-    /// Phase 09: runs once on the UI thread after the engine was initialized (any account phase),
-    /// before the first window opens. Not called when the native engine failed to load.
+    /// Phase 09: runs once (OnLaunched) on the UI thread after the engine was initialized, in any
+    /// account phase. A window may already be open (tray click during startup), so re-run its
+    /// ShowPhase after wiring. Not called when the native engine failed to load or quit began.
     /// </summary>
     partial void OnEngineReady();
 
@@ -97,11 +96,7 @@ public partial class App : Application
         };
         await Bridge.InitializeAsync();
         if (_quitting) return;
-        if (!_engineReady)
-        {
-            _engineReady = true;
-            OnEngineReady();
-        }
+        OnEngineReady();
         if (SendToArgs.Parse(_startArgs) is not null) HandleArgs(_startArgs);
         else if (_showWindowAtStart || Bridge.Phase != AccountPhase.Ready) ShowWindow();
     }
