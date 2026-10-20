@@ -2,6 +2,31 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## Unreleased - macOS desktop UI redesign
+
+Plan: [desktop UI redesign](../plans/261019-0016-desktop-ui-redesign-macos-windows/plan.md). Windows changes are listed separately when that half ships. QA: [checklist](./how-to/desktop-ui-redesign-qa-checklist.md).
+
+### Release note
+
+- **Requires macOS 14 or later.** The minimum was macOS 13 ([ADR 003](./adr/003-minimum-os.md), amended). macOS 13 users stay on the last macOS 13 build and get no further updates.
+- **Tested on macOS 26 only.** macOS 14 is untested; the owner accepted this risk.
+
+### Changed
+- macOS: the main window is a sidebar split view with Devices, History and Transfers pages. "Pair device…" opens a sheet. The separate History window is gone.
+- macOS: Settings is its own window (General, Sync, Privacy, Storage, Account). Changes save on change. Sign out asks for confirmation.
+- macOS: the menubar popover is restyled. Its History, Transfers and Pair entries open the main window on the matching page.
+- macOS: drop files on a device to send them. A sheet lists the files for confirmation before anything is sent.
+- macOS: Transfers can Retry a failed incoming transfer from a device that is still trusted, and Show in Finder for finished files.
+
+### Added
+- macOS: notifications for incoming files. Title "Files from {sender}". Offers from one sender within 10 seconds merge into one notice ("N offers from {sender}"). Notices never show file names, never activate the app, and a click opens Transfers.
+
+### Upgrade
+- No change to the core, the FFI, the backend, or stored data formats. No migration step.
+
+### Rollback
+- Revert the merge commit of `feat/desktop-ui-redesign` into `main`. There is no data migration to undo.
+
 ## 2026-10-17 - QUIC address discovery on both production relays
 
 ### Changed

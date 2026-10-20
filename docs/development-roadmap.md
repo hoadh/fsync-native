@@ -1,6 +1,6 @@
 # Development Roadmap
 
-Last updated: 2026-10-17. Plan of record: [plans/261013-2029-fsync-native-mvp](../plans/261013-2029-fsync-native-mvp/plan.md). Its phase files still show "pending"; this page is the current status.
+Last updated: 2026-10-20. Plan of record: [plans/261013-2029-fsync-native-mvp](../plans/261013-2029-fsync-native-mvp/plan.md). Its phase files still show "pending"; this page is the current status.
 
 ## Phase Status
 
@@ -24,6 +24,18 @@ Last updated: 2026-10-17. Plan of record: [plans/261013-2029-fsync-native-mvp](.
 | 16 | Release: signing, notarization, auto-update | Not started | Depends on 10, 12, 14. |
 
 Phase names and dependencies follow the MVP plan. Its own status column still reads "pending" or "Partial"; the table above is the current state.
+
+## Desktop UI Redesign (in progress)
+
+Plan: [desktop UI redesign](../plans/261019-0016-desktop-ui-redesign-macos-windows/plan.md). Its phase numbers are separate from the MVP phases above.
+
+| Track | Phases | Status | Notes |
+|-------|--------|--------|-------|
+| macOS | 02-05 | Done | Sidebar shell, Devices, History, Transfers and pairing pages, Settings window, popover, incoming-file notifications. Minimum macOS 14. Tested on macOS 26 only. Stretch phase 06 skipped (owner decision). |
+| Windows | 07-08 | Done | Core view models (trust, recovery, notices), shell and e2e gate. |
+| Windows | 09-10 | In progress | Trust gate, toasts and tray menu (09); pages and recovery UI (10). |
+| Windows | 11 | Stretch, pending | Optional: drop, countdown, first-device extras. |
+| Integration, QA, docs | 12 | In progress | macOS half drafted: [QA checklist](./how-to/desktop-ui-redesign-qa-checklist.md) and changelog entry. Windows half follows phases 09-10. |
 
 ## Open Items (priority order)
 

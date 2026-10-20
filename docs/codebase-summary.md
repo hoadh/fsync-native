@@ -1,6 +1,6 @@
 # Codebase Summary
 
-Last updated: 2026-10-17. Repo map for the P0 Rust track, the production deploy stack, and the macOS app (clipboard, files, history, settings). Architecture is in [system-architecture.md](./system-architecture.md); standards in [code-standards.md](./code-standards.md).
+Last updated: 2026-10-20. Repo map for the P0 Rust track, the production deploy stack, and the macOS app (clipboard, files, history, settings). Architecture is in [system-architecture.md](./system-architecture.md); standards in [code-standards.md](./code-standards.md).
 
 ## Repo Map
 
@@ -14,7 +14,7 @@ Last updated: 2026-10-17. Repo map for the P0 Rust track, the production deploy 
 | `backend/migrations` | `0001_init`, `0002_refresh_session` |
 | `backend/tests` | Integration tests against Postgres via testcontainers |
 | `apps/macos/Packages/FsyncCoreKit` | SwiftPM package: `FsyncCoreKit` Swift wrapper and XCTests over the xcframework; `TrustResetPrompt` SwiftUI library (trust-reset prompt) with its tests |
-| `apps/macos/FsyncMac` | SwiftPM app (tools 6.0, macOS 13): `FsyncMacCore` (`Bridge/` EngineBridge and Keychain; `Clipboard/` watcher, sensitive filter, mapper, writer; `Files/` file clips, fetch, transfers, inbox; `Settings/`; `Features/` onboarding, pairing, devices, history), `FsyncMacUI` (SwiftUI: `Menu/`, `History/`, `Devices/`, `Settings/`, `Pairing/`, `Onboarding/`), `FsyncMac` (`@main` menubar app); tests in `FsyncMacCoreTests` (incl. `Integration/`) and `FsyncMacUITests` |
+| `apps/macos/FsyncMac` | SwiftPM app (tools 6.0, macOS 14): `FsyncMacCore` (`Bridge/` EngineBridge and Keychain; `Clipboard/` watcher, sensitive filter, mapper, writer; `Files/` file clips, fetch, transfers, inbox, incoming-file notices and coalescer, drop validation; `Settings/`; `Features/` onboarding, pairing, devices, history, navigation), `FsyncMacUI` (SwiftUI: `Shell/` main split view, sidebar, toolbar, settings-window request; `Devices/`, `History/`, `Transfers/`, `Pairing/` pages; `Settings/` window tabs; `Notifications/` incoming-file notifier; `Menu/` popover; `Onboarding/`), `FsyncMac` (`@main` menubar app, `AppDelegate`, `SettingsOpener` hidden helper window); tests in `FsyncMacCoreTests` (incl. `Integration/`) and `FsyncMacUITests` (shell and page render tests, notifier) |
 | `apps/macos/scripts` | `build-fsync-mac-app.sh` (signed `FsyncMac.app`), `run-fsync-mac-integration.sh` (Docker Postgres + dev backend + relay + CLI, then the integration tests) |
 | `apps/windows` | .NET 8 solution: `Fsync.CoreBindings` (generated C# + native DLL per RID), `Fsync.App.Core` (bridge, DPAPI secrets, view models), `Fsync.App` (WinUI 3 tray app), xUnit tests, UIA e2e script. See its README |
 | `scripts` | `gen-bindings.sh` (Swift bindings + headers), `build-xcframework.sh` (universal static lib, xcframework), `gen-bindings-cs.ps1` (C# bindings), `build-windows-dll.ps1` (`fsync_ffi.dll` per RID) |
@@ -72,7 +72,7 @@ Global flags `--data`, `--api`, `--relay`, `--force-relay`, `--insecure-http`, `
 | `core/fsync-cli/tests` | CLI surface (help, required flags, exit codes) |
 | `backend/tests` | Auth, refresh, devices, reset, presence, pairing, limits (Postgres testcontainers) |
 | `apps/macos/Packages/FsyncCoreKit/Tests` | Swift XCTests: 8 in `FsyncCoreKitTests`, 14 in `TrustResetPromptTests` |
-| `apps/macos/FsyncMac/Tests` | XCTests for `FsyncMacCoreTests` (clipboard, file clips and transfers, history, settings, bridge) and `FsyncMacUITests`. `Integration/` skips unless `FSYNC_IT_API` is set |
+| `apps/macos/FsyncMac/Tests` | XCTests for `FsyncMacCoreTests` (clipboard, file clips and transfers, history, settings, bridge, navigation) and `FsyncMacUITests` (shell and page render tests, notifier). `Integration/` skips unless `FSYNC_IT_API` is set |
 | `tests/e2e` | Two-device demo over direct LAN and forced relay; compose stack run (`compose-stack-sync.sh`) |
 
 Current pass/fail state is tracked in [project-changelog.md](./project-changelog.md#verification-status), not here.

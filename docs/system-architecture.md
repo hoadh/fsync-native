@@ -1,6 +1,6 @@
 # System Architecture
 
-Last updated: 2026-10-17. Covers the P0 Rust track (phases 01, 02, 06-09) with its hardening (read-ahead, logout revocation, data-dir lock, multiple relays), the production deployment (phase 10), the macOS FFI package, the macOS app (phases 04, 11, 12) and the Windows app (phases 03 C# half, 13, 14). Windows phase 05 is partial and phases 15-16 are not started; see [development-roadmap](./development-roadmap.md).
+Last updated: 2026-10-20. Covers the P0 Rust track (phases 01, 02, 06-09) with its hardening (read-ahead, logout revocation, data-dir lock, multiple relays), the production deployment (phase 10), the macOS FFI package, the macOS app (phases 04, 11, 12) and the Windows app (phases 03 C# half, 13, 14). Windows phase 05 is partial and phases 15-16 are not started; see [development-roadmap](./development-roadmap.md).
 
 ## Overview
 
@@ -33,6 +33,8 @@ fsync syncs clipboard items and files between a user's own devices. Trust is roo
   - **Keys are add-only**: `loadOrCreateKey` never overwrites; on a duplicate it reads back the winner.
   - **Stale session callbacks**: `EngineDelegateAdapter` stores refreshed tokens only while a `SessionGate` is open (stored session at boot, or after sign-in); sign-out and `requireSignIn` close it, so a refresh queued in the core cannot restore a signed-out session.
 - **Flows**: email + OTP login; first device (`Created`); pairing in both roles with a SAS check bound to the displayed request id; device list with remove (confirmed); recovery via `reset_account_trust` behind a two-step confirm; trust-reset prompt wired from `AccountEvent.trustReset`; launch at login (`SMAppService.mainApp`, bundle only); pairing codes are copied with the `ConcealedType`/`TransientType` pasteboard markers.
+- **UI structure** (`FsyncMacUI`, redesign phases 02-05): `RootView` shows the gating screens per `AppPhase`. In `.ready` the main window (`Window` id `main`) is a `NavigationSplitView`: sidebar with Devices, History and Transfers (offer-count badge), the page, and a pairing sheet. `MainNavigation` (in `FsyncMacCore`) holds the selected section and the sheet flag; assigning `.history` reloads history. Settings is a separate `Settings` scene, opened through a hidden `settings-opener` window that owns `openSettings` (`FsyncMac/SettingsOpener.swift`). Windows are found by `NSWindow.identifier` (`WindowIDs`), not by title.
+- **Incoming-file notices**: `FilesSync` emits a notice per new offer; `IncomingFilesNoticeCoalescer` allows one per sender per 10 s and folds later offers into a count. `IncomingFilesNotifier` (`FsyncMacUI/Notifications`) posts them as user notifications with the sender name and counts only (no file names). Arrival never activates the app; only a click opens Transfers. It does nothing outside an `.app` bundle.
 - **Status**: the core reports Lan/Relay only for a live QUIC connection. Until something syncs, a peer the backend sees online shows as "Online" (`Device.online`), not Lan.
 - **Packaging**: `build-fsync-mac-app.sh` assembles an `LSUIElement` bundle, with the hardened runtime: ad hoc with no entitlements by default, or Developer ID with an embedded profile and the Keychain entitlements (`--sign`/`--profile`), optionally notarized (`--notary-profile`).
 
