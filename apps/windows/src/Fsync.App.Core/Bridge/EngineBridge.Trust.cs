@@ -11,13 +11,20 @@ public sealed partial class EngineBridge
 
     /// <summary>
     /// Maps the state a trust call returned to a phase, the same way as <see cref="GoOnlineAsync"/>:
-    /// <c>NeedsPairing</c> → NeedsPairing, <c>Ready</c>/<c>Created</c> → Ready. UI thread.
+    /// <c>NeedsPairing</c> → NeedsPairing, <c>Ready</c>/<c>Created</c> → Ready. Only from Ready or NeedsPairing:
+    /// a late result must not overwrite SignedOut, Offline, Starting or Failed. Returns false when ignored. UI thread.
     /// </summary>
-    public void ApplyAccountState(AccountState state)
+    public bool ApplyAccountState(AccountState state)
     {
+        if (Phase is not (AccountPhase.Ready or AccountPhase.NeedsPairing))
+        {
+            AppLog.Info($"bridge: account state {state} ignored in phase {Phase}");
+            return false;
+        }
         Phase = state == AccountState.NeedsPairing ? AccountPhase.NeedsPairing : AccountPhase.Ready;
         StatusMessage = null;
         DevicesChanged?.Invoke();
+        return true;
     }
 
     /// <summary>The server wants a fresh login (<c>Auth</c>, <c>ReauthRequired</c>): same path as SessionExpired.</summary>

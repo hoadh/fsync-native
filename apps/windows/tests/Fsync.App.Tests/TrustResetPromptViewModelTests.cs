@@ -288,6 +288,46 @@ public sealed class TrustResetPromptViewModelTests
     }
 
     [Fact]
+    public async Task RefreshFinishingAfterDisposeChangesNothing()
+    {
+        using var h = new Harness(Session);
+        var vm = await Vm(h);
+        vm.Apply([Stale]);
+        vm.BeginConfirm(Stale.resetId);
+        var aborted = 0;
+        vm.ConfirmAborted += () => aborted++;
+        using var gate = new ManualResetEventSlim();
+        h.Engine.OnPendingTrustResets = () => { gate.Wait(); return [Other]; };
+        var refresh = vm.Refresh();
+        await BridgeTests.WaitFor(() => CallCount(h.Engine, "PendingTrustResets") == 1);
+        vm.Dispose();
+        gate.Set();
+        await refresh;
+        Assert.Equal(Stale.resetId, vm.Current?.resetId);
+        Assert.Equal(Stale.resetId, vm.ConfirmingResetId);
+        Assert.Equal(0, aborted);
+        Assert.Null(vm.Message);
+        await vm.Refresh(); // after Dispose: no engine call
+        Assert.Equal(1, CallCount(h.Engine, "PendingTrustResets"));
+    }
+
+    [Fact]
+    public async Task DeclineClosesAnOpenTrustDialogForThatReset()
+    {
+        using var h = new Harness(Session);
+        h.Engine.OnDeclineTrustReset = _ => { };
+        h.Engine.OnPendingTrustResets = () => [Stale]; // still shown after the first answer's refresh
+        using var vm = await Vm(h);
+        vm.Apply([Stale]);
+        Assert.True(vm.BeginConfirm(Stale.resetId));
+        await vm.DeclineAsync(Other.resetId); // another id: the dialog stays
+        Assert.Equal(Stale.resetId, vm.ConfirmingResetId);
+        await vm.DeclineAsync(Stale.resetId);
+        Assert.Null(vm.ConfirmingResetId);
+        Assert.Equal(TrustResetOutcome.Declined, vm.Outcome);
+    }
+
+    [Fact]
     public async Task DisposeUnsubscribes()
     {
         using var h = new Harness(Session);

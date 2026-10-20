@@ -25,7 +25,7 @@ public sealed class IncomingFilesNoticeTests
         Assert.Equal("Files from Mac mini", auto.Title);
         Assert.Equal("2 files, 2 KB. Saving to Downloads", auto.Body);
         Assert.Equal("Mac mini", auto.Sender);
-        Assert.False(auto.IsUpdate);
+        Assert.Equal(1, auto.OfferCount);
 
         var ask = IncomingFilesNotice.For(Offer("Mac mini", files: 1, size: 10), autoAccepted: false, offerCount: 1);
         Assert.Equal("1 file, 10 B. Open fsync to accept", ask.Body);
@@ -46,6 +46,9 @@ public sealed class IncomingFilesNoticeTests
             Assert.DoesNotContain(new string('b', 64), text);
         }
         Assert.Equal("Files from another device", IncomingFilesNotice.For(Offer("​"), false, 1).Title);
+        // Built by hand, the sender is sanitized too (macOS init).
+        Assert.Equal("gpj.exe", new IncomingFilesNotice("gp‮j.exe", 1, 1, false).Sender);
+        Assert.Equal(new string('a', 40) + "…", new IncomingFilesNotice(new string('a', 41), 1, 1, false).Sender);
     }
 
     [Theory]
@@ -56,30 +59,62 @@ public sealed class IncomingFilesNoticeTests
     public void SuppressedOnlyWhenFilesPageIsVisibleAndActive(bool active, bool filesVisible, bool show) =>
         Assert.Equal(show, IncomingFilesNotice.ShouldShow(active, filesVisible));
 
+    // Coalescer: port of the macOS cases (explicit times), plus TimeProvider and single-held-offer body.
+
+    private static readonly DateTimeOffset T0 = DateTimeOffset.FromUnixTimeSeconds(1000);
+
+    private static IncomingFilesNotice N(string from = "Phone", int files = 2, ulong bytes = 2048, bool auto = false) =>
+        new(from, files, bytes, auto);
+
     [Fact]
-    public void CoalescesPerSenderForTenSeconds()
+    public void FirstNoticePassesAndOthersInTheWindowAreFoldedIntoOne()
+    {
+        var c = new IncomingFilesNoticeCoalescer();
+        Assert.Equal(N(), c.Submit(N(), T0));
+        Assert.Null(c.Submit(N(files: 1, bytes: 10), T0.AddSeconds(2)));
+        Assert.Null(c.Submit(N(files: 3, bytes: 20), T0.AddSeconds(9.9)));
+        Assert.Equal(T0.AddSeconds(10), c.NextDeadline);
+        Assert.Empty(c.Flush(T0.AddSeconds(9.9)));
+        var outList = c.Flush(T0.AddSeconds(10));
+        var merged = Assert.Single(outList);
+        Assert.Equal(2, merged.OfferCount); // held offers only; the shown one is not counted
+        Assert.Equal(4, merged.FileCount);
+        Assert.Equal(30UL, merged.TotalBytes);
+        Assert.Equal("2 offers from Phone", merged.Body);
+        Assert.Null(c.NextDeadline);
+    }
+
+    [Fact]
+    public void SendersAreIndependentAndWindowRestartsAfterFlushAndAfterQuiet()
+    {
+        var c = new IncomingFilesNoticeCoalescer();
+        Assert.NotNull(c.Submit(N("A"), T0));
+        Assert.NotNull(c.Submit(N("B"), T0.AddSeconds(1)));
+        Assert.Null(c.Submit(N("A"), T0.AddSeconds(3)));
+        Assert.Equal(["A"], c.Flush(T0.AddSeconds(10)).Select(n => n.Sender));
+        // the flush opened a new window for A
+        Assert.Null(c.Submit(N("A"), T0.AddSeconds(12)));
+        Assert.Equal(1, c.Flush(T0.AddSeconds(20)).FirstOrDefault()?.OfferCount);
+        // quiet for a whole window: next offer passes at once
+        Assert.NotNull(c.Submit(N("B"), T0.AddSeconds(60)));
+    }
+
+    [Fact]
+    public void OneHeldOfferRendersAsASingleOfferAndKeysAreSanitized()
     {
         var time = new ManualTime();
         var c = new IncomingFilesNoticeCoalescer(time);
-        var first = c.Add(Offer("Mac"), autoAccepted: true);
-        Assert.False(first.IsUpdate);
-        Assert.Equal(1, first.Count);
-
-        time.Now += TimeSpan.FromSeconds(4);
-        var other = c.Add(Offer("Phone"), autoAccepted: false); // another sender: its own notice
-        Assert.False(other.IsUpdate);
-
+        Assert.NotNull(c.Submit(IncomingFilesNotice.For(Offer("Mac"), autoAccepted: true)));
         time.Now += TimeSpan.FromSeconds(5);
-        var second = c.Add(Offer(" Mac\n"), autoAccepted: false); // same sanitized sender
-        Assert.True(second.IsUpdate);
-        Assert.Equal(2, second.Count);
-        Assert.Equal("2 offers from Mac", second.Body);
-
-        time.Now += TimeSpan.FromSeconds(1); // 10 s after the first notice: a new window
-        var third = c.Add(Offer("Mac"), autoAccepted: true);
-        Assert.False(third.IsUpdate);
-        Assert.Equal(1, third.Count);
-        Assert.Equal("2 files, 2 KB. Saving to Downloads", third.Body);
+        Assert.Null(c.Submit(IncomingFilesNotice.For(Offer(" Mac\n", files: 1, size: 10), autoAccepted: false))); // same sanitized sender
+        Assert.Equal(time.Now.AddSeconds(5), c.NextDeadline);
+        Assert.Empty(c.Flush());
+        time.Now += TimeSpan.FromSeconds(5);
+        var held = Assert.Single(c.Flush());
+        Assert.Equal("Files from Mac", held.Title);
+        Assert.Equal("1 file, 10 B. Open fsync to accept", held.Body);
+        // the flush opened a new window: the next offer is held again
+        Assert.Null(c.Submit(IncomingFilesNotice.For(Offer("Mac"), autoAccepted: true)));
     }
 
     [Theory]

@@ -19,6 +19,7 @@ public sealed partial class TrustResetPromptViewModel : ObservableObject, IDispo
     private int _seq;
     private IReadOnlyList<TrustResetInfo> _pending = [];
     private string? _confirmingResetId;
+    private bool _disposed;
 
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private TrustResetOutcome _outcome;
@@ -49,11 +50,12 @@ public sealed partial class TrustResetPromptViewModel : ObservableObject, IDispo
     /// <summary>Re-reads the pending resets. Overlapping calls: the older result is dropped.</summary>
     public async Task Refresh()
     {
+        if (_disposed) return;
         var seq = ++_seq;
         try
         {
             var list = await _bridge.RunAsync(e => e.PendingTrustResets());
-            if (seq == _seq) Apply(list);
+            if (seq == _seq && !_disposed) Apply(list);
         }
         catch (FsyncException e) { AppLog.Warn($"trust: pending resets failed: {e.GetType().Name}"); }
         catch (InvalidOperationException) { AppLog.Info("trust: refresh skipped, no engine"); }
@@ -83,6 +85,7 @@ public sealed partial class TrustResetPromptViewModel : ObservableObject, IDispo
     public Task DeclineAsync(string resetId)
     {
         if (resetId is null) return Task.CompletedTask;
+        if (_confirmingResetId == resetId) SetConfirming(null); // Keep wins over an open Trust dialog
         return AnswerAsync(resetId, e => { e.DeclineTrustReset(resetId); return null; });
     }
 
@@ -96,6 +99,8 @@ public sealed partial class TrustResetPromptViewModel : ObservableObject, IDispo
     /// <summary>Stores a new list. When the shown reset changes the old message no longer applies; a replaced reset gets the notice.</summary>
     internal void Apply(IReadOnlyList<TrustResetInfo> list)
     {
+        if (_disposed) return; // a refresh or answer finishing after Dispose changes nothing
+
         var oldId = Current?.resetId;
         _pending = list;
         OnPropertyChanged(nameof(Pending));
@@ -170,6 +175,8 @@ public sealed partial class TrustResetPromptViewModel : ObservableObject, IDispo
 
     public void Dispose()
     {
+        _disposed = true;
+        _seq++; // results of refreshes still in flight are now stale
         _bridge.AccountEventReceived -= OnAccountEvent;
         _bridge.PropertyChanged -= OnBridgeChanged;
     }

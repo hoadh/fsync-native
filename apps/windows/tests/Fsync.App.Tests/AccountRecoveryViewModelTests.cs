@@ -101,6 +101,41 @@ public sealed class AccountRecoveryViewModelTests
     }
 
     [Fact]
+    public async Task AccountStateIsIgnoredOutsideReadyAndNeedsPairing()
+    {
+        using var signedOut = new Harness(); // no session
+        await signedOut.Bridge.InitializeAsync();
+        Assert.False(signedOut.Bridge.ApplyAccountState(AccountState.Ready));
+        Assert.Equal(AccountPhase.SignedOut, signedOut.Bridge.Phase);
+
+        using var offline = new Harness(Session);
+        offline.Engine.OnEnsure = () => throw new FsyncException.Network("down");
+        await offline.Bridge.InitializeAsync();
+        Assert.False(offline.Bridge.ApplyAccountState(AccountState.NeedsPairing));
+        Assert.Equal(AccountPhase.Offline, offline.Bridge.Phase);
+        Assert.NotNull(offline.Bridge.StatusMessage);
+    }
+
+    /// <summary>The session expires while the reset runs: the late result does not bring the account back.</summary>
+    [Fact]
+    public async Task LateResetResultDoesNotOverwriteSignedOut()
+    {
+        using var h = new Harness(Session);
+        using var gate = new ManualResetEventSlim();
+        h.Engine.OnResetAccountTrust = () => { gate.Wait(); return AccountState.Created; };
+        var vm = await Vm(h);
+        vm.Begin();
+        vm.Proceed();
+        var reset = vm.ResetAsync();
+        h.Engine.Delegate!.OnAccountEvent(new AccountEvent.SessionExpired());
+        Assert.Equal(AccountPhase.SignedOut, h.Bridge.Phase);
+        gate.Set();
+        await reset;
+        Assert.Equal(AccountPhase.SignedOut, h.Bridge.Phase);
+        Assert.Equal(RecoveryStep.Idle, vm.Step);
+    }
+
+    [Fact]
     public async Task BusyIgnoresStepChanges()
     {
         using var h = new Harness(Session);
