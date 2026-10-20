@@ -2,6 +2,7 @@
 machine: waso
 owns: ["apps/windows/src/Fsync.App/Views/DevicesPage.xaml", "apps/windows/src/Fsync.App/Views/DevicesPage.xaml.cs", "apps/windows/src/Fsync.App/Views/HistoryPage.xaml", "apps/windows/src/Fsync.App/Views/HistoryPage.xaml.cs", "apps/windows/src/Fsync.App/Views/OnboardingPage.xaml", "apps/windows/src/Fsync.App/Views/OnboardingPage.xaml.cs", "apps/windows/src/Fsync.App/Views/PairingPage.xaml", "apps/windows/src/Fsync.App/Views/PairingPage.xaml.cs", "apps/windows/src/Fsync.App/Views/SettingsPage.xaml", "apps/windows/src/Fsync.App/Views/SettingsPage.xaml.cs", "apps/windows/src/Fsync.App/Views/TransfersPage.xaml", "apps/windows/src/Fsync.App/Views/TransfersPage.xaml.cs", "apps/windows/src/Fsync.App/Views/Controls/EmptyState.xaml", "apps/windows/src/Fsync.App/Views/Controls/EmptyState.xaml.cs", "apps/windows/src/Fsync.App/Views/Controls/AccountRecoveryFlow.cs"]
 dependsOn: [09]
+status: in-progress
 ---
 
 # Phase 10: Windows pages polish and recovery UI (waso)
