@@ -49,7 +49,7 @@ try {
     if (-not $join.P.WaitForExit(30000) -or -not (Get-CliEvents $join.Out 'paired')) { throw 'devA did not report paired' }
     Add-Pass $c 'both sides report paired'
 
-    Invoke-Name $w 'Devices'
+    Invoke-AutomationId $w 'NavDevices'
     Wait-Name $w 'devA' 30 | Out-Null
     # "Online" comes from backend presence; Lan/Relay only while a QUIC connection exists.
     $watch = Start-Cli $c 'devA' 'watch' @('clip', 'watch', '--json', '--timeout', '120')
@@ -74,7 +74,7 @@ try {
     Add-Pass $c 'devA removed from the list'
 
     $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
-    Invoke-Name $w 'Settings'
+    Invoke-AutomationId $w 'NavSettings'
     Invoke-Name $w 'Start fsync when I sign in to Windows'
     $run = Wait-Until -Seconds 10 -What 'Run value' { (Get-ItemProperty $runKey -ErrorAction SilentlyContinue).Fsync }
     Invoke-Name $w 'Start fsync when I sign in to Windows'

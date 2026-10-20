@@ -3,26 +3,56 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="fsync">
-    <Grid>
-        <NavigationView x:Name="Nav" PaneDisplayMode="Top" IsBackButtonVisible="Collapsed"
-                        IsSettingsVisible="False" SelectionChanged="OnNavSelectionChanged">
+    <!-- Background is cleared in code when a Mica/acrylic backdrop is applied. -->
+    <Grid x:Name="Root" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Custom title bar (drag region); caption buttons are drawn by the system on the right. -->
+        <Grid x:Name="AppTitleBar" Height="32">
+            <TextBlock Text="fsync" Margin="16,0,0,0" VerticalAlignment="Center"
+                       Style="{StaticResource CaptionTextBlockStyle}" />
+        </Grid>
+
+        <!-- Nav item Names (Content) are e2e-locked; tests find items by AutomationId. -->
+        <NavigationView x:Name="Nav" Grid.Row="1" PaneDisplayMode="Left" IsBackButtonVisible="Collapsed"
+                        IsSettingsVisible="True" OpenPaneLength="220"
+                        Loaded="OnNavLoaded" SelectionChanged="OnNavSelectionChanged">
             <NavigationView.MenuItems>
-                <NavigationViewItem Content="Devices" Tag="devices" Icon="AllApps" />
-                <NavigationViewItem Content="History" Tag="history" Icon="Paste" />
-                <NavigationViewItem Content="Files" Tag="files" Icon="Download" />
-                <NavigationViewItem Content="Pair a device" Tag="pairing" Icon="Add" />
-                <NavigationViewItem Content="Settings" Tag="settings" Icon="Setting" />
+                <NavigationViewItem Content="Devices" Tag="devices" AutomationProperties.AutomationId="NavDevices">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE772;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="History" Tag="history" AutomationProperties.AutomationId="NavHistory">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE81C;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Files" Tag="files" AutomationProperties.AutomationId="NavFiles">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8AB;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Pair a device" Tag="pairing" AutomationProperties.AutomationId="NavPairing">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8FA;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
             </NavigationView.MenuItems>
-            <Frame x:Name="ContentFrame" Padding="24,16,24,24" />
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <!-- InfoBars (offline, trust, errors) are added here, each with Margin FsyncBannerItemMargin;
+                     no margin of its own so it takes no space while empty. -->
+                <StackPanel x:Name="BannerHost" Margin="24,0,24,0" />
+                <Frame x:Name="ContentFrame" Grid.Row="1" Padding="{StaticResource FsyncPagePadding}" />
+            </Grid>
         </NavigationView>
 
-        <!-- Starting / failed states cover the navigation. -->
-        <Grid x:Name="Overlay" Visibility="Collapsed" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <!-- Starting / failed states cover the navigation (the title bar stays draggable). -->
+        <Grid x:Name="Overlay" Grid.Row="1" Visibility="Collapsed" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12" MaxWidth="420">
-                <ProgressRing x:Name="Spinner" IsActive="True" />
+                <ProgressRing x:Name="Spinner" IsActive="True" AutomationProperties.AutomationId="StartingRing" />
                 <TextBlock x:Name="OverlayText" TextWrapping="Wrap" TextAlignment="Center" />
                 <Button x:Name="ResetHistoryButton" Content="Start a new history on this PC" Visibility="Collapsed"
-                        HorizontalAlignment="Center" Click="OnResetHistory" />
+                        HorizontalAlignment="Center" Click="OnResetHistory" AutomationProperties.AutomationId="ResetHistoryButton" />
             </StackPanel>
         </Grid>
     </Grid>

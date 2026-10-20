@@ -35,6 +35,19 @@ public partial class App : Application
     internal SendToShortcut SendTo { get; private set; } = null!;
     /// <summary>Paths from Explorer "Send to", waiting for a device choice (Files page).</summary>
     internal List<string> PendingSend { get; } = [];
+    /// <summary>Page type shown in the main window, or null when no window is open (toast suppression).</summary>
+    internal Type? VisiblePage { get; set; }
+    /// <summary>True while the main window is open and in the foreground.</summary>
+    internal bool IsWindowActive { get; set; }
+    /// <summary>
+    /// Phase 09: runs once (OnLaunched) on the UI thread after the engine was initialized, in any
+    /// account phase. A window may already be open (tray click during startup), so re-run its
+    /// ShowPhase after wiring. Not called when the native engine failed to load or quit began.
+    /// </summary>
+    partial void OnEngineReady();
+
+    /// <summary>Phase 09: runs once at quit, after the window closed and before the view models are disposed.</summary>
+    partial void OnQuitting();
 
     public App(AppSettings settings, bool showWindowAtStart, IReadOnlyList<string> startArgs)
     {
@@ -82,6 +95,8 @@ public partial class App : Application
             if (e.PropertyName == nameof(EngineBridge.Phase)) OnPhaseChanged();
         };
         await Bridge.InitializeAsync();
+        if (_quitting) return;
+        OnEngineReady();
         if (SendToArgs.Parse(_startArgs) is not null) HandleArgs(_startArgs);
         else if (_showWindowAtStart || Bridge.Phase != AccountPhase.Ready) ShowWindow();
     }
@@ -145,6 +160,7 @@ public partial class App : Application
         _quitting = true;
         _retry?.Stop(); // no account retry may run into the engine while it is torn down
         _window?.Close();
+        OnQuitting();
         _tray?.Dispose();
         Devices.Dispose();
         Transfers.Dispose();

@@ -73,7 +73,7 @@ try {
     if ((& $published) -ne $n) { throw 'the received clip was published back' }
     Add-Pass $c 'echo: the written clip was skipped as our own (FsyncOrigin first, private flags present), not sent back'
 
-    Invoke-Name $w1 'History'
+    Invoke-AutomationId $w1 'NavHistory'
     Wait-Like $w1 "*$inText*" 30 | Out-Null
     Set-ClipRetry @{ Value = 'something else' }
     Invoke-FirstEnabled $w1 'Copy' # the clip from devA (this PC's own copies cannot be copied back)
@@ -83,7 +83,7 @@ try {
     Write-E2e 'files'
     $inFile = Join-Path $c.Work "from-devA-$tag.bin"; New-RandomFile $inFile (3MB)
     $send = Start-Cli $c 'devA' 'send' @('send', 'W1', $inFile, '--wait', '60')
-    Invoke-Name $w1 'Files'
+    Invoke-AutomationId $w1 'NavFiles'
     Invoke-Name $w1 'Save to Downloads' 60
     $got = Join-Path $c.Work "W1-downloads\from-devA-$tag.bin"
     # A retry after ~20 s is expected here: W1 dialed an earlier devA process (see phase-14 notes).
@@ -113,11 +113,11 @@ try {
     $p2 = Start-FsyncApp $c $App 'W2'
     $w2 = Get-AppWindow $p2.Id 60
     Connect-AppWithCli $c $w2 $email 'devA'
-    Invoke-Name $w2 'Settings'
+    Invoke-AutomationId $w2 'NavSettings'
     Invoke-Name $w2 'Send my clipboard only when I ask (manual mode)'
     Invoke-Name $w2 'Save'
     Wait-Name $w2 'Saved.' 20 | Out-Null
-    Invoke-Name $w1 'Devices'
+    Invoke-AutomationId $w1 'NavDevices'
     Wait-Like $w1 '*W2*' 60 | Out-Null
     Add-Pass $c 'W2 paired and in manual mode; W1 lists it'
     $lazy = Join-Path $c.Work "lazy-$tag.bin"; New-RandomFile $lazy ($LazyMiB * 1MB)
