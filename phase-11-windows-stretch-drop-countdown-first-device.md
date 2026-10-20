@@ -2,8 +2,8 @@
 machine: waso
 owns: ["apps/windows/src/Fsync.App/Views/TransfersPage.Drop.cs", "apps/windows/src/Fsync.App/Views/PairingPage.Countdown.cs", "apps/windows/src/Fsync.App/Views/DevicesPage.Extras.cs", "apps/windows/src/Fsync.App.Core/Files/DropPaths.cs", "apps/windows/src/Fsync.App.Core/Bridge/EngineBridge.FirstDevice.cs", "apps/windows/src/Fsync.App.Core/ViewModels/PairingViewModel.cs", "apps/windows/tests/Fsync.App.Tests/DropPathsTests.cs", "apps/windows/tests/Fsync.App.Tests/PairingCountdownTests.cs", "apps/windows/tests/Fsync.App.Tests/FirstDeviceTests.cs"]
 dependsOn: [10]
-reviewedSha: 76f001cc64eb741b6ede2b824b47569ddb5ec396
-reviewScore: 10
+reviewedSha: 7fe3621b9929225df73667667837dcd5b9076ba1
+reviewScore: 9.5
 ---
 
 # Phase 11 (OPTIONAL stretch): Windows file drop, pairing countdown, first-device banner (waso)
