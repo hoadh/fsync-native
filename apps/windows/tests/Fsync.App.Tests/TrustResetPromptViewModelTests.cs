@@ -363,3 +363,53 @@ public sealed class TrustResetPromptViewModelTests
         Assert.Equal(0, CallCount(h.Engine, "PendingTrustResets"));
     }
 }
+
+/// <summary>The window's trust gate decision (MainWindow.TrustGate uses <see cref="TrustGatePolicy"/>).</summary>
+public sealed class TrustGatePolicyTests
+{
+    private static TrustGateState Decide(bool ready = true, bool trustChecked = true, bool hasPending = false,
+        TrustResetOutcome outcome = TrustResetOutcome.Unanswered, bool currentlyGated = false, bool isBusy = false, bool hasMessage = false) =>
+        TrustGatePolicy.Decide(ready, trustChecked, hasPending, outcome, currentlyGated, isBusy, hasMessage);
+
+    [Fact]
+    public void NotReadyNeverGates() =>
+        Assert.Equal(TrustGateState.Open, Decide(ready: false, trustChecked: false, hasPending: true,
+            outcome: TrustResetOutcome.Declined, currentlyGated: true, isBusy: true, hasMessage: true));
+
+    [Fact]
+    public void ReadyButUncheckedShowsChecking()
+    {
+        Assert.Equal(TrustGateState.Checking, Decide(trustChecked: false));
+        Assert.Equal(TrustGateState.Checking, Decide(trustChecked: false, hasPending: true));
+    }
+
+    [Fact]
+    public void PendingResetGates() => Assert.Equal(TrustGateState.Prompt, Decide(hasPending: true));
+
+    [Theory]
+    [InlineData(TrustResetOutcome.Trusted)]
+    [InlineData(TrustResetOutcome.Declined)]
+    public void UndismissedOutcomeGates(TrustResetOutcome outcome) =>
+        Assert.Equal(TrustGateState.Prompt, Decide(outcome: outcome));
+
+    [Fact]
+    public void RemovedNeedsPairingOutcomeDoesNotGate() =>
+        Assert.Equal(TrustGateState.Open, Decide(outcome: TrustResetOutcome.RemovedNeedsPairing));
+
+    [Fact]
+    public void BusyHoldsOnlyAGateThatIsUp()
+    {
+        Assert.Equal(TrustGateState.Prompt, Decide(currentlyGated: true, isBusy: true));
+        Assert.Equal(TrustGateState.Open, Decide(currentlyGated: false, isBusy: true));
+    }
+
+    [Fact]
+    public void MessageHoldsOnlyAGateThatIsUp()
+    {
+        Assert.Equal(TrustGateState.Prompt, Decide(currentlyGated: true, hasMessage: true));
+        Assert.Equal(TrustGateState.Open, Decide(currentlyGated: false, hasMessage: true));
+    }
+
+    [Fact]
+    public void NothingPendingOpensTheGate() => Assert.Equal(TrustGateState.Open, Decide(currentlyGated: true));
+}

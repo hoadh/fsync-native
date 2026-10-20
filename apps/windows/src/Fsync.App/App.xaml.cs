@@ -75,7 +75,7 @@ public partial class App : Application
         Transfers = new TransfersViewModel(Bridge, () => _settings.DownloadDir,
             () => Clipboard.CurrentSettings?.autoAcceptFiles ?? false);
         SendTo = new SendToShortcut(Environment.ProcessPath!);
-        _tray = new TrayHost(this, new TrayStatusViewModel(Bridge, Devices), Clipboard);
+        _tray = new TrayHost(this, new TrayStatusViewModel(Bridge, Devices), Clipboard, Transfers);
 
         // Self-check: the native DLL for this architecture loads and speaks our contract.
         try
@@ -130,6 +130,7 @@ public partial class App : Application
             _window = new MainWindow();
             _window.Closed += (_, _) => _window = null;
         }
+        _window.RequestPage(page); // kept while the trust gate is up, opened when it closes
         _window.ShowPhase(Bridge?.Phase ?? AccountPhase.Starting, page);
         _window.Activate();
     }

@@ -12,6 +12,16 @@ public sealed class ToastActionTests
         Assert.Equal("action=open-files", ToastActions.ToArgs(ToastAction.OpenFiles));
     }
 
+    [Fact]
+    public void BuilderKeyAndValueJoinToTheParsedConstant()
+    {
+        // The toast is built from ArgumentKey/OpenFilesValue; a click must parse back to OpenFiles.
+        Assert.Equal("action", ToastActions.ArgumentKey);
+        Assert.Equal("open-files", ToastActions.OpenFilesValue);
+        Assert.True(ToastActions.TryParse($"{ToastActions.ArgumentKey}={ToastActions.OpenFilesValue}", out var action));
+        Assert.Equal(ToastAction.OpenFiles, action);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

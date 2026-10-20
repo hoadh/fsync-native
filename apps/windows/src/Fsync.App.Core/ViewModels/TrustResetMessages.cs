@@ -15,6 +15,36 @@ public enum TrustResetOutcome
     Declined,
 }
 
+/// <summary>What the window's trust gate shows.</summary>
+public enum TrustGateState
+{
+    /// <summary>Normal routing.</summary>
+    Open,
+    /// <summary>Gated: the first check after Ready is still running (progress ring only).</summary>
+    Checking,
+    /// <summary>Gated: the prompt (pending reset, answer in flight, outcome or message).</summary>
+    Prompt,
+}
+
+/// <summary>Pure decision behind the trust gate (MainWindow.TrustGate), so it can be unit tested.</summary>
+public static class TrustGatePolicy
+{
+    /// <param name="ready">The account phase is Ready (Offline and others never gate).</param>
+    /// <param name="trustChecked">The first check after Ready finished; false also while the view model does not exist.</param>
+    /// <param name="currentlyGated">The gate is up now: busy and message only hold it, they never open it.</param>
+    public static TrustGateState Decide(bool ready, bool trustChecked, bool hasPending, TrustResetOutcome outcome,
+        bool currentlyGated, bool isBusy, bool hasMessage)
+    {
+        if (!ready) return TrustGateState.Open;
+        if (!trustChecked) return TrustGateState.Checking;
+        var gated = hasPending
+            || outcome is TrustResetOutcome.Trusted or TrustResetOutcome.Declined
+            // HasPending drops before Outcome is set while an answer runs; a message stays until dismissed.
+            || currentlyGated && (isBusy || hasMessage);
+        return gated ? TrustGateState.Prompt : TrustGateState.Open;
+    }
+}
+
 /// <summary>Text for the trust-reset prompt; <see cref="IsNotice"/> marks informational text (not a failure).</summary>
 public readonly record struct TrustResetMessage(string Text, bool IsNotice);
 

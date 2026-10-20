@@ -10,8 +10,11 @@ public enum ToastAction
 /// <summary>Builds and parses toast arguments (spec section 4: fixed constant set).</summary>
 public static class ToastActions
 {
+    /// <summary>Key and value of the one toast argument (AppNotificationBuilder.AddArgument takes them apart).</summary>
+    public const string ArgumentKey = "action", OpenFilesValue = "open-files";
+
     /// <summary>The only argument string a toast carries.</summary>
-    public const string OpenFilesArgs = "action=open-files";
+    public const string OpenFilesArgs = ArgumentKey + "=" + OpenFilesValue;
 
     public static string ToArgs(ToastAction action) => action switch
     {
