@@ -6,6 +6,8 @@ status: in-progress
 ---
 
 # Phase 09: Windows trust gate, toasts, tray menu (waso)
+
+> Owns deviation (owner-accepted 2026-10-20): ed59ba2 also edits phase-08 files `App.xaml.cs` (pass `Transfers` to `TrayHost`) and `Views/Dialogs.cs` (optional `created` callback on `ConfirmAsync` so `ConfirmAborted` can `Hide()` the dialog). Additive, minimal.
 <!-- red-team #5: split from old Windows shell phase -->
 <!-- red-team #12: owns exact; no csproj, no app.manifest -->
 

@@ -12,7 +12,7 @@ dependsOn: [04]
 - Current: `Sources/FsyncMac/AppDelegate.swift` (AppRuntime, closeLaunchWindow by title)
 
 ## Overview
-- Priority: P2. Status: pending.
+- Priority: P2. Status: completed except manual smoke (commit 9ac43bb, fix 191bf98, pushed to origin). Manual smoke pending owner.
 - Deliver `UNUserNotificationCenter` notifications for incoming files. Arrival never activates the app; a click opens the Transfers page. Also moves `closeLaunchWindow` to identifier lookup and updates the macOS 13 comment.
 
 ## Key Insights
@@ -53,11 +53,11 @@ click → didReceive → navigation.show(.transfers) → bridge.windowRequest.se
 5. `swift build && swift test`. Manual: `build-fsync-mac-app.sh` bundle, send files from `fsync-cli`; one notice, click opens Transfers.
 
 ## Todo List
-- [ ] NotificationPosting + adapter
-- [ ] IncomingFilesNotifier (suppress, authorize, route)
-- [ ] AppDelegate wiring + identifier close + comment
-- [ ] Notifier tests
-- [ ] Manual bundle smoke
+- [x] NotificationPosting + adapter
+- [x] IncomingFilesNotifier (suppress, authorize, route)
+- [x] AppDelegate wiring + identifier close + comment
+- [x] Notifier tests
+- [ ] Manual bundle smoke: OPEN, owner. Pending: cold-launch click opens Transfers; 3 offers from one sender → one notice.
 
 ## Success Criteria
 - `cd apps/macos/FsyncMac && swift build && swift test` green, including `IncomingFilesNotifierTests`.
