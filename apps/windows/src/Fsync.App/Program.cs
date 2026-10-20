@@ -1,4 +1,5 @@
 using Fsync.App.Bridge;
+using Fsync.App.Notifications;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.Windows.AppLifecycle;
@@ -32,14 +33,21 @@ public static class Program
             return 0;
         }
 
+        // Toasts: unpackaged registration must precede the app; a failure only turns toasts off.
+        // A launch from a toast (app closed) arrives as a plain start: it just opens the window.
+        ToastNotifier.Register();
         var background = args.Contains("--background");
-        Application.Start(_ =>
+        try
         {
-            var context = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());
-            SynchronizationContext.SetSynchronizationContext(context);
-            var app = new App(settings, showWindowAtStart: !background, args);
-            instance.Activated += (_, e) => app.ShowFromAnotherInstance(LaunchArgs(e));
-        });
+            Application.Start(_ =>
+            {
+                var context = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());
+                SynchronizationContext.SetSynchronizationContext(context);
+                var app = new App(settings, showWindowAtStart: !background, args);
+                instance.Activated += (_, e) => app.ShowFromAnotherInstance(LaunchArgs(e));
+            });
+        }
+        finally { ToastNotifier.Unregister(); }
         return 0;
     }
 

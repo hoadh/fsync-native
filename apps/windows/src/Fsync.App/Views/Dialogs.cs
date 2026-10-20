@@ -27,7 +27,8 @@ public static class Dialogs
     /// rule), only an explicit click on <paramref name="primaryText"/> confirms. False when declined,
     /// closed, or another dialog is already showing.
     /// </summary>
-    public static async Task<bool> ConfirmAsync(XamlRoot root, string title, string body, string primaryText)
+    /// <param name="created">Gets the dialog before it shows, so the caller can <c>Hide()</c> it (e.g. its subject changed).</param>
+    public static async Task<bool> ConfirmAsync(XamlRoot root, string title, string body, string primaryText, Action<ContentDialog>? created = null)
     {
         var dialog = new ContentDialog
         {
@@ -38,6 +39,7 @@ public static class Dialogs
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
         };
+        created?.Invoke(dialog);
         return await ShowAsync(dialog) == ContentDialogResult.Primary;
     }
 }

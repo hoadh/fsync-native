@@ -75,7 +75,7 @@ public partial class App : Application
         Transfers = new TransfersViewModel(Bridge, () => _settings.DownloadDir,
             () => Clipboard.CurrentSettings?.autoAcceptFiles ?? false);
         SendTo = new SendToShortcut(Environment.ProcessPath!);
-        _tray = new TrayHost(this, new TrayStatusViewModel(Bridge, Devices), Clipboard);
+        _tray = new TrayHost(this, new TrayStatusViewModel(Bridge, Devices), Clipboard, Transfers);
 
         // Self-check: the native DLL for this architecture loads and speaks our contract.
         try
