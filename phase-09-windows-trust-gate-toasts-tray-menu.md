@@ -3,6 +3,8 @@ machine: waso
 owns: ["apps/windows/src/Fsync.App/App.Parity.cs", "apps/windows/src/Fsync.App/MainWindow.TrustGate.cs", "apps/windows/src/Fsync.App/Notifications/ToastNotifier.cs", "apps/windows/src/Fsync.App/Views/TrustResetPage.xaml", "apps/windows/src/Fsync.App/Views/TrustResetPage.xaml.cs", "apps/windows/src/Fsync.App/TrayHost.cs", "apps/windows/src/Fsync.App/Program.cs"]
 dependsOn: [08]
 status: in-progress
+reviewedSha: 07907bb87e998a2ac58ec9a0e98e18063087771a
+reviewScore: 9
 ---
 
 # Phase 09: Windows trust gate, toasts, tray menu (waso)
