@@ -23,7 +23,9 @@ public struct IncomingFilesNoticeCoalescer {
         senders = senders.filter { $0.value.pending != nil || now.timeIntervalSince($0.value.windowStart) < window }
         // The key is the sanitized display name (`IncomingFilesNotice.fromName`); the offer carries no better id.
         let key = notice.fromName
-        guard var sender = senders[key], now.timeIntervalSince(sender.windowStart) < window else {
+        // A held-back notice that is already due (late timer) absorbs the offer, so nothing is dropped; the
+        // next `flush` hands it out.
+        guard var sender = senders[key], sender.pending != nil || now.timeIntervalSince(sender.windowStart) < window else {
             senders[key] = Sender(windowStart: now, pending: nil)
             return notice
         }
