@@ -17,6 +17,8 @@ public sealed partial class TrustResetPromptViewModel : ObservableObject, IDispo
     private readonly EngineBridge _bridge;
     /// <summary>Every refresh takes a number; only the newest one may apply its result.</summary>
     private int _seq;
+    /// <summary>Bumped on sign-out; an answer that started under an older account applies nothing.</summary>
+    private int _epoch;
     private IReadOnlyList<TrustResetInfo> _pending = [];
     private string? _confirmingResetId;
     private bool _disposed;
@@ -124,26 +126,29 @@ public sealed partial class TrustResetPromptViewModel : ObservableObject, IDispo
         if (IsBusy) return;
         IsBusy = true;
         ClearMessage();
+        var epoch = _epoch;
+        // The prompt is gone (disposed) or belongs to a signed-out account: no outcome, no state change from it.
+        bool Stale() => _disposed || epoch != _epoch;
         try
         {
             var state = await _bridge.RunAsync(call);
-            if (_disposed) return; // the prompt is gone: no outcome, no account state change from it
+            if (Stale()) return;
             await Refresh();
-            if (_disposed) return;
+            if (Stale()) return;
             Outcome = state is { } s ? TrustResetMessages.OutcomeFor(s) : TrustResetOutcome.Declined;
             if (state is { } applied) _bridge.ApplyAccountState(applied);
         }
         catch (FsyncException.NotFound e)
         {
-            if (_disposed) return;
+            if (Stale()) return;
             await Refresh(); // first: it may clear a message when the shown reset changes
-            if (_disposed) return;
+            if (Stale()) return;
             Show(TrustResetMessages.For(e));
         }
         catch (Exception e) when (e is FsyncException or InvalidOperationException)
         {
             // Otherwise the shown reset changed during the call; its "list changed" notice stays.
-            if (!_disposed && Current?.resetId == id) Show(TrustResetMessages.For(e));
+            if (!Stale() && Current?.resetId == id) Show(TrustResetMessages.For(e));
         }
         finally { IsBusy = false; }
     }
@@ -155,7 +160,22 @@ public sealed partial class TrustResetPromptViewModel : ObservableObject, IDispo
 
     private void OnBridgeChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(EngineBridge.Phase) && _bridge.Phase == AccountPhase.Ready) _ = Refresh();
+        if (e.PropertyName != nameof(EngineBridge.Phase)) return;
+        if (_bridge.Phase == AccountPhase.Ready) _ = Refresh();
+        else if (_bridge.Phase == AccountPhase.SignedOut) ForgetAccount();
+    }
+
+    /// <summary>
+    /// Signed out: the next account must never see this one's prompt, even when its first check fails
+    /// (the gate fails open on whatever is still held). Refreshes and answers in flight are dropped.
+    /// </summary>
+    private void ForgetAccount()
+    {
+        _seq++;
+        _epoch++;
+        Apply([]);
+        Outcome = TrustResetOutcome.Unanswered;
+        ClearMessage();
     }
 
     private void SetConfirming(string? id)
