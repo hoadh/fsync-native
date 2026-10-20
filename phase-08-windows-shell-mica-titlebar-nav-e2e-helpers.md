@@ -3,6 +3,8 @@ machine: waso
 owns: ["apps/windows/src/Fsync.App/App.xaml", "apps/windows/src/Fsync.App/App.xaml.cs", "apps/windows/src/Fsync.App/MainWindow.xaml", "apps/windows/src/Fsync.App/MainWindow.xaml.cs", "apps/windows/src/Fsync.App/Views/Dialogs.cs", "apps/windows/src/Fsync.App/Views/Ui.cs", "apps/windows/src/Fsync.App/Styles/Tokens.xaml", "apps/windows/src/Fsync.App/Shell/TitleBarSetup.cs", "apps/windows/src/Fsync.App/Shell/BackdropSetup.cs", "apps/windows/src/Fsync.App/Shell/NavigationRoutes.cs", "apps/windows/tests/e2e/Uia.psm1", "apps/windows/tests/e2e/pair-with-cli.ps1", "apps/windows/tests/e2e/clipboard-with-cli.ps1"]
 dependsOn: [07]
 status: in-progress
+reviewedSha: 7fe3621b9929225df73667667837dcd5b9076ba1
+reviewScore: 9.5
 ---
 
 # Phase 08: Windows shell: Mica, title bar, left nav, e2e helpers (waso)
