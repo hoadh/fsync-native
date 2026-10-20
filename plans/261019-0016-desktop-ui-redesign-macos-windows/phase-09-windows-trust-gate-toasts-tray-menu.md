@@ -3,9 +3,13 @@ machine: waso
 owns: ["apps/windows/src/Fsync.App/App.Parity.cs", "apps/windows/src/Fsync.App/MainWindow.TrustGate.cs", "apps/windows/src/Fsync.App/Notifications/ToastNotifier.cs", "apps/windows/src/Fsync.App/Views/TrustResetPage.xaml", "apps/windows/src/Fsync.App/Views/TrustResetPage.xaml.cs", "apps/windows/src/Fsync.App/TrayHost.cs", "apps/windows/src/Fsync.App/Program.cs"]
 dependsOn: [08]
 status: in-progress
+reviewedSha: 07907bb87e998a2ac58ec9a0e98e18063087771a
+reviewScore: 9
 ---
 
 # Phase 09: Windows trust gate, toasts, tray menu (waso)
+
+> Review: 3 rounds, final 9/10 (0 critical, 0 warnings) at 07907bb; owner approved manually 2026-10-20 (auto threshold 9.5 not reached). Owner still owes: `reports/windows-toast-spike-<date>.md` (Win10/Win11: args equal `action=open-files`, cold-start click raises NotificationInvoked) and manual checks (fsync-cli trust reset gates window incl. tray reopen, Return = Keep, 3 offers in 10 s = one toast).
 
 > Owns deviation (owner-accepted 2026-10-20): ed59ba2 also edits phase-08 files `App.xaml.cs` (pass `Transfers` to `TrayHost`) and `Views/Dialogs.cs` (optional `created` callback on `ConfirmAsync` so `ConfirmAborted` can `Hide()` the dialog). Additive, minimal.
 <!-- red-team #5: split from old Windows shell phase -->

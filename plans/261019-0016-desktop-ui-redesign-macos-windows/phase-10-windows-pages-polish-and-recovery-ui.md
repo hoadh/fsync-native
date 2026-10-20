@@ -60,6 +60,7 @@ Seams: SetupFileDrop / SetupCountdown / AddExtraBanners (no-ops until phase 11)
 - [ ] Recovery UI (Close default, sanitized names)
 - [ ] e2e re-run (owner)
 - [ ] Carried from 08 review: DevicesPage dot binds `Style="{x:Bind local:Ui.StatusDotStyle(Kind)}"` (theme-aware), then delete `Ui.StatusBrush(StatusKind)`; toggle Light/Dark on Devices and confirm dots recolour
+- [ ] Carried from 09 review (owner-approved owns exception: `Fsync.App.Core/ViewModels/TrustResetPromptViewModel.cs` + its tests): clear `Pending`/`Outcome` on SignedOut so a failed first check after an account switch cannot show the old account's prompt; comment on the `RemovedNeedsPairing → Open` test
 
 ## Success Criteria
 - waso: `dotnet build apps/windows/src/Fsync.App -c Release -p:Platform=x64 -r win-x64 && dotnet test apps/windows/tests/Fsync.App.Tests -c Release`, no failures outside the baseline list.
