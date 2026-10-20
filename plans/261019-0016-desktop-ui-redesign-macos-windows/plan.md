@@ -27,8 +27,8 @@ Windows IA (Devices, History, Files, Pair, Settings) is the reference; each plat
 | 06 | [macOS stretch (optional)](phase-06-macos-stretch-quicklook-commands-icon-states.md) | Skipped |
 | 07 | [Windows core VMs: trust, recovery, notices](phase-07-windows-core-viewmodels-trust-recovery-notices.md) | Completed |
 | 08 | [Windows shell + e2e helpers](phase-08-windows-shell-mica-titlebar-nav-e2e-helpers.md) | Completed |
-| 09 | [Windows trust gate, toasts, tray menu](phase-09-windows-trust-gate-toasts-tray-menu.md) | In Progress |
-| 10 | [Windows pages + recovery UI](phase-10-windows-pages-polish-and-recovery-ui.md) | Pending |
+| 09 | [Windows trust gate, toasts, tray menu](phase-09-windows-trust-gate-toasts-tray-menu.md) | Completed |
+| 10 | [Windows pages + recovery UI](phase-10-windows-pages-polish-and-recovery-ui.md) | In Progress |
 | 11 | [Windows stretch (optional)](phase-11-windows-stretch-drop-countdown-first-device.md) | Pending |
 | 12 | [Integration, QA, docs](phase-12-integration-qa-and-docs.md) | Pending |
 
