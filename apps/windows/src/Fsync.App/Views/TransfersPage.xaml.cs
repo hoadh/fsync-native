@@ -16,19 +16,34 @@ public sealed partial class TransfersPage : Page, INotifyPropertyChanged
     /// <summary>Paired devices other than this PC (send targets).</summary>
     public ObservableCollection<SendTarget> Targets { get; } = [];
     public bool HasOffers => ViewModel.Offers.Count > 0;
+    /// <summary>No transfers in the list (spec: files.empty).</summary>
+    public bool ShowEmpty => ViewModel.Transfers.Count == 0;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public TransfersPage()
     {
         InitializeComponent();
+        HeaderHost.Child = Ui.PageHeader("Files and transfers");
+        SetupFileDrop(DropHost);
         ViewModel.Offers.CollectionChanged += OnOffersChanged;
+        ViewModel.Transfers.CollectionChanged += OnTransfersChanged;
         Loaded += async (_, _) => await ShowSendAsync();
-        Unloaded += (_, _) => ViewModel.Offers.CollectionChanged -= OnOffersChanged;
+        Unloaded += (_, _) =>
+        {
+            ViewModel.Offers.CollectionChanged -= OnOffersChanged;
+            ViewModel.Transfers.CollectionChanged -= OnTransfersChanged;
+        };
     }
+
+    /// <summary>Phase 11 seam: files dropped anywhere on the page go to a picked device.</summary>
+    partial void SetupFileDrop(UIElement host);
 
     private void OnOffersChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasOffers)));
+
+    private void OnTransfersChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowEmpty)));
 
     /// <summary>Shows the device picker while Explorer paths are queued.</summary>
     internal async Task ShowSendAsync()

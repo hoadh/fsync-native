@@ -1,9 +1,11 @@
+using Fsync.App.Files;
+using Fsync.App.Services;
 using Fsync.App.ViewModels;
+using Fsync.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 
 namespace Fsync.App.Views;
 
@@ -17,8 +19,6 @@ public static class Ui
     /// <summary>Visible when <paramref name="value"/>'s name is one of the comma-separated <paramref name="names"/>.</summary>
     public static Visibility When(Enum value, string names) =>
         Show(names.Split(',', StringSplitOptions.TrimEntries).Contains(value.ToString()));
-
-    public static Brush StatusBrush(StatusKind kind) => new SolidColorBrush(TrayHost.BadgeColor(kind));
 
     /// <summary>
     /// Theme-aware status dot: <c>&lt;Ellipse Style="{x:Bind local:Ui.StatusDotStyle(Kind)}" /&gt;</c>.
@@ -42,6 +42,37 @@ public static class Ui
     }
 
     public static string Expires(DateTimeOffset? at) => at is { } t ? $"Valid until {t.ToLocalTime():t}" : "";
+
+    /// <summary>Segoe Fluent glyphs (spec icon map) for page headers and empty states.</summary>
+    public static class Glyphs
+    {
+        public const string Devices = "", History = "", Files = "", Pairing = "",
+            Search = "", Offline = "", Warning = "";
+    }
+
+    /// <summary>Row icon for a device, by <see cref="DeviceItem.PlatformText"/>; this PC gets its own.</summary>
+    public static string PlatformGlyph(string platformText, bool isSelf) => isSelf ? "" : platformText switch
+    {
+        "Mac" => "",          // laptop
+        "Windows" => "",      // monitor
+        "Command line" => "", // command prompt
+        _ => Glyphs.Devices,
+    };
+
+    /// <summary>History empty state: nothing at all, or nothing for the search.</summary>
+    public static string HistoryEmptyGlyph(string? query) => string.IsNullOrWhiteSpace(query) ? Glyphs.History : Glyphs.Search;
+    public static string HistoryEmptyBody(string? query) =>
+        string.IsNullOrWhiteSpace(query) ? "What you copy here or on your other devices shows up here." : "Try other words.";
+
+    /// <summary>Sender of an <see cref="IncomingOffer"/>'s item (peer-supplied, spec section 5 sanitizer).</summary>
+    public static string OfferSender(ClipItem offer) => $"From {PeerText.DisplayName(offer.fromName)}";
+
+    /// <summary>Offer contents: one (sanitized) file name or a count, plus the size.</summary>
+    public static string OfferSummary(ClipItem offer)
+    {
+        var what = offer.files.Length == 1 ? PeerText.DisplayName(offer.files[0].name, 80) : $"{offer.files.Length} files";
+        return $"{what} ({TransferItem.Size(offer.totalSize)})";
+    }
 
     private static Style? FindStyle(string key) =>
         Application.Current.Resources.TryGetValue(key, out var value) ? value as Style : null;

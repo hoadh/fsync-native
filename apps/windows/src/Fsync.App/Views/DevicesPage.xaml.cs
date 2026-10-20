@@ -1,4 +1,7 @@
+using System.Collections.Specialized;
+using System.ComponentModel;
 using Fsync.App.Bridge;
+using Fsync.App.Services;
 using Fsync.App.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -6,22 +9,44 @@ using Windows.ApplicationModel.DataTransfer;
 
 namespace Fsync.App.Views;
 
-public sealed partial class DevicesPage : Page
+public sealed partial class DevicesPage : Page, INotifyPropertyChanged
 {
     public DevicesViewModel ViewModel { get; } = App.Current.Devices;
     public EngineBridge Bridge { get; } = App.Current.Bridge;
 
+    private bool _loaded;
+    /// <summary>After the first refresh, only this PC is listed (spec: devices.empty + Pair CTA).</summary>
+    public bool ShowEmpty => _loaded && !ViewModel.Devices.Any(d => !d.IsSelf);
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
     public DevicesPage()
     {
         InitializeComponent();
-        Loaded += async (_, _) => await ViewModel.RefreshCommand.ExecuteAsync(null);
+        HeaderHost.Child = Ui.PageHeader("Your devices", "Drop files on a device to send them.");
+        AddExtraBanners(ExtraBannerHost);
+        Loaded += async (_, _) =>
+        {
+            ViewModel.Devices.CollectionChanged -= OnDevicesChanged; // Loaded can repeat without a new page
+            ViewModel.Devices.CollectionChanged += OnDevicesChanged;
+            await ViewModel.RefreshCommand.ExecuteAsync(null);
+            _loaded = true;
+            OnDevicesChanged(null, null);
+        };
+        Unloaded += (_, _) => ViewModel.Devices.CollectionChanged -= OnDevicesChanged;
     }
+
+    /// <summary>Phase 11 seam: extra InfoBars (first device, offline hints) above the list.</summary>
+    partial void AddExtraBanners(StackPanel host);
+
+    private void OnDevicesChanged(object? sender, NotifyCollectionChangedEventArgs? e) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowEmpty)));
 
     private void OnDragOver(object sender, DragEventArgs e)
     {
         if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
         e.AcceptedOperation = DataPackageOperation.Copy;
-        if ((sender as FrameworkElement)?.Tag is DeviceItem d) e.DragUIOverride.Caption = $"Send to {d.Name}";
+        if ((sender as FrameworkElement)?.Tag is DeviceItem d) e.DragUIOverride.Caption = $"Send to {PeerText.DisplayName(d.Name)}";
     }
 
     /// <summary>Files dropped on a device row are pushed to it ("Send to").</summary>
@@ -41,18 +66,14 @@ public sealed partial class DevicesPage : Page
 
     private async void OnRetry(object sender, RoutedEventArgs e) => await Bridge.GoOnlineAsync();
 
+    private void OnPairNow(object sender, RoutedEventArgs e) => App.Current.ShowWindow(MainWindow.PairingTag);
+
     private async void OnRemove(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is not DeviceItem item) return;
-        var dialog = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            Title = $"Remove {item.Name}?",
-            Content = "It will stop receiving your clipboard and files. To use it again, pair it again.",
-            PrimaryButtonText = "Remove",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Close,
-        };
-        if (await Dialogs.ShowAsync(dialog) == ContentDialogResult.Primary) await ViewModel.RemoveCommand.ExecuteAsync(item);
+        // The answer applies to the row the dialog opened for (captured item), never the current one.
+        if (await Dialogs.ConfirmAsync(XamlRoot, $"Remove {PeerText.DisplayName(item.Name)}?",
+                "It will stop receiving your clipboard and files. To use it again, pair it again.", "Remove"))
+            await ViewModel.RemoveCommand.ExecuteAsync(item);
     }
 }

@@ -11,6 +11,7 @@ public sealed partial class HistoryPage : Page
     public HistoryPage()
     {
         InitializeComponent();
+        HeaderHost.Child = Ui.PageHeader("Clipboard history");
         Loaded += async (_, _) => await ViewModel.RefreshAsync();
     }
 
