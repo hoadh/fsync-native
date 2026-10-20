@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Fsync.App.Services;
 using Fsync.App.ViewModels;
 using Fsync.App.Views.Controls;
 using Microsoft.UI.Xaml;
@@ -39,7 +40,10 @@ public sealed partial class SettingsPage : Page, INotifyPropertyChanged
     private async void OnResetAccount(object sender, RoutedEventArgs e)
     {
         RecoveryError = null;
-        var others = App.Current.Devices.Devices.Where(d => !d.IsSelf).Select(d => d.Name).ToList();
+        var devices = App.Current.Devices;
+        try { await devices.RefreshCommand.ExecuteAsync(null); } // the list may be stale; RefreshAsync keeps its own errors
+        catch (Exception ex) { AppLog.Warn($"settings: device refresh before reset failed {ex.GetType().Name}"); }
+        var others = devices.Devices.Where(d => !d.IsSelf).Select(d => d.Name).ToList();
         RecoveryError = await AccountRecoveryFlow.RunAsync(App.Current.Recovery, App.Current.Bridge, XamlRoot, others);
     }
 }

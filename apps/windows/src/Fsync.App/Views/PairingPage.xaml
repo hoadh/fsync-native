@@ -2,6 +2,7 @@
     x:Class="Fsync.App.Views.PairingPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Fsync.App.Views.Controls"
     xmlns:local="using:Fsync.App.Views">
     <ScrollViewer>
         <StackPanel Spacing="{StaticResource FsyncSpace16}" MaxWidth="460" HorizontalAlignment="Left">
@@ -55,7 +56,7 @@
             <!-- SAS: both sides must see the same words. -->
             <StackPanel Spacing="{StaticResource FsyncSpace12}" Visibility="{x:Bind local:Ui.When(ViewModel.Stage, 'ConfirmSas'), Mode=OneWay}">
                 <TextBlock TextWrapping="Wrap" Style="{StaticResource FsyncBodyTextStyle}">
-                    <Run Text="Pairing with" /> <Run Text="{x:Bind ViewModel.PeerName, Mode=OneWay}" FontWeight="SemiBold" />
+                    <Run Text="Pairing with" /> <Run Text="{x:Bind controls:PageText.PeerName(ViewModel.PeerName), Mode=OneWay}" FontWeight="SemiBold" />
                     <Run Text="(" /><Run Text="{x:Bind ViewModel.PeerPlatform, Mode=OneWay}" /><Run Text=")." />
                     <Run Text="Check that the other device shows exactly these words:" />
                 </TextBlock>

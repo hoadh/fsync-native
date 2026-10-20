@@ -28,10 +28,13 @@ internal static class AccountRecoveryFlow
     private const int MaxListedNames = 8;
 
     /// <param name="recovery"><c>App.Recovery</c>; null (engine not ready) does nothing.</param>
-    /// <param name="otherDeviceNames">Peer-supplied names of the devices that lose trust; shown sanitized.</param>
+    /// <param name="otherDeviceNames">
+    /// Peer-supplied names of the devices that lose trust, shown sanitized; empty shows a general sentence
+    /// instead, null (no list to show, e.g. a PC that needs pairing) shows neither.
+    /// </param>
     /// <returns>The failure text to show, or null (done, declined, or interrupted).</returns>
     public static async Task<string?> RunAsync(AccountRecoveryViewModel? recovery, EngineBridge bridge, XamlRoot root,
-        IEnumerable<string> otherDeviceNames)
+        IReadOnlyList<string>? otherDeviceNames)
     {
         if (recovery is null || recovery.IsBusy) return null;
         var phase = bridge.Phase;
@@ -66,11 +69,12 @@ internal static class AccountRecoveryFlow
         }
     }
 
-    /// <summary>"\n\nDevices that lose trust: ..." with sanitized names, or "" when none are known.</summary>
-    internal static string DeviceList(IEnumerable<string> names)
+    /// <summary>"\n\nDevices that will need to ...: ..." with sanitized names; a general sentence when the list is empty.</summary>
+    internal static string DeviceList(IReadOnlyList<string>? names)
     {
+        if (names is null) return "";
         var shown = names.Select(n => PeerText.DisplayName(n)).ToList();
-        if (shown.Count == 0) return "";
+        if (shown.Count == 0) return "\n\nYour other devices will need to confirm or pair again.";
         var listed = shown.Take(MaxListedNames).Select(n => "• " + n);
         var more = shown.Count > MaxListedNames ? $"\n…and {shown.Count - MaxListedNames} more" : "";
         return "\n\nDevices that will need to confirm or pair again:\n" + string.Join("\n", listed) + more;

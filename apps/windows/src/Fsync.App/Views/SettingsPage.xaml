@@ -70,8 +70,8 @@
                 <StackPanel Spacing="{StaticResource FsyncSpace4}">
                     <TextBlock Text="This PC" Style="{StaticResource FsyncSectionTitleTextStyle}" />
                     <TextBlock Text="{x:Bind ViewModel.DeviceName}" Style="{StaticResource FsyncBodyTextStyle}" />
-                    <TextBlock Text="{x:Bind ViewModel.NodeId}" FontFamily="Consolas" FontSize="12" TextWrapping="Wrap"
-                               IsTextSelectionEnabled="True" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Text="{x:Bind ViewModel.NodeId}" Style="{StaticResource FsyncCaptionTextStyle}" FontFamily="Consolas"
+                               TextWrapping="Wrap" IsTextSelectionEnabled="True" />
                 </StackPanel>
                 <InfoBar Severity="Error" IsOpen="True" IsClosable="False" Message="{x:Bind ViewModel.Error, Mode=OneWay}"
                          Visibility="{x:Bind local:Ui.ShowIf(ViewModel.Error), Mode=OneWay}" />

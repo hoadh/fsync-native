@@ -39,10 +39,10 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Ellipse Style="{x:Bind local:Ui.StatusDotStyle(Kind)}" />
-                        <FontIcon Grid.Column="1" Glyph="{x:Bind local:Ui.PlatformGlyph(PlatformText, IsSelf)}" FontSize="20"
+                        <FontIcon Grid.Column="1" Glyph="{x:Bind controls:PageText.PlatformGlyph(PlatformText, IsSelf)}" FontSize="20"
                                   VerticalAlignment="Center" AutomationProperties.AccessibilityView="Raw" />
                         <StackPanel Grid.Column="2">
-                            <TextBlock Text="{x:Bind Name}" Style="{StaticResource FsyncSectionTitleTextStyle}" />
+                            <TextBlock Text="{x:Bind controls:PageText.PeerName(Name)}" Style="{StaticResource FsyncSectionTitleTextStyle}" />
                             <TextBlock Style="{StaticResource FsyncCaptionTextStyle}">
                                 <Run Text="{x:Bind PlatformText}" /><Run Text=" · " /><Run Text="{x:Bind StatusText}" />
                             </TextBlock>

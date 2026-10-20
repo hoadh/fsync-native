@@ -21,7 +21,8 @@ public sealed partial class EmptyState : UserControl
     public EmptyState() => InitializeComponent();
 
     public string Glyph { get => (string)GetValue(GlyphProperty); set => SetValue(GlyphProperty, value); }
-    public string Title { get => (string)GetValue(TitleProperty); set => SetValue(TitleProperty, value); }
+    /// <summary>Nullable so a null from x:Bind cannot throw; shows nothing then.</summary>
+    public string? Title { get => (string?)GetValue(TitleProperty); set => SetValue(TitleProperty, value); }
     public string? Body { get => (string?)GetValue(BodyProperty); set => SetValue(BodyProperty, value); }
     public string? ActionText { get => (string?)GetValue(ActionTextProperty); set => SetValue(ActionTextProperty, value); }
 

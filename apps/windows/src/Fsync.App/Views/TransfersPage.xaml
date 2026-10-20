@@ -44,8 +44,8 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Text="{x:Bind local:Ui.OfferSender(Item)}" Style="{StaticResource FsyncSectionTitleTextStyle}" />
-                                        <TextBlock Text="{x:Bind local:Ui.OfferSummary(Item)}" Style="{StaticResource FsyncCaptionTextStyle}"
+                                        <TextBlock Text="{x:Bind controls:PageText.OfferSender(Item)}" Style="{StaticResource FsyncSectionTitleTextStyle}" />
+                                        <TextBlock Text="{x:Bind controls:PageText.OfferSummary(Item)}" Style="{StaticResource FsyncCaptionTextStyle}"
                                                    TextWrapping="Wrap" />
                                     </StackPanel>
                                     <Button Grid.Column="1" Content="Save to Downloads" Style="{StaticResource AccentButtonStyle}" Tag="{x:Bind}"

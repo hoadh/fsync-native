@@ -24,8 +24,13 @@
         </Grid>
         <TextBox Grid.Row="1" x:Name="Search" PlaceholderText="Search" Header="Search"
                  Text="{x:Bind ViewModel.Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-        <InfoBar Grid.Row="2" Severity="Error" IsOpen="True" IsClosable="False" Message="{x:Bind ViewModel.Error, Mode=OneWay}"
-                 Visibility="{x:Bind local:Ui.ShowIf(ViewModel.Error), Mode=OneWay}" />
+        <StackPanel Grid.Row="2" Spacing="{StaticResource FsyncSpace8}">
+            <InfoBar Severity="Error" IsOpen="True" IsClosable="False" Message="{x:Bind ViewModel.Error, Mode=OneWay}"
+                     Visibility="{x:Bind local:Ui.ShowIf(ViewModel.Error), Mode=OneWay}" />
+            <!-- Transient status ("Copied to the clipboard." etc.); the empty state covers "nothing here". -->
+            <TextBlock Text="{x:Bind StatusCaption, Mode=OneWay}" Style="{StaticResource FsyncCaptionTextStyle}" TextWrapping="Wrap"
+                       Visibility="{x:Bind local:Ui.ShowIf(StatusCaption), Mode=OneWay}" />
+        </StackPanel>
         <ListView Grid.Row="3" ItemsSource="{x:Bind ViewModel.Items}" SelectionMode="None">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="vm:HistoryRow">
@@ -50,11 +55,11 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
             <ListView.Footer>
-                <!-- Status is "Nothing copied yet." or "No matches." once a load finds nothing. -->
-                <controls:EmptyState Margin="0,24,0,0" Glyph="{x:Bind local:Ui.HistoryEmptyGlyph(ViewModel.Query), Mode=OneWay}"
-                                     Title="{x:Bind ViewModel.Status, Mode=OneWay}"
-                                     Body="{x:Bind local:Ui.HistoryEmptyBody(ViewModel.Query), Mode=OneWay}"
-                                     Visibility="{x:Bind local:Ui.ShowIf(ViewModel.Status), Mode=OneWay}" />
+                <!-- No items after a load: nothing copied, or nothing for the search. -->
+                <controls:EmptyState Margin="0,24,0,0" Glyph="{x:Bind controls:PageText.HistoryEmptyGlyph(ViewModel.Query), Mode=OneWay}"
+                                     Title="{x:Bind controls:PageText.HistoryEmptyTitle(ViewModel.Query), Mode=OneWay}"
+                                     Body="{x:Bind controls:PageText.HistoryEmptyBody(ViewModel.Query), Mode=OneWay}"
+                                     Visibility="{x:Bind local:Ui.Show(ShowEmpty), Mode=OneWay}" />
             </ListView.Footer>
         </ListView>
         <Button Grid.Row="4" Content="Load more" Command="{x:Bind ViewModel.LoadMoreCommand}"

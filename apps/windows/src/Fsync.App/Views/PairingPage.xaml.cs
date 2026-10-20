@@ -72,6 +72,6 @@ public sealed partial class PairingPage : Page, INotifyPropertyChanged
     {
         RecoveryError = null;
         // A PC that needs pairing has no trusted peers of its own to list.
-        RecoveryError = await AccountRecoveryFlow.RunAsync(App.Current.Recovery, App.Current.Bridge, XamlRoot, []);
+        RecoveryError = await AccountRecoveryFlow.RunAsync(App.Current.Recovery, App.Current.Bridge, XamlRoot, null);
     }
 }

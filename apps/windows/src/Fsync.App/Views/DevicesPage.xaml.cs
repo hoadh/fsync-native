@@ -14,9 +14,25 @@ public sealed partial class DevicesPage : Page, INotifyPropertyChanged
     public DevicesViewModel ViewModel { get; } = App.Current.Devices;
     public EngineBridge Bridge { get; } = App.Current.Bridge;
 
-    private bool _loaded;
-    /// <summary>After the first refresh, only this PC is listed (spec: devices.empty + Pair CTA).</summary>
-    public bool ShowEmpty => _loaded && !ViewModel.Devices.Any(d => !d.IsSelf);
+    /// <summary>A refresh on this page succeeded at least once.</summary>
+    private bool _loadedOk;
+    private bool _updateQueued;
+    private bool _showEmpty;
+
+    /// <summary>
+    /// Only this PC is listed after a successful load while online and error-free (spec: devices.empty +
+    /// Pair CTA). Not shown while offline or after a failed refresh: the list is unknown then.
+    /// </summary>
+    public bool ShowEmpty
+    {
+        get => _showEmpty;
+        private set
+        {
+            if (_showEmpty == value) return;
+            _showEmpty = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowEmpty)));
+        }
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -25,22 +41,65 @@ public sealed partial class DevicesPage : Page, INotifyPropertyChanged
         InitializeComponent();
         HeaderHost.Child = Ui.PageHeader("Your devices", "Drop files on a device to send them.");
         AddExtraBanners(ExtraBannerHost);
-        Loaded += async (_, _) =>
-        {
-            ViewModel.Devices.CollectionChanged -= OnDevicesChanged; // Loaded can repeat without a new page
-            ViewModel.Devices.CollectionChanged += OnDevicesChanged;
-            await ViewModel.RefreshCommand.ExecuteAsync(null);
-            _loaded = true;
-            OnDevicesChanged(null, null);
-        };
-        Unloaded += (_, _) => ViewModel.Devices.CollectionChanged -= OnDevicesChanged;
+        Loaded += OnLoaded;
+        Unloaded += (_, _) => Unsubscribe();
     }
 
     /// <summary>Phase 11 seam: extra InfoBars (first device, offline hints) above the list.</summary>
     partial void AddExtraBanners(StackPanel host);
 
-    private void OnDevicesChanged(object? sender, NotifyCollectionChangedEventArgs? e) =>
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowEmpty)));
+    private async void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Unsubscribe(); // Loaded can repeat without a new page
+            ViewModel.Devices.CollectionChanged += OnDevicesChanged;
+            ViewModel.PropertyChanged += OnStateChanged;
+            Bridge.PropertyChanged += OnStateChanged;
+            await ViewModel.RefreshCommand.ExecuteAsync(null);
+            _loadedOk |= ViewModel.Error is null;
+            UpdateShowEmpty();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"devices: page load failed {ex.GetType().Name}");
+        }
+    }
+
+    private void Unsubscribe()
+    {
+        ViewModel.Devices.CollectionChanged -= OnDevicesChanged;
+        ViewModel.PropertyChanged -= OnStateChanged;
+        Bridge.PropertyChanged -= OnStateChanged;
+    }
+
+    private void OnDevicesChanged(object? sender, NotifyCollectionChangedEventArgs e) => QueueUpdate();
+
+    private void OnStateChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is not (nameof(DevicesViewModel.Error) or nameof(EngineBridge.Phase))) return;
+        // Error cleared by a refresh (e.g. after a failed first load): that refresh succeeded.
+        if (sender == ViewModel && ViewModel.Error is null) _loadedOk = true;
+        QueueUpdate();
+    }
+
+    /// <summary>
+    /// A refresh replaces the list with Clear + Add in one UI-thread turn; deciding after that turn
+    /// avoids a flash of the empty state in between.
+    /// </summary>
+    private void QueueUpdate()
+    {
+        if (_updateQueued) return;
+        _updateQueued = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            _updateQueued = false;
+            UpdateShowEmpty();
+        });
+    }
+
+    private void UpdateShowEmpty() =>
+        ShowEmpty = _loadedOk && ViewModel.Error is null && Bridge.Phase == AccountPhase.Ready
+            && !ViewModel.Devices.Any(d => !d.IsSelf);
 
     private void OnDragOver(object sender, DragEventArgs e)
     {

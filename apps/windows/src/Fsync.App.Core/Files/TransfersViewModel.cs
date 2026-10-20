@@ -133,7 +133,7 @@ public sealed partial class TransfersViewModel : ObservableObject, IDisposable
         {
             var id = await _bridge.RunAsync(e => e.SendFiles(nodeId, [.. paths]));
             var name = paths.Count == 1 ? Path.GetFileName(paths[0].TrimEnd('\\')) : $"{paths.Count} items";
-            Track(id, $"{name} to {deviceName}", TransferDirection.Send);
+            Track(id, $"{name} to {PeerText.DisplayName(deviceName)}", TransferDirection.Send); // peer-supplied name
             Error = null;
             return true;
         }
