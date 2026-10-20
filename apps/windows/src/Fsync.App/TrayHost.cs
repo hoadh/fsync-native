@@ -79,12 +79,33 @@ internal sealed class TrayHost : IDisposable
         _ => $"{count} incoming file offers",
     };
 
+    /// <summary>NOTIFYICONDATA.szTip holds 128 UTF-16 units including the terminator.</summary>
+    internal const int TooltipLimit = 127;
+
+    /// <summary>
+    /// Cuts <paramref name="text"/> to <see cref="TooltipLimit"/> UTF-16 units on a text-element boundary
+    /// (no split surrogate pair or grapheme), ending with "…" when cut.
+    /// </summary>
+    internal static string FitTooltip(string text)
+    {
+        if (text.Length <= TooltipLimit) return text;
+        var info = new System.Globalization.StringInfo(text);
+        var sb = new System.Text.StringBuilder(TooltipLimit);
+        for (var i = 0; i < info.LengthInTextElements; i++)
+        {
+            var element = info.SubstringByTextElements(i, 1);
+            if (sb.Length + element.Length > TooltipLimit - 1) break; // room for the ellipsis
+            sb.Append(element);
+        }
+        return sb.ToString().TrimEnd() + "…";
+    }
+
     private void Apply()
     {
         var activity = _clipboard.LastError ?? _clipboard.LastActivity;
         var offers = _transfers.Offers.Count;
         var tooltip = OffersText(offers) is { } o ? $"{_status.Tooltip}\n{o}" : _status.Tooltip;
-        _icon.ToolTipText = activity is null ? tooltip : $"{tooltip}\n{activity}";
+        _icon.ToolTipText = FitTooltip(activity is null ? tooltip : $"{tooltip}\n{activity}");
         _files.Text = offers > 0 ? $"Files ({offers})" : "Files";
         _activity.Text = activity ?? "";
         _activity.Visibility = activity is null ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;

@@ -1,7 +1,9 @@
+using Fsync.App.Services;
 using Fsync.App.ViewModels;
 using Fsync.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Navigation;
 
 namespace Fsync.App.Views;
 
@@ -9,6 +11,8 @@ namespace Fsync.App.Views;
 /// Answer to another device's trust reset. Keep (default, focused) declines; Confirm opens a
 /// destructive dialog (Close is the default) bound to the reset id it was opened for. When the shown
 /// reset changes while the dialog is open, the view model raises ConfirmAborted and the dialog closes.
+/// While the first check after Ready runs, the page shows only a progress ring (<see cref="SetChecking"/>).
+/// The view model lives as long as the app: every exit path (navigation, unload, window close) detaches.
 /// </summary>
 public sealed partial class TrustResetPage : Page
 {
@@ -20,19 +24,37 @@ public sealed partial class TrustResetPage : Page
     {
         InitializeComponent();
         Loaded += OnLoaded;
-        Unloaded += OnUnloaded;
+        Unloaded += (_, _) => Detach();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        ViewModel.ConfirmAborted -= OnConfirmAborted; // Loaded may fire more than once
         ViewModel.ConfirmAborted += OnConfirmAborted;
-        KeepButton.Focus(FocusState.Programmatic);
+        if (KeepButton.IsEnabled && ContentPanel.Visibility == Visibility.Visible) KeepButton.Focus(FocusState.Programmatic);
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e)
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        base.OnNavigatedFrom(e);
+        Detach();
+    }
+
+    /// <summary>Unsubscribes from the view model and closes an open dialog (it then answers nothing). Idempotent.</summary>
+    internal void Detach()
     {
         ViewModel.ConfirmAborted -= OnConfirmAborted;
-        _dialog?.Hide(); // the gate closed under an open dialog: it answers nothing
+        _dialog?.Hide();
+    }
+
+    /// <summary>Checking: only the ring shows. Afterwards the prompt shows and Keep gets the focus.</summary>
+    internal void SetChecking(bool checking)
+    {
+        var wasChecking = CheckingPanel.Visibility == Visibility.Visible;
+        CheckingPanel.Visibility = checking ? Visibility.Visible : Visibility.Collapsed;
+        CheckingRing.IsActive = checking;
+        ContentPanel.Visibility = checking ? Visibility.Collapsed : Visibility.Visible;
+        if (wasChecking && !checking && KeepButton.IsEnabled) KeepButton.Focus(FocusState.Programmatic);
     }
 
     // x:Bind functions on the page: instance members (the generated code calls them on the page).
@@ -52,27 +74,40 @@ public sealed partial class TrustResetPage : Page
 
     private async void OnKeep(object sender, RoutedEventArgs e)
     {
-        if (ViewModel.Current is { } reset) await ViewModel.DeclineAsync(reset.resetId);
+        try
+        {
+            if (ViewModel.Current is { } reset) await ViewModel.DeclineAsync(reset.resetId);
+        }
+        catch (Exception ex) { AppLog.Warn($"trust: keep failed {ex.GetType().Name}"); }
     }
 
     private async void OnConfirm(object sender, RoutedEventArgs e)
     {
-        if (ViewModel.Current is not { } reset) return;
-        var id = reset.resetId; // the dialog answers exactly the reset the user saw
-        if (!ViewModel.BeginConfirm(id)) return;
-        bool confirmed;
         try
         {
-            confirmed = await Dialogs.ConfirmAsync(XamlRoot, "Trust the new device list?",
-                "Devices that are not in the new list can no longer sync with this PC. Confirm only if you reset the list yourself.",
-                "Confirm reset", d => _dialog = d);
+            if (ViewModel.Current is not { } reset) return;
+            var id = reset.resetId; // the dialog answers exactly the reset the user saw
+            if (!ViewModel.BeginConfirm(id)) return;
+            bool confirmed;
+            try
+            {
+                confirmed = await Dialogs.ConfirmAsync(XamlRoot, "Trust the new device list?",
+                    "Devices that are not in the new list can no longer sync with this PC. Confirm only if you reset the list yourself.",
+                    "Confirm reset", d => _dialog = d);
+            }
+            finally { _dialog = null; }
+            if (confirmed) await ViewModel.ConfirmAsync(id); // a no-op when the dialog was aborted
+            else ViewModel.CancelConfirm();
         }
-        finally { _dialog = null; }
-        if (confirmed) await ViewModel.ConfirmAsync(id); // a no-op when the dialog was aborted
-        else ViewModel.CancelConfirm();
+        catch (Exception ex)
+        {
+            AppLog.Warn($"trust: confirm failed {ex.GetType().Name}");
+            ViewModel.CancelConfirm(); // never leave ConfirmingResetId set
+        }
     }
 
     private void OnConfirmAborted() => _dialog?.Hide();
 
-    private void OnContinue(object sender, RoutedEventArgs e) => ViewModel.DismissOutcome();
+    /// <summary>Hides the outcome and any message; the gate closes when nothing is pending.</summary>
+    private void OnDismiss(object sender, RoutedEventArgs e) => ViewModel.DismissOutcome();
 }

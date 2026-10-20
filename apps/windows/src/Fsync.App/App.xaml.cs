@@ -130,6 +130,7 @@ public partial class App : Application
             _window = new MainWindow();
             _window.Closed += (_, _) => _window = null;
         }
+        _window.RequestPage(page); // kept while the trust gate is up, opened when it closes
         _window.ShowPhase(Bridge?.Phase ?? AccountPhase.Starting, page);
         _window.Activate();
     }

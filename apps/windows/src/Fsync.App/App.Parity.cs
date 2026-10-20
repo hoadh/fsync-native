@@ -23,12 +23,23 @@ public partial class App
     /// <summary>"Lost your other devices?"; null until the engine is ready.</summary>
     internal AccountRecoveryViewModel? Recovery { get; private set; }
 
+    /// <summary>
+    /// True once the pending trust resets were read after the latest transition to Ready (also when that
+    /// read failed: a failure must not lock the user out). False in every other phase, so a window never
+    /// shows the main UI between Ready and the first answer, whatever order the phase handlers run in.
+    /// </summary>
+    internal bool TrustChecked { get; private set; }
+    /// <summary><see cref="TrustChecked"/> changed. UI thread.</summary>
+    internal event Action? TrustCheckedChanged;
+    private int _trustCheckSeq;
+
     partial void OnEngineReady()
     {
         TrustReset = new TrustResetPromptViewModel(Bridge);
         Recovery = new AccountRecoveryViewModel(Bridge);
+        Bridge.PropertyChanged += OnBridgePhaseForTrust;
         // The view model refreshes on the transition to Ready; the engine may be Ready already.
-        if (Bridge.Phase == AccountPhase.Ready) _ = TrustReset.Refresh();
+        if (Bridge.Phase == AccountPhase.Ready) CheckTrust();
 
         _notices = new IncomingFilesNoticeCoalescer();
         _noticeTimer = _ui!.CreateTimer();
@@ -50,7 +61,39 @@ public partial class App
             _noticeTimer.Tick -= OnNoticeTimer;
         }
         if (Transfers is not null) Transfers.OfferReceived -= OnOfferReceived;
+        if (TrustReset is not null) Bridge.PropertyChanged -= OnBridgePhaseForTrust;
+        _trustCheckSeq++; // a check still in flight changes nothing
         TrustReset?.Dispose();
+    }
+
+    private void OnBridgePhaseForTrust(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(EngineBridge.Phase) || _quitting) return;
+        if (Bridge.Phase == AccountPhase.Ready) CheckTrust();
+        else
+        {
+            _trustCheckSeq++;
+            SetTrustChecked(false);
+        }
+    }
+
+    /// <summary>Reads the pending resets, then lets the window leave its checking state.</summary>
+    private async void CheckTrust()
+    {
+        var seq = ++_trustCheckSeq;
+        SetTrustChecked(false);
+        try { await TrustReset!.Refresh(); } // logs and swallows engine failures itself
+        catch (Exception e) { AppLog.Warn($"trust: first check failed {e.GetType().Name}"); }
+        if (seq != _trustCheckSeq || _quitting) return;
+        AppLog.Info($"trust: checked after Ready, pending={TrustReset!.HasPending}");
+        SetTrustChecked(true);
+    }
+
+    private void SetTrustChecked(bool value)
+    {
+        if (TrustChecked == value) return;
+        TrustChecked = value;
+        TrustCheckedChanged?.Invoke();
     }
 
     /// <summary>The Files page in the active window shows the offer already (spec: suppression).</summary>

@@ -9,37 +9,50 @@
             <TextBlock Text="Review a device list change" Style="{StaticResource FsyncPageTitleTextStyle}"
                        AutomationProperties.HeadingLevel="Level1" />
 
-            <InfoBar Severity="Success" IsOpen="True" IsClosable="False" AutomationProperties.AutomationId="TrustOutcome"
-                     Message="{x:Bind OutcomeText(ViewModel.Outcome), Mode=OneWay}"
-                     Visibility="{x:Bind local:Ui.When(ViewModel.Outcome, 'Trusted,Declined'), Mode=OneWay}">
-                <InfoBar.ActionButton>
-                    <Button Content="Continue" Click="OnContinue" AutomationProperties.AutomationId="TrustContinueButton" />
-                </InfoBar.ActionButton>
-            </InfoBar>
-            <InfoBar IsOpen="True" IsClosable="False"
-                     Severity="{x:Bind MessageSeverity(ViewModel.MessageIsNotice), Mode=OneWay}"
-                     Message="{x:Bind ViewModel.Message, Mode=OneWay}"
-                     Visibility="{x:Bind local:Ui.ShowIf(ViewModel.Message), Mode=OneWay}" />
+            <!-- First check after Ready (MainWindow.TrustGate): nothing else shows until it finished. -->
+            <StackPanel x:Name="CheckingPanel" Orientation="Horizontal" Spacing="{StaticResource FsyncSpace8}" Visibility="Collapsed">
+                <ProgressRing x:Name="CheckingRing" IsActive="False" Width="20" Height="20" AutomationProperties.AutomationId="TrustCheckingRing" />
+                <TextBlock Text="Checking the device list..." Style="{StaticResource FsyncBodyTextStyle}" VerticalAlignment="Center" />
+            </StackPanel>
 
-            <StackPanel Spacing="{StaticResource FsyncSpace12}" Visibility="{x:Bind local:Ui.Show(ViewModel.HasPending), Mode=OneWay}">
-                <TextBlock TextWrapping="Wrap" Style="{StaticResource FsyncBodyTextStyle}"
-                           Text="The list of trusted devices of your account was reset on another device. Confirm only if you did this yourself. If you did not, keep your current devices." />
-                <TextBlock Text="{x:Bind NewListTitle(ViewModel.Current), Mode=OneWay}" Style="{StaticResource FsyncSectionTitleTextStyle}" />
-                <ItemsControl ItemsSource="{x:Bind ViewModel.DisplayNames, Mode=OneWay}" AutomationProperties.AutomationId="TrustDeviceList">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="x:String">
-                            <TextBlock Text="{x:Bind}" Style="{StaticResource FsyncBodyTextStyle}" Margin="0,2" />
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <StackPanel Orientation="Horizontal" Spacing="{StaticResource FsyncSpace8}">
-                    <!-- Keep gets the initial focus, so Return keeps the current devices. -->
-                    <Button x:Name="KeepButton" Content="Keep current devices" Style="{StaticResource AccentButtonStyle}"
-                            IsEnabled="{x:Bind Idle(ViewModel.IsBusy), Mode=OneWay}" Click="OnKeep"
-                            AutomationProperties.AutomationId="TrustKeepButton" />
-                    <Button Content="Confirm reset..." IsEnabled="{x:Bind Idle(ViewModel.IsBusy), Mode=OneWay}" Click="OnConfirm"
-                            AutomationProperties.AutomationId="TrustConfirmButton" />
-                    <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="20" Height="20" />
+            <StackPanel x:Name="ContentPanel" Spacing="{StaticResource FsyncSpace12}">
+                <InfoBar Severity="Success" IsOpen="True" IsClosable="False" AutomationProperties.AutomationId="TrustOutcome"
+                         Message="{x:Bind OutcomeText(ViewModel.Outcome), Mode=OneWay}"
+                         Visibility="{x:Bind local:Ui.When(ViewModel.Outcome, 'Trusted,Declined'), Mode=OneWay}">
+                    <InfoBar.ActionButton>
+                        <Button Content="Continue" Click="OnDismiss" AutomationProperties.AutomationId="TrustContinueButton" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+                <!-- The gate stays while a message shows, until it is dismissed here. -->
+                <InfoBar IsOpen="True" IsClosable="False" AutomationProperties.AutomationId="TrustMessage"
+                         Severity="{x:Bind MessageSeverity(ViewModel.MessageIsNotice), Mode=OneWay}"
+                         Message="{x:Bind ViewModel.Message, Mode=OneWay}"
+                         Visibility="{x:Bind local:Ui.ShowIf(ViewModel.Message), Mode=OneWay}">
+                    <InfoBar.ActionButton>
+                        <Button Content="Dismiss" Click="OnDismiss" AutomationProperties.AutomationId="TrustDismissButton" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+
+                <StackPanel Spacing="{StaticResource FsyncSpace12}" Visibility="{x:Bind local:Ui.Show(ViewModel.HasPending), Mode=OneWay}">
+                    <TextBlock TextWrapping="Wrap" Style="{StaticResource FsyncBodyTextStyle}"
+                               Text="The list of trusted devices of your account was reset on another device. Confirm only if you did this yourself. If you did not, keep your current devices." />
+                    <TextBlock Text="{x:Bind NewListTitle(ViewModel.Current), Mode=OneWay}" Style="{StaticResource FsyncSectionTitleTextStyle}" />
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.DisplayNames, Mode=OneWay}" AutomationProperties.AutomationId="TrustDeviceList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <TextBlock Text="{x:Bind}" Style="{StaticResource FsyncBodyTextStyle}" Margin="0,2" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <StackPanel Orientation="Horizontal" Spacing="{StaticResource FsyncSpace8}">
+                        <!-- Keep gets the initial focus, so Return keeps the current devices. -->
+                        <Button x:Name="KeepButton" Content="Keep current devices" Style="{StaticResource AccentButtonStyle}"
+                                IsEnabled="{x:Bind Idle(ViewModel.IsBusy), Mode=OneWay}" Click="OnKeep"
+                                AutomationProperties.AutomationId="TrustKeepButton" />
+                        <Button Content="Confirm reset..." IsEnabled="{x:Bind Idle(ViewModel.IsBusy), Mode=OneWay}" Click="OnConfirm"
+                                AutomationProperties.AutomationId="TrustConfirmButton" />
+                        <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="20" Height="20" />
+                    </StackPanel>
                 </StackPanel>
             </StackPanel>
         </StackPanel>

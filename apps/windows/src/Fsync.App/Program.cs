@@ -34,8 +34,8 @@ public static class Program
         }
 
         // Toasts: unpackaged registration must precede the app; a failure only turns toasts off.
-        // A launch from a toast (app closed) arrives as a plain start: it just opens the window.
-        ToastNotifier.Register();
+        // A launch from a toast (app closed) is a plain start: it just opens the window.
+        ToastNotifier.Register(LaunchedFromToast(instance));
         var background = args.Contains("--background");
         try
         {
@@ -49,6 +49,12 @@ public static class Program
         }
         finally { ToastNotifier.Unregister(); }
         return 0;
+    }
+
+    private static bool LaunchedFromToast(AppInstance instance)
+    {
+        try { return instance.GetActivatedEventArgs().Kind == ExtendedActivationKind.AppNotification; }
+        catch (Exception) { return false; }
     }
 
     /// <summary>Command line of a redirected launch (Explorer "Send to" passes the paths there).</summary>
