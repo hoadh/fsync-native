@@ -25,8 +25,9 @@ public sealed class IncomingFilesNoticeCoalescer(TimeProvider? time = null)
         // Idle senders cost nothing: forget those whose window is over and that hold nothing.
         foreach (var key in _senders.Where(kv => kv.Value.Pending is null && now - kv.Value.Start >= Window).Select(kv => kv.Key).ToList())
             _senders.Remove(key);
-        // The key is the sanitized display name; the offer carries no better id.
-        if (!_senders.TryGetValue(notice.Sender, out var sender) || now - sender.Start >= Window)
+        // The key is the sanitized display name; the offer carries no better id. A held notice that is
+        // already due (late timer) absorbs the offer, so nothing is dropped; the next Flush hands it out.
+        if (!_senders.TryGetValue(notice.Sender, out var sender) || (sender.Pending is null && now - sender.Start >= Window))
         {
             _senders[notice.Sender] = new SenderWindow(now, null);
             return notice;

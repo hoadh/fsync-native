@@ -100,6 +100,20 @@ public sealed class IncomingFilesNoticeTests
     }
 
     [Fact]
+    public void LateTimerFoldsOfferIntoDueNoticeInsteadOfDroppingIt()
+    {
+        var c = new IncomingFilesNoticeCoalescer();
+        Assert.NotNull(c.Submit(N(), T0));
+        Assert.Null(c.Submit(N(files: 1, bytes: 10), T0.AddSeconds(2)));
+        // the window ended at T0+10 but Flush has not run yet
+        Assert.Null(c.Submit(N(files: 2, bytes: 5), T0.AddSeconds(11)));
+        var due = Assert.Single(c.Flush(T0.AddSeconds(11)));
+        Assert.Equal(2, due.OfferCount);
+        Assert.Equal(3, due.FileCount);
+        Assert.Equal(15UL, due.TotalBytes);
+    }
+
+    [Fact]
     public void OneHeldOfferRendersAsASingleOfferAndKeysAreSanitized()
     {
         var time = new ManualTime();

@@ -311,6 +311,26 @@ public sealed class TrustResetPromptViewModelTests
         Assert.Equal(1, CallCount(h.Engine, "PendingTrustResets"));
     }
 
+    /// <summary>Dispose while confirm runs: the late result sets no outcome and does not touch the bridge phase.</summary>
+    [Fact]
+    public async Task AnswerFinishingAfterDisposeChangesNothing()
+    {
+        using var h = new Harness(Session);
+        using var gate = new ManualResetEventSlim();
+        h.Engine.OnConfirmTrustReset = _ => { gate.Wait(); return AccountState.NeedsPairing; };
+        var vm = await Vm(h);
+        vm.Apply([Stale]);
+        vm.BeginConfirm(Stale.resetId);
+        var confirm = vm.ConfirmAsync(Stale.resetId);
+        vm.Dispose();
+        gate.Set();
+        await confirm;
+        Assert.Equal(TrustResetOutcome.Unanswered, vm.Outcome);
+        Assert.Equal(AccountPhase.Ready, h.Bridge.Phase); // NeedsPairing was not applied
+        Assert.Null(vm.Message);
+        Assert.Equal(0, CallCount(h.Engine, "PendingTrustResets"));
+    }
+
     [Fact]
     public async Task DeclineClosesAnOpenTrustDialogForThatReset()
     {

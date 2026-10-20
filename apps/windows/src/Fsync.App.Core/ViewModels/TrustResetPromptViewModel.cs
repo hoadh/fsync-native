@@ -127,19 +127,23 @@ public sealed partial class TrustResetPromptViewModel : ObservableObject, IDispo
         try
         {
             var state = await _bridge.RunAsync(call);
+            if (_disposed) return; // the prompt is gone: no outcome, no account state change from it
             await Refresh();
+            if (_disposed) return;
             Outcome = state is { } s ? TrustResetMessages.OutcomeFor(s) : TrustResetOutcome.Declined;
             if (state is { } applied) _bridge.ApplyAccountState(applied);
         }
         catch (FsyncException.NotFound e)
         {
+            if (_disposed) return;
             await Refresh(); // first: it may clear a message when the shown reset changes
+            if (_disposed) return;
             Show(TrustResetMessages.For(e));
         }
         catch (Exception e) when (e is FsyncException or InvalidOperationException)
         {
             // Otherwise the shown reset changed during the call; its "list changed" notice stays.
-            if (Current?.resetId == id) Show(TrustResetMessages.For(e));
+            if (!_disposed && Current?.resetId == id) Show(TrustResetMessages.For(e));
         }
         finally { IsBusy = false; }
     }
