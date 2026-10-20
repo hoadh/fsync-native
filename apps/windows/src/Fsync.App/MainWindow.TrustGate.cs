@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Fsync.App.Bridge;
+using Fsync.App.Shell;
 using Fsync.App.ViewModels;
 using Fsync.App.Views;
 using Microsoft.UI.Xaml;
@@ -71,19 +72,19 @@ public sealed partial class MainWindow
             ResetHistoryButton.Visibility = Visibility.Collapsed;
             return;
         }
+        // Closing the gate returns to the page the user was on, not Devices.
+        _deferredTag ??= NavigationRoutes.TagFor(ContentFrame.Content?.GetType());
         Navigate(typeof(TrustResetPage)); // no rebuild when it is shown already
-        if (ContentFrame.Content is TrustResetPage page) page.SetChecking(!App.Current.TrustChecked);
+        if (ContentFrame.Content is TrustResetPage page) page.SetChecking(GateState(phase) == TrustGateState.Checking);
     }
 
-    private bool IsGated(AccountPhase phase)
-    {
-        if (phase != AccountPhase.Ready) return false;
-        if (_trust is not { } t || !App.Current.TrustChecked) return true; // first check still running
-        return t.HasPending
-            || t.Outcome is TrustResetOutcome.Trusted or TrustResetOutcome.Declined
-            // HasPending drops before Outcome is set while an answer runs; an error message stays until dismissed.
-            || _gated && (t.IsBusy || !string.IsNullOrEmpty(t.Message));
-    }
+    private bool IsGated(AccountPhase phase) => GateState(phase) != TrustGateState.Open;
+
+    private TrustGateState GateState(AccountPhase phase) => _trust is { } t
+        ? TrustGatePolicy.Decide(phase == AccountPhase.Ready, App.Current.TrustChecked, t.HasPending, t.Outcome,
+            _gated, t.IsBusy, !string.IsNullOrEmpty(t.Message))
+        // No view model yet (engine starting): treated as an unfinished check.
+        : TrustGatePolicy.Decide(phase == AccountPhase.Ready, false, false, TrustResetOutcome.Unanswered, _gated, false, false);
 
     private void SubscribeTrust()
     {

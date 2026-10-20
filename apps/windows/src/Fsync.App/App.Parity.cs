@@ -24,9 +24,11 @@ public partial class App
     internal AccountRecoveryViewModel? Recovery { get; private set; }
 
     /// <summary>
-    /// True once the pending trust resets were read after the latest transition to Ready (also when that
-    /// read failed: a failure must not lock the user out). False in every other phase, so a window never
-    /// shows the main UI between Ready and the first answer, whatever order the phase handlers run in.
+    /// True once the pending trust resets were read after the account became Ready (also when that read
+    /// failed: a failure must not lock the user out). Cleared only when the account may have changed
+    /// (Starting, Failed, SignedOut), so a window never shows the main UI before the first answer. An
+    /// Offline / NeedsPairing → Ready blip keeps it: the view model re-reads silently on Ready and the
+    /// gate opens only if that finds a pending reset (the user's page stays).
     /// </summary>
     internal bool TrustChecked { get; private set; }
     /// <summary><see cref="TrustChecked"/> changed. UI thread.</summary>
@@ -69,11 +71,14 @@ public partial class App
     private void OnBridgePhaseForTrust(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(EngineBridge.Phase) || _quitting) return;
-        if (Bridge.Phase == AccountPhase.Ready) CheckTrust();
-        else
+        switch (Bridge.Phase)
         {
-            _trustCheckSeq++;
-            SetTrustChecked(false);
+            // Already checked (reconnect): the view model's own Ready refresh runs in the background.
+            case AccountPhase.Ready when !TrustChecked: CheckTrust(); break;
+            case AccountPhase.Starting or AccountPhase.Failed or AccountPhase.SignedOut:
+                _trustCheckSeq++; // a check in flight belongs to the previous account state
+                SetTrustChecked(false);
+                break;
         }
     }
 
@@ -81,12 +86,22 @@ public partial class App
     private async void CheckTrust()
     {
         var seq = ++_trustCheckSeq;
-        SetTrustChecked(false);
-        try { await TrustReset!.Refresh(); } // logs and swallows engine failures itself
-        catch (Exception e) { AppLog.Warn($"trust: first check failed {e.GetType().Name}"); }
-        if (seq != _trustCheckSeq || _quitting) return;
-        AppLog.Info($"trust: checked after Ready, pending={TrustReset!.HasPending}");
-        SetTrustChecked(true);
+        try
+        {
+            SetTrustChecked(false);
+            await TrustReset!.Refresh(); // logs and swallows engine failures itself
+            if (seq != _trustCheckSeq || _quitting) return;
+            AppLog.Info($"trust: checked after Ready, pending={TrustReset.HasPending}");
+            SetTrustChecked(true);
+        }
+        catch (Exception e)
+        {
+            // Fail open (accepted product decision): a failed check must not lock the user out.
+            AppLog.Warn($"trust: check failed {e.GetType().Name}");
+            if (seq != _trustCheckSeq || _quitting) return;
+            try { SetTrustChecked(true); }
+            catch (Exception again) { AppLog.Warn($"trust: check fallback failed {again.GetType().Name}"); }
+        }
     }
 
     private void SetTrustChecked(bool value)
