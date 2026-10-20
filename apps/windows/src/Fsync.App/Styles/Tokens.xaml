@@ -1,6 +1,6 @@
 <!--
   fsync design tokens (desktop UI redesign spec). Merged in App.xaml after XamlControlsResources.
-  Pages use {StaticResource} for sizes and styles, {ThemeResource} for brushes.
+  Pages use {StaticResource} for sizes and styles; colours inside the styles are {ThemeResource}.
 
   Spacing (x:Double):     FsyncSpace4, FsyncSpace8, FsyncSpace12, FsyncSpace16, FsyncSpace24
   Spacing (Thickness):    FsyncPagePadding (24,16,24,24), FsyncCardPadding (16),
@@ -8,8 +8,9 @@
   Corner radius:          FsyncCornerSmall (4), FsyncCornerCard (8)
   Type ramp (TextBlock):  FsyncPageTitleTextStyle, FsyncPageSubtitleTextStyle, FsyncSectionTitleTextStyle,
                           FsyncBodyTextStyle, FsyncCaptionTextStyle
-  Status brushes:         FsyncStatusOnlineBrush (online, not connected), FsyncStatusLanBrush, FsyncStatusRelayBrush,
-                          FsyncStatusOfflineBrush, FsyncStatusAttentionBrush
+  Status dots (Ellipse):  FsyncStatusGoodDotStyle (LAN / relay), FsyncStatusWarningDotStyle (online, not connected),
+                          FsyncStatusBadDotStyle (offline), FsyncStatusNeutralDotStyle (this PC);
+                          key = "FsyncStatus{StatusKind}DotStyle", picked by Ui.StatusDotStyle(kind)
 -->
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -38,28 +39,28 @@
         <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
     </Style>
 
-    <!-- Status colours follow the spec icon map: good = success, online not connected = caution, offline = neutral. -->
-    <ResourceDictionary.ThemeDictionaries>
-        <ResourceDictionary x:Key="Default">
-            <SolidColorBrush x:Key="FsyncStatusOnlineBrush" Color="{ThemeResource SystemFillColorCaution}" />
-            <SolidColorBrush x:Key="FsyncStatusLanBrush" Color="{ThemeResource SystemFillColorSuccess}" />
-            <SolidColorBrush x:Key="FsyncStatusRelayBrush" Color="{ThemeResource SystemFillColorSuccess}" />
-            <SolidColorBrush x:Key="FsyncStatusOfflineBrush" Color="{ThemeResource SystemFillColorNeutral}" />
-            <SolidColorBrush x:Key="FsyncStatusAttentionBrush" Color="{ThemeResource SystemFillColorCaution}" />
-        </ResourceDictionary>
-        <ResourceDictionary x:Key="Light">
-            <SolidColorBrush x:Key="FsyncStatusOnlineBrush" Color="{ThemeResource SystemFillColorCaution}" />
-            <SolidColorBrush x:Key="FsyncStatusLanBrush" Color="{ThemeResource SystemFillColorSuccess}" />
-            <SolidColorBrush x:Key="FsyncStatusRelayBrush" Color="{ThemeResource SystemFillColorSuccess}" />
-            <SolidColorBrush x:Key="FsyncStatusOfflineBrush" Color="{ThemeResource SystemFillColorNeutral}" />
-            <SolidColorBrush x:Key="FsyncStatusAttentionBrush" Color="{ThemeResource SystemFillColorCaution}" />
-        </ResourceDictionary>
-        <ResourceDictionary x:Key="HighContrast">
-            <SolidColorBrush x:Key="FsyncStatusOnlineBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="FsyncStatusLanBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="FsyncStatusRelayBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="FsyncStatusOfflineBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
-            <SolidColorBrush x:Key="FsyncStatusAttentionBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-        </ResourceDictionary>
-    </ResourceDictionary.ThemeDictionaries>
+    <!--
+      Status dots, one style per StatusKind (canonical status vocabulary, see Ui.StatusDotStyle).
+      Colours follow the spec icon map: connected (LAN / relay) = success, online but not
+      connected = caution, offline and this PC = neutral. The fills are {ThemeResource} references
+      to the system brushes, so Light, Dark and high contrast are resolved by the framework and
+      follow theme changes; no theme dictionaries of our own.
+    -->
+    <Style x:Key="FsyncStatusDotBaseStyle" TargetType="Ellipse">
+        <Setter Property="Width" Value="10" />
+        <Setter Property="Height" Value="10" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style x:Key="FsyncStatusGoodDotStyle" TargetType="Ellipse" BasedOn="{StaticResource FsyncStatusDotBaseStyle}">
+        <Setter Property="Fill" Value="{ThemeResource SystemFillColorSuccessBrush}" />
+    </Style>
+    <Style x:Key="FsyncStatusWarningDotStyle" TargetType="Ellipse" BasedOn="{StaticResource FsyncStatusDotBaseStyle}">
+        <Setter Property="Fill" Value="{ThemeResource SystemFillColorCautionBrush}" />
+    </Style>
+    <Style x:Key="FsyncStatusBadDotStyle" TargetType="Ellipse" BasedOn="{StaticResource FsyncStatusDotBaseStyle}">
+        <Setter Property="Fill" Value="{ThemeResource SystemFillColorNeutralBrush}" />
+    </Style>
+    <Style x:Key="FsyncStatusNeutralDotStyle" TargetType="Ellipse" BasedOn="{StaticResource FsyncStatusDotBaseStyle}">
+        <Setter Property="Fill" Value="{ThemeResource SystemFillColorNeutralBrush}" />
+    </Style>
 </ResourceDictionary>

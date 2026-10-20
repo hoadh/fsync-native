@@ -30,6 +30,8 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         AppWindow.Resize(new SizeInt32(900, 680));
+        // No minimum size: WASDK 1.6 OverlappedPresenter has no PreferredMinimumWidth/Height (added in
+        // a later WASDK). Follow-up: a WM_GETMINMAXINFO subclass, or the presenter API after an upgrade.
         if (AppWindow.Presenter is OverlappedPresenter p) p.IsMaximizable = false;
         TitleBarSetup.Apply(this, AppTitleBar);
         if (BackdropSetup.TryApply(this)) Root.Background = null; // let Mica / acrylic show through

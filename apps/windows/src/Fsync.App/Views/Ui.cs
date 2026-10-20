@@ -1,5 +1,4 @@
 using Fsync.App.ViewModels;
-using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
@@ -7,9 +6,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 
 namespace Fsync.App.Views;
-
-/// <summary>A peer's connection state as the status dot shows it (one design token brush each).</summary>
-public enum PeerStatus { Online, Lan, Relay, Offline, Attention }
 
 /// <summary>x:Bind function helpers (no converters). Enum checks take names as string literals.</summary>
 public static class Ui
@@ -24,11 +20,14 @@ public static class Ui
 
     public static Brush StatusBrush(StatusKind kind) => new SolidColorBrush(TrayHost.BadgeColor(kind));
 
-    /// <summary>The theme-aware status brush from Styles/Tokens.xaml (FsyncStatus*Brush).</summary>
-    public static Brush StatusBrush(PeerStatus status) =>
-        Application.Current.Resources.TryGetValue($"FsyncStatus{status}Brush", out var value) && value is Brush brush
-            ? brush
-            : new SolidColorBrush(Colors.Gray);
+    /// <summary>
+    /// Theme-aware status dot: <c>&lt;Ellipse Style="{x:Bind local:Ui.StatusDotStyle(Kind)}" /&gt;</c>.
+    /// <see cref="StatusKind"/> (mapped from device state in <see cref="DeviceItem.From"/>) is the one
+    /// status vocabulary; Styles/Tokens.xaml has a FsyncStatus{kind}DotStyle per value whose Fill is a
+    /// {ThemeResource}, so the colour follows Light / Dark / high contrast. Plain Styles are found by a
+    /// normal resource lookup (only theme dictionaries are not).
+    /// </summary>
+    public static Style? StatusDotStyle(StatusKind kind) => FindStyle($"FsyncStatus{kind}DotStyle");
 
     /// <summary>Page title (heading level 1 for screen readers) with an optional secondary line.</summary>
     public static StackPanel PageHeader(string title, string? subtitle = null)
