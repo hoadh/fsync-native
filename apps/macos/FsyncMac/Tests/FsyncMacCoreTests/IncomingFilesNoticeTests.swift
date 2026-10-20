@@ -73,4 +73,17 @@ final class IncomingFilesNoticeTests: XCTestCase {
         // quiet for a whole window: next offer passes at once
         XCTAssertNotNil(c.submit(notice("B"), at: t0.addingTimeInterval(60)))
     }
+
+    func testLateTimerFoldsOfferIntoDueNoticeInsteadOfDroppingIt() {
+        var c = IncomingFilesNoticeCoalescer()
+        XCTAssertNotNil(c.submit(notice(), at: t0))
+        XCTAssertNil(c.submit(notice(files: 1, bytes: 10), at: t0.addingTimeInterval(2)))
+        // the window ended at t0+10 but flush has not run yet
+        XCTAssertNil(c.submit(notice(files: 2, bytes: 5), at: t0.addingTimeInterval(11)))
+        let out = c.flush(at: t0.addingTimeInterval(11))
+        XCTAssertEqual(out.count, 1)
+        XCTAssertEqual(out[0].offerCount, 2)
+        XCTAssertEqual(out[0].fileCount, 3)
+        XCTAssertEqual(out[0].totalBytes, 15)
+    }
 }
