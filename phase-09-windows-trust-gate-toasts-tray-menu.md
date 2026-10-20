@@ -9,6 +9,8 @@ reviewScore: 9
 
 # Phase 09: Windows trust gate, toasts, tray menu (waso)
 
+> Review: 3 rounds, final 9/10 (0 critical, 0 warnings) at 07907bb; owner approved manually 2026-10-20 (auto threshold 9.5 not reached). Owner still owes: `reports/windows-toast-spike-<date>.md` (Win10/Win11: args equal `action=open-files`, cold-start click raises NotificationInvoked) and manual checks (fsync-cli trust reset gates window incl. tray reopen, Return = Keep, 3 offers in 10 s = one toast).
+
 > Owns deviation (owner-accepted 2026-10-20): ed59ba2 also edits phase-08 files `App.xaml.cs` (pass `Transfers` to `TrayHost`) and `Views/Dialogs.cs` (optional `created` callback on `ConfirmAsync` so `ConfirmAborted` can `Hide()` the dialog). Additive, minimal.
 <!-- red-team #5: split from old Windows shell phase -->
 <!-- red-team #12: owns exact; no csproj, no app.manifest -->
