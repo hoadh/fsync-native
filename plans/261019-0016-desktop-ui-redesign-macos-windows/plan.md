@@ -8,6 +8,7 @@ tags: [frontend, feature, macos, windows]
 blockedBy: []
 blocks: []
 created: 2026-10-19
+orchestrator: alexpro
 ---
 
 # Desktop UI redesign (macOS + Windows)
@@ -24,7 +25,7 @@ Windows IA (Devices, History, Files, Pair, Settings) is the reference; each plat
 | 04 | [macOS shell, Settings window, popover](phase-04-macos-shell-settings-window-and-popover.md) | Pending |
 | 05 | [macOS incoming-file notifications](phase-05-macos-incoming-file-notifications.md) | Pending |
 | 06 | [macOS stretch (optional)](phase-06-macos-stretch-quicklook-commands-icon-states.md) | Pending |
-| 07 | [Windows core VMs: trust, recovery, notices](phase-07-windows-core-viewmodels-trust-recovery-notices.md) | Pending |
+| 07 | [Windows core VMs: trust, recovery, notices](phase-07-windows-core-viewmodels-trust-recovery-notices.md) | In Progress |
 | 08 | [Windows shell + e2e helpers](phase-08-windows-shell-mica-titlebar-nav-e2e-helpers.md) | Pending |
 | 09 | [Windows trust gate, toasts, tray menu](phase-09-windows-trust-gate-toasts-tray-menu.md) | Pending |
 | 10 | [Windows pages + recovery UI](phase-10-windows-pages-polish-and-recovery-ui.md) | Pending |

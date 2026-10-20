@@ -16,8 +16,16 @@ extension EngineBridge {
 
         modelSubscriptions = []
         installClipboardModels(engine: engine)
+        installNavigationSinks()
         devices.$devices.sink { [weak self] list in
-            MainActor.assumeIsolated { self?.anyPeerOnline = StatusSummary(list).online > 0 }
+            MainActor.assumeIsolated {
+                self?.anyPeerOnline = StatusSummary(list).online > 0
+                // A removed device can no longer be a retry source.
+                // An empty list while ready is not trusted as "everyone left"; sign-out and phase changes clear specs.
+                if let self, !(list.isEmpty && self.phase == .ready) {
+                    self.filesSync?.pruneRetrySpecs(keepingPeers: Set(list.filter { !$0.isSelf }.map(\.nodeId)))
+                }
+            }
         }.store(in: &modelSubscriptions)
         // A trusted list without this Mac means it must be paired again.
         trust.$outcome.sink { [weak self] outcome in
@@ -30,6 +38,8 @@ extension EngineBridge {
     }
 
     func handleTrustOutcome(_ outcome: TrustResetOutcome) {
+        // The trusted list changed: earlier retry sources are no longer vouched for.
+        if outcome == .trusted || outcome == .removedNeedsPairing { filesSync?.clearRetrySpecs() }
         guard outcome == .removedNeedsPairing else { return }
         routeToPairing()
     }
@@ -39,6 +49,7 @@ extension EngineBridge {
         clipSync?.stop()
         filesSync?.stop()
         transfers?.reset()
+        navigation.reset()
         historyModel?.reset()
         trustModel?.dismissOutcome()
         Task { [pairingModel] in await pairingModel?.cancel() }

@@ -44,21 +44,8 @@ struct DeviceRowView: View {
         }
     }
 
-    private var icon: String {
-        switch device.platform {
-        case .mac: return "laptopcomputer"
-        case .win: return "desktopcomputer"
-        case .cli: return "terminal"
-        }
-    }
-
-    private var label: String {
-        switch device.status {
-        case .lan: return "LAN"
-        case .relay: return "Relay"
-        case .offline: return device.online ? "Online" : "Offline"
-        }
-    }
+    private var icon: String { device.platformSymbol }
+    private var label: String { device.statusLabel }
 
     private var color: Color {
         switch device.status {
@@ -68,10 +55,5 @@ struct DeviceRowView: View {
         }
     }
 
-    private var detail: String {
-        if device.isSelf { return "This Mac" }
-        guard device.status == .offline, !device.online, device.lastSeenMs > 0 else { return "" }
-        let date = Date(timeIntervalSince1970: Double(device.lastSeenMs) / 1000)
-        return "Last seen " + date.formatted(.relative(presentation: .named))
-    }
+    private var detail: String { device.isSelf ? "This Mac" : (device.lastSeenText ?? "") }
 }

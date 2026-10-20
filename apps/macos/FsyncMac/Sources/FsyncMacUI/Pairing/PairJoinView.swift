@@ -16,7 +16,7 @@ struct PairJoinView: View {
                 .textFieldStyle(.roundedBorder).frame(width: 260).focused($focused)
                 .onSubmit { Task { await model.join(code) } }
             HStack {
-                Button("Cancel") { Task { await model.cancel() } }
+                Button("Cancel") { Task { await model.cancel() } }.keyboardShortcut(.cancelAction)
                 Button("Connect") { Task { await model.join(code) } }
                     .keyboardShortcut(.defaultAction)
                     .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -37,7 +37,7 @@ struct PairJoiningView: View {
             TimelineView(.periodic(from: since, by: 1)) { context in
                 Text("Connecting… \(Int(context.date.timeIntervalSince(since))) s").foregroundStyle(.secondary).monospacedDigit()
             }
-            Button("Cancel") { Task { await model.cancel() } }
+            Button("Cancel") { Task { await model.cancel() } }.keyboardShortcut(.cancelAction)
         }
     }
 }

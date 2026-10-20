@@ -40,6 +40,10 @@ public final class EngineBridge: ObservableObject {
     /// The app shows the main window for each value (trust reset arrived, first launch while not ready).
     public let windowRequest = PassthroughSubject<Void, Never>()
     var modelSubscriptions: Set<AnyCancellable> = []
+    /// Page and sheet state of the main window.
+    public let navigation = MainNavigation()
+    /// New incoming-files notices (sanitized, rate-limited); the notification layer subscribes.
+    public let incomingFiles = PassthroughSubject<IncomingFilesNotice, Never>()
 
     let config: AppConfig
     let secrets: AppSecrets

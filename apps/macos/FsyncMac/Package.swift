@@ -6,7 +6,7 @@ let trustPrompt = Target.Dependency.product(name: "TrustResetPrompt", package: "
 
 let package = Package(
     name: "FsyncMac",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v14)],
     products: [.executable(name: "FsyncMac", targets: ["FsyncMac"])],
     dependencies: [.package(path: "../Packages/FsyncCoreKit")],
     targets: [

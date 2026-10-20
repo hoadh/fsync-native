@@ -9,7 +9,7 @@ struct SasConfirmView: View {
     let onAnswer: (UInt64, Bool) -> Void
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             Text("Check the words").font(.title2)
             Text("The other device must show exactly these words.").foregroundStyle(.secondary)
             Text(verbatim: PeerText.sanitize(peer.sasWords, limit: 80))
@@ -26,6 +26,7 @@ struct SasConfirmView: View {
             }
             Text("Only pair if the words are identical and you started this yourself.")
                 .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .id(peer.requestId)  // a newer request starts a fresh view
     }

@@ -17,8 +17,18 @@ public final class FileFetchService {
     /// How long a paste may wait for the bytes; after that the reader gets nothing (a clear failure).
     public static let pasteTimeout: TimeInterval = 180
 
+    /// What a retry needs to start the same download again.
+    struct RetrySpec: Equatable {
+        let itemId: String
+        let file: FileInfo
+        let destDir: URL
+        let peerNodeId: String
+    }
+
     private let transfers: TransfersModel
     private let start: FileFetchStart
+    private var specs: [UInt64: RetrySpec] = [:]
+    private var specOrder: [UInt64] = []
 
     public init(transfers: TransfersModel, start: @escaping FileFetchStart) {
         self.transfers = transfers
@@ -31,14 +41,48 @@ public final class FileFetchService {
         }
     }
 
-    public func fetch(itemId: String, file: FileInfo, into dir: URL) async -> Result<URL, FileFetchError> {
+    func retrySpec(for transferId: UInt64) -> RetrySpec? { specs[transferId] }
+
+    func dropSpec(_ transferId: UInt64) {
+        guard specs.removeValue(forKey: transferId) != nil else { return }
+        specOrder.removeAll { $0 == transferId }
+    }
+
+    /// Forgets every spec whose peer is not in `peers` (device removed, trust changed).
+    func pruneSpecs(keepingPeers peers: Set<String>) {
+        let gone = specs.filter { !peers.contains($0.value.peerNodeId) }.keys
+        gone.forEach(dropSpec)
+    }
+
+    func clearSpecs() {
+        specs = [:]
+        specOrder = []
+    }
+
+    private func remember(_ spec: RetrySpec, for id: UInt64) {
+        if specs.updateValue(spec, forKey: id) == nil { specOrder.append(id) }
+        if specOrder.count > 4 * TransfersModel.maxRows { specs[specOrder.removeFirst()] = nil }
+    }
+
+    /// `peerNodeId` (the sender) makes a failed download retryable; pastes pass nil. `replacing` is a failed
+    /// transfer whose row and spec go away once this one has started (a failed start keeps them).
+    public func fetch(itemId: String, file: FileInfo, into dir: URL, peerNodeId: String? = nil,
+                      replacing old: UInt64? = nil) async -> Result<URL, FileFetchError> {
         let (start, dirPath) = (start, dir.path)
         let started = await Task.detached { Result { try start(itemId, file.fileId, dirPath) } }.value
         switch started {
         case .failure(let error): return .failure(.failed(ErrorText.message(for: error, context: .general) ?? "cancelled"))
         case .success(let id):
+            if let old {
+                dropSpec(old)
+                transfers.remove(old)
+            }
             transfers.setName(file.name, for: id)
-            return Self.result(await transfers.waitOutcome(of: id), file: file, dir: dir)
+            if let peerNodeId { remember(RetrySpec(itemId: itemId, file: file, destDir: dir, peerNodeId: peerNodeId), for: id) }
+            let result = Self.result(await transfers.waitOutcome(of: id), file: file, dir: dir)
+            // A finished download needs no retry spec.
+            if case .success = result { dropSpec(id) }
+            return result
         }
     }
 

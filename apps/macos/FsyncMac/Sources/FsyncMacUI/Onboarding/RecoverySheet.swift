@@ -13,12 +13,15 @@ public struct RecoverySheet: View {
         VStack(alignment: .leading, spacing: 14) {
             switch model.step {
             case .idle, .explain:
-                Text("Lost your other devices?").font(.title3)
+                Label("Lost your other devices?", systemImage: "questionmark.circle").font(.title3)
                 Text("If you can't pair with another device, this Mac can become the only trusted device on your account. Every other device you own will have to confirm the change or pair again before it syncs with you.")
+                    .fixedSize(horizontal: false, vertical: true)
                 buttons(primary: "Continue…") { model.proceed() }
             case .finalConfirm:
-                Text("Reset trust for your account?").font(.title3)
+                Label("Reset trust for your account?", systemImage: "exclamationmark.triangle.fill").font(.title3)
+                    .symbolRenderingMode(.multicolor)
                 Text("Your other devices will stop syncing until you confirm the reset on them or pair them again. This can't be undone, and it can be done only a few times a day.")
+                    .fixedSize(horizontal: false, vertical: true)
                 if let error = model.errorMessage { Text(error).foregroundStyle(.red).font(.callout) }
                 buttons(primary: "Reset and trust only this Mac") { Task { await model.reset() } }
             }

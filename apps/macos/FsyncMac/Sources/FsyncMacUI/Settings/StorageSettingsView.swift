@@ -9,24 +9,31 @@ struct StorageSettingsView: View {
 
     var body: some View {
         Form {
-            Stepper(value: days, in: 1...3650) { Text("Keep history for \(settings.settings.retentionDays) days") }
-            Stepper(value: megabytes(\.retentionBytes), in: 16...102_400, step: 64) {
-                Text("History size limit: \(Self.label(settings.settings.retentionBytes))")
+            Section("History") {
+                Stepper(value: days, in: 1...3650) { Text("Keep history for \(settings.settings.retentionDays) days") }
+                Stepper(value: megabytes(\.retentionBytes), in: 16...102_400, step: 64) {
+                    Text("History size limit: \(Self.label(settings.settings.retentionBytes))")
+                }
+                Stepper(value: megabytes(\.maxClipBytes), in: 1...4096, step: 10) {
+                    Text("Largest clip: \(Self.label(settings.settings.maxClipBytes))")
+                }
             }
-            Stepper(value: megabytes(\.maxClipBytes), in: 1...4096, step: 10) {
-                Text("Largest clip: \(Self.label(settings.settings.maxClipBytes))")
+            Section {
+                Picker("Files you paste", selection: Binding(get: { strategy }, set: { strategy = $0; $0.store() })) {
+                    Text("Small files copied now, large ones when pasted").tag(FileClipStrategy.hybrid)
+                    Text("Always when pasted").tag(FileClipStrategy.lazy)
+                    Text("Always copied now").tag(FileClipStrategy.eager)
+                }
+            } header: {
+                Text("Files")
+            } footer: {
+                Text("Applies to the next file clip. Copied-now files are kept in a cache folder and removed with your history. Pinned items are kept until you delete them.")
             }
-            Picker("Files you paste", selection: Binding(get: { strategy }, set: { strategy = $0; $0.store() })) {
-                Text("Small files copied now, large ones when pasted").tag(FileClipStrategy.hybrid)
-                Text("Always when pasted").tag(FileClipStrategy.lazy)
-                Text("Always copied now").tag(FileClipStrategy.eager)
+            if let error = settings.errorMessage {
+                Section { Text(error).font(.caption).foregroundStyle(.red) }
             }
-            Text("Applies to the next file clip. Copied-now files are kept in a cache folder and removed with your history.")
-                .font(.caption).foregroundStyle(.secondary)
-            Text("Pinned items are kept until you delete them.").font(.caption).foregroundStyle(.secondary)
-            if let error = settings.errorMessage { Text(error).font(.caption).foregroundStyle(.red) }
         }
-        .padding(20)
+        .formStyle(.grouped)
     }
 
     private var days: Binding<Int> {

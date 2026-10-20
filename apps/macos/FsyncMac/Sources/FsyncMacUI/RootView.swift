@@ -1,7 +1,7 @@
 import FsyncMacCore
 import SwiftUI
 
-/// The main window: one screen per `AppPhase`.
+/// The main window: one screen per `AppPhase`. A ready Mac gets the sidebar shell; every gating screen fills the window.
 public struct RootView: View {
     @ObservedObject private var bridge: EngineBridge
 
@@ -26,8 +26,12 @@ public struct RootView: View {
                 gated {
                     if bridge.isFirstDevice {
                         FirstDeviceView(onDone: bridge.dismissFirstDevice)
-                    } else if let devices = bridge.devicesModel, let pairing = bridge.pairingModel {
-                        ReadyView(devices: devices, pairing: pairing, banner: bridge.banner) { Task { await bridge.signOut() } }
+                    } else if let devices = bridge.devicesModel, let pairing = bridge.pairingModel,
+                              let files = bridge.filesSync, let transfers = bridge.transfers {
+                        MainSplitView(
+                            navigation: bridge.navigation, devices: devices, files: files, transfers: transfers,
+                            history: bridge.historyModel, sync: bridge.clipSync, pairing: pairing, banner: bridge.banner,
+                            signOut: { Task { await bridge.signOut() } })
                     } else {
                         BootingView(banner: nil)
                     }
@@ -36,7 +40,7 @@ public struct RootView: View {
                 BootFailedView(message: message, canReset: canReset) { await bridge.startFresh() }
             }
         }
-        .frame(minWidth: 380, minHeight: 300)
+        .frame(minWidth: 620, minHeight: 420)
     }
 
     /// Trust-reset prompt takes over the window while one is pending.

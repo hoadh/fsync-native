@@ -15,6 +15,11 @@ public struct TransferRow: Identifiable, Equatable, Sendable {
     public var name: String?
 
     public var isActive: Bool { state == .started || state == .progress }
+    /// Where a finished download landed, if the file is still there (for "Show in Finder").
+    public var revealURL: URL? {
+        guard state == .done, let path, FileManager.default.fileExists(atPath: path) else { return nil }
+        return URL(fileURLWithPath: path)
+    }
     public var fraction: Double { bytesTotal == 0 ? 0 : min(1, Double(bytesDone) / Double(bytesTotal)) }
 }
 
@@ -40,6 +45,7 @@ public final class TransfersModel: ObservableObject {
     public init(engine: FsyncEngineProtocol? = nil) { self.engine = engine }
 
     public var active: [TransferRow] { rows.filter(\.isActive) }
+    public var finished: [TransferRow] { rows.filter { !$0.isActive } }
 
     public func handle(_ event: TransferEvent) {
         var row = rows.first { $0.id == event.transferId } ?? TransferRow(
@@ -95,6 +101,13 @@ public final class TransfersModel: ObservableObject {
     public func cancel(_ id: UInt64) async {
         guard let engine else { return }
         _ = await EngineCall.run(engine) { try $0.cancel(transferId: id) }
+    }
+
+    /// Drops one row (a retry replaces it); a waiter still gets the outcome.
+    public func remove(_ id: UInt64) {
+        guard let i = rows.firstIndex(where: { $0.id == id }) else { return }
+        if let o = outcome(of: id) { remember(o, for: id) }
+        rows.remove(at: i)
     }
 
     public func clearFinished() {
