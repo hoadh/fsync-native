@@ -3,6 +3,8 @@ machine: waso
 owns: ["apps/windows/src/Fsync.App/Views/DevicesPage.xaml", "apps/windows/src/Fsync.App/Views/DevicesPage.xaml.cs", "apps/windows/src/Fsync.App/Views/HistoryPage.xaml", "apps/windows/src/Fsync.App/Views/HistoryPage.xaml.cs", "apps/windows/src/Fsync.App/Views/OnboardingPage.xaml", "apps/windows/src/Fsync.App/Views/OnboardingPage.xaml.cs", "apps/windows/src/Fsync.App/Views/PairingPage.xaml", "apps/windows/src/Fsync.App/Views/PairingPage.xaml.cs", "apps/windows/src/Fsync.App/Views/SettingsPage.xaml", "apps/windows/src/Fsync.App/Views/SettingsPage.xaml.cs", "apps/windows/src/Fsync.App/Views/TransfersPage.xaml", "apps/windows/src/Fsync.App/Views/TransfersPage.xaml.cs", "apps/windows/src/Fsync.App/Views/Controls/EmptyState.xaml", "apps/windows/src/Fsync.App/Views/Controls/EmptyState.xaml.cs", "apps/windows/src/Fsync.App/Views/Controls/AccountRecoveryFlow.cs", "apps/windows/src/Fsync.App/Views/Controls/PageText.cs", "apps/windows/src/Fsync.App.Core/ViewModels/HistoryViewModel.cs", "apps/windows/src/Fsync.App.Core/Files/TransferItem.cs", "apps/windows/src/Fsync.App.Core/Clipboard/ClipboardService.Incoming.cs", "apps/windows/src/Fsync.App.Core/Clipboard/ClipboardService.Downloads.cs", "apps/windows/tests/Fsync.App.Tests/PeerNameDisplayTests.cs"]
 dependsOn: [09]
 status: in-progress
+reviewedSha: 686c67813fd99b657d3c6dfd259106e49115cf68
+reviewScore: 9
 ---
 
 # Phase 10: Windows pages polish and recovery UI (waso)
@@ -12,6 +14,9 @@ status: in-progress
 - Spec: copy table (Windows titles), icon map, state matrix, destructive dialog rule
 - Phase 08: Tokens keys, `Ui.PageHeader`, `Ui.StatusBrush`, `Dialogs.ConfirmAsync`, `BannerHost`; phase 09: `App.TrustReset`, `App.Recovery`
 - Current pages: `apps/windows/src/Fsync.App/Views/*Page.xaml(.cs)`
+
+> Owns grants (owner, 2026-10-20/21): `Views/Controls/PageText.cs` (helpers moved out of phase-08 `Ui.cs`), core peer-name sanitizing in `HistoryViewModel.cs`, `TransferItem.cs`, `ClipboardService.Incoming.cs`, `ClipboardService.Downloads.cs` + `PeerNameDisplayTests.cs`. `TrayHost.cs` (phase 09) touched for the tray Paste-from name.
+> Review note: 3 rounds + 1 owner-approved extra round (scores 7 → 8 → 8 → 9, 0 critical). Owner approved manually at 686c678 (9/10). Independent test at 686c678: build 0 warnings, 199/199. Remaining lows (not gating): multi-file offer title has no name cap (count only), Settings Error restore can flip DevicesPage `_loadedOk` if still subscribed, separator assert is culture-theoretical.
 
 ## Overview
 - Priority: P1. Status: pending.
