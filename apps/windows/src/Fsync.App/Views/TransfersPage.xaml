@@ -4,80 +4,93 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:Fsync.App.ViewModels"
     xmlns:files="using:Fsync.App.Files"
+    xmlns:controls="using:Fsync.App.Views.Controls"
     xmlns:local="using:Fsync.App.Views">
-    <ScrollViewer>
-        <StackPanel Spacing="16">
-            <TextBlock Text="Files" Style="{StaticResource TitleTextBlockStyle}" />
-            <InfoBar Severity="Error" IsOpen="True" IsClosable="False" Message="{x:Bind ViewModel.Error, Mode=OneWay}"
-                     Visibility="{x:Bind local:Ui.ShowIf(ViewModel.Error), Mode=OneWay}" />
+    <!-- Phase 11 seam: SetupFileDrop(DropHost) makes the whole page a drop target. -->
+    <Grid x:Name="DropHost" Background="Transparent">
+        <ScrollViewer>
+            <StackPanel Spacing="{StaticResource FsyncSpace16}">
+                <!-- Ui.PageHeader("Files and transfers"), set in code. -->
+                <Border x:Name="HeaderHost" />
+                <InfoBar Severity="Error" IsOpen="True" IsClosable="False" Message="{x:Bind ViewModel.Error, Mode=OneWay}"
+                         Visibility="{x:Bind local:Ui.ShowIf(ViewModel.Error), Mode=OneWay}" />
 
-            <!-- "Send to > fsync" from Explorer: pick a device for the queued paths. -->
-            <StackPanel x:Name="SendPanel" Spacing="8" Visibility="Collapsed">
-                <TextBlock Text="Send to which device?" Style="{StaticResource SubtitleTextBlockStyle}" />
-                <TextBlock x:Name="SendWhat" TextWrapping="Wrap" />
-                <ItemsControl ItemsSource="{x:Bind Targets}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="local:SendTarget">
-                            <Button Content="{x:Bind Name}" Tag="{x:Bind}" Click="OnSendTo" Margin="0,0,0,4"
-                                    ToolTipService.ToolTip="{x:Bind StatusText}" />
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <Button Content="Cancel" Click="OnCancelSend" />
-            </StackPanel>
+                <!-- "Send to > fsync" from Explorer: pick a device for the queued paths. -->
+                <StackPanel x:Name="SendPanel" Spacing="{StaticResource FsyncSpace8}" Visibility="Collapsed">
+                    <TextBlock Text="Send to which device?" Style="{StaticResource FsyncSectionTitleTextStyle}" />
+                    <TextBlock x:Name="SendWhat" TextWrapping="Wrap" Style="{StaticResource FsyncBodyTextStyle}" />
+                    <ItemsControl ItemsSource="{x:Bind Targets}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="local:SendTarget">
+                                <Button Content="{x:Bind Name}" Tag="{x:Bind}" Click="OnSendTo" Margin="0,0,0,4"
+                                        ToolTipService.ToolTip="{x:Bind StatusText}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Button Content="Cancel" Click="OnCancelSend" />
+                </StackPanel>
 
-            <StackPanel Spacing="8" Visibility="{x:Bind local:Ui.Show(HasOffers), Mode=OneWay}">
-                <TextBlock Text="Waiting for you" Style="{StaticResource SubtitleTextBlockStyle}" />
-                <ItemsControl ItemsSource="{x:Bind ViewModel.Offers}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="files:IncomingOffer">
-                            <Grid ColumnSpacing="8" Padding="0,4">
+                <!-- Offers: sender and file name are peer-supplied, shown sanitized (spec section 5). -->
+                <StackPanel Spacing="{StaticResource FsyncSpace8}" Visibility="{x:Bind local:Ui.Show(HasOffers), Mode=OneWay}">
+                    <TextBlock Text="Waiting for you" Style="{StaticResource FsyncSectionTitleTextStyle}" />
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.Offers}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="files:IncomingOffer">
+                                <Grid ColumnSpacing="{StaticResource FsyncSpace8}" Padding="{StaticResource FsyncCardPadding}" Margin="0,0,0,4"
+                                      CornerRadius="{StaticResource FsyncCornerCard}" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="{x:Bind controls:PageText.OfferSender(Item)}" Style="{StaticResource FsyncSectionTitleTextStyle}" />
+                                        <TextBlock Text="{x:Bind controls:PageText.OfferSummary(Item)}" Style="{StaticResource FsyncCaptionTextStyle}"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="Save to Downloads" Style="{StaticResource AccentButtonStyle}" Tag="{x:Bind}"
+                                            Click="OnAccept" VerticalAlignment="Center" />
+                                    <Button Grid.Column="2" Content="Decline" Tag="{x:Bind}" Click="OnDecline" VerticalAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <Grid ColumnSpacing="{StaticResource FsyncSpace8}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Transfers" Style="{StaticResource FsyncSectionTitleTextStyle}" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Content="Clear finished" Command="{x:Bind ViewModel.ClearFinishedCommand}" />
+                </Grid>
+                <controls:EmptyState Glyph="&#xE8AB;" Title="No transfers yet."
+                                     Body="Drop files on a device in Devices, or use Send to > fsync in Explorer."
+                                     Visibility="{x:Bind local:Ui.Show(ShowEmpty), Mode=OneWay}" />
+                <ListView ItemsSource="{x:Bind ViewModel.Transfers}" SelectionMode="None">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="files:TransferItem">
+                            <Grid ColumnSpacing="{StaticResource FsyncSpace8}" Padding="0,6">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="{x:Bind Title}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                                <Button Grid.Column="1" Content="Save to Downloads" Style="{StaticResource AccentButtonStyle}" Tag="{x:Bind}" Click="OnAccept" />
-                                <Button Grid.Column="2" Content="Decline" Tag="{x:Bind}" Click="OnDecline" />
+                                <StackPanel Spacing="{StaticResource FsyncSpace4}">
+                                    <TextBlock Text="{x:Bind Title, Mode=OneWay}" Style="{StaticResource FsyncBodyTextStyle}" TextTrimming="CharacterEllipsis" />
+                                    <ProgressBar Value="{x:Bind Percent, Mode=OneWay}" Maximum="100" Visibility="{x:Bind local:Ui.Show(IsActive), Mode=OneWay}" />
+                                    <TextBlock Text="{x:Bind Detail, Mode=OneWay}" Style="{StaticResource FsyncCaptionTextStyle}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{StaticResource FsyncSpace4}" VerticalAlignment="Center">
+                                    <Button Content="Cancel" Tag="{x:Bind}" Click="OnCancel" Visibility="{x:Bind local:Ui.Show(IsActive), Mode=OneWay}" />
+                                    <Button Content="Retry" Tag="{x:Bind}" Click="OnRetry" Visibility="{x:Bind local:Ui.Show(CanRetry), Mode=OneWay}" />
+                                    <Button Content="Open folder" Tag="{x:Bind}" Click="OnShow" Visibility="{x:Bind local:Ui.ShowIf(Path), Mode=OneWay}" />
+                                </StackPanel>
                             </Grid>
                         </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                    </ListView.ItemTemplate>
+                </ListView>
             </StackPanel>
-
-            <Grid ColumnSpacing="8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="Transfers" Style="{StaticResource SubtitleTextBlockStyle}" />
-                <Button Grid.Column="1" Content="Clear finished" Command="{x:Bind ViewModel.ClearFinishedCommand}" />
-            </Grid>
-            <TextBlock Text="Drop files on a device in Devices, or use Send to > fsync in Explorer."
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-            <ListView ItemsSource="{x:Bind ViewModel.Transfers}" SelectionMode="None">
-                <ListView.ItemTemplate>
-                    <DataTemplate x:DataType="files:TransferItem">
-                        <Grid ColumnSpacing="8" Padding="0,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Spacing="4">
-                                <TextBlock Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
-                                <ProgressBar Value="{x:Bind Percent, Mode=OneWay}" Maximum="100" Visibility="{x:Bind local:Ui.Show(IsActive), Mode=OneWay}" />
-                                <TextBlock Text="{x:Bind Detail, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                <Button Content="Cancel" Tag="{x:Bind}" Click="OnCancel" Visibility="{x:Bind local:Ui.Show(IsActive), Mode=OneWay}" />
-                                <Button Content="Retry" Tag="{x:Bind}" Click="OnRetry" Visibility="{x:Bind local:Ui.Show(CanRetry), Mode=OneWay}" />
-                                <Button Content="Show" Tag="{x:Bind}" Click="OnShow" Visibility="{x:Bind local:Ui.ShowIf(Path), Mode=OneWay}" />
-                            </StackPanel>
-                        </Grid>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
-        </StackPanel>
-    </ScrollViewer>
+        </ScrollViewer>
+    </Grid>
 </Page>

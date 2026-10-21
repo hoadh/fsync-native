@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Fsync.App.Bridge;
 using Fsync.App.ViewModels;
+using Fsync.App.Views.Controls;
 using Fsync.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -17,11 +18,21 @@ public sealed partial class PairingPage : Page, INotifyPropertyChanged
     public bool IsNewDevice => App.Current.Bridge.Phase == AccountPhase.NeedsPairing;
     public bool IsExistingDevice => !IsNewDevice;
 
+    private string? _recoveryError;
+    /// <summary>The last account recovery failure, or null.</summary>
+    public string? RecoveryError
+    {
+        get => _recoveryError;
+        private set { _recoveryError = value; PropertyChanged?.Invoke(this, new(nameof(RecoveryError))); }
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public PairingPage()
     {
         InitializeComponent();
+        HeaderHost.Child = Ui.PageHeader("Pair this PC");
+        SetupCountdown(CountdownText);
         ViewModel.PropertyChanged += OnViewModelChanged;
         App.Current.Bridge.PropertyChanged += OnBridgeChanged;
         Unloaded += (_, _) =>
@@ -50,6 +61,17 @@ public sealed partial class PairingPage : Page, INotifyPropertyChanged
         QrImage.Source = bmp;
     }
 
+    /// <summary>Phase 11 seam: a live "expires in" countdown in <paramref name="host"/> (Collapsed until then).</summary>
+    partial void SetupCountdown(TextBlock host);
+
     private async void OnOfferCode(object sender, RoutedEventArgs e) => await ViewModel.OfferCommand.ExecuteAsync(PairingMode.Code);
     private async void OnOfferQr(object sender, RoutedEventArgs e) => await ViewModel.OfferCommand.ExecuteAsync(PairingMode.Qr);
+
+    /// <summary>No device to pair with: make this PC the only trusted one (two confirmations).</summary>
+    private async void OnRecovery(object sender, RoutedEventArgs e)
+    {
+        RecoveryError = null;
+        // A PC that needs pairing has no trusted peers of its own to list.
+        RecoveryError = await AccountRecoveryFlow.RunAsync(App.Current.Recovery, App.Current.Bridge, XamlRoot, null);
+    }
 }

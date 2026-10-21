@@ -147,7 +147,8 @@ public sealed class TrustResetPromptViewModelTests
         using var h = new Harness(Session);
         using var vm = await Vm(h);
         vm.Apply([Stale]);
-        AccountEvent[] others = [new AccountEvent.ListAdvanced(1), new AccountEvent.HistoryReset("b"), new AccountEvent.SelfRemoved(), new AccountEvent.SessionExpired()];
+        // SessionExpired is left out: it signs out, which clears the list (SignOutClearsPendingOutcomeAndMessage).
+        AccountEvent[] others = [new AccountEvent.ListAdvanced(1), new AccountEvent.HistoryReset("b"), new AccountEvent.SelfRemoved()];
         foreach (var ev in others) h.Engine.Delegate!.OnAccountEvent(ev);
         await Task.Delay(50);
         Assert.Equal(0, CallCount(h.Engine, "PendingTrustResets"));
@@ -347,6 +348,60 @@ public sealed class TrustResetPromptViewModelTests
         Assert.Equal(TrustResetOutcome.Declined, vm.Outcome);
     }
 
+    /// <summary>
+    /// Sign-out forgets the account's prompt: after an account switch whose first check fails, the gate
+    /// (which fails open on what the VM still holds) must not show the old account's reset or outcome.
+    /// </summary>
+    [Fact]
+    public async Task SignOutClearsPendingOutcomeAndMessage()
+    {
+        using var h = new Harness(Session);
+        h.Engine.OnDeclineTrustReset = _ => { };
+        h.Engine.OnPendingTrustResets = () => [Other];
+        using var vm = await Vm(h);
+        await vm.DeclineAsync(Other.resetId);
+        Assert.Equal(TrustResetOutcome.Declined, vm.Outcome);
+        Assert.True(vm.HasPending);
+        Assert.True(vm.BeginConfirm(Other.resetId));
+        var aborted = 0;
+        vm.ConfirmAborted += () => aborted++;
+        var reads = CallCount(h.Engine, "PendingTrustResets");
+
+        h.Engine.Delegate!.OnAccountEvent(new AccountEvent.SessionExpired());
+        await Task.Delay(50);
+        Assert.Equal(reads, CallCount(h.Engine, "PendingTrustResets")); // signing out reads nothing
+
+        Assert.Equal(AccountPhase.SignedOut, h.Bridge.Phase);
+        Assert.False(vm.HasPending);
+        Assert.Empty(vm.DisplayNames);
+        Assert.Equal(TrustResetOutcome.Unanswered, vm.Outcome);
+        Assert.Null(vm.Message);
+        Assert.Null(vm.ConfirmingResetId);
+        Assert.Equal(1, aborted); // the open Trust dialog closes
+    }
+
+    /// <summary>An answer still running at sign-out sets no outcome and brings back no list of the old account.</summary>
+    [Fact]
+    public async Task AnswerFinishingAfterSignOutChangesNothing()
+    {
+        using var h = new Harness(Session);
+        using var gate = new ManualResetEventSlim();
+        h.Engine.OnConfirmTrustReset = _ => { gate.Wait(); return AccountState.Ready; };
+        using var vm = await Vm(h);
+        vm.Apply([Stale]);
+        vm.BeginConfirm(Stale.resetId);
+        var confirm = vm.ConfirmAsync(Stale.resetId);
+        h.Engine.Delegate!.OnAccountEvent(new AccountEvent.SessionExpired());
+        h.Engine.OnPendingTrustResets = () => [Other];
+        gate.Set();
+        await confirm;
+        Assert.Equal(TrustResetOutcome.Unanswered, vm.Outcome);
+        Assert.False(vm.HasPending);
+        Assert.Null(vm.Message);
+        Assert.False(vm.IsBusy);
+        Assert.Equal(AccountPhase.SignedOut, h.Bridge.Phase);
+    }
+
     [Fact]
     public async Task DisposeUnsubscribes()
     {
@@ -392,6 +447,11 @@ public sealed class TrustGatePolicyTests
     public void UndismissedOutcomeGates(TrustResetOutcome outcome) =>
         Assert.Equal(TrustGateState.Prompt, Decide(outcome: outcome));
 
+    /// <summary>
+    /// "Pair this PC again" is the one outcome that never holds the gate: the confirm applied
+    /// NeedsPairing, so the phase leaves Ready and the window routes to the pairing page, which is
+    /// the next step. Holding the prompt on top of it would hide that page.
+    /// </summary>
     [Fact]
     public void RemovedNeedsPairingOutcomeDoesNotGate() =>
         Assert.Equal(TrustGateState.Open, Decide(outcome: TrustResetOutcome.RemovedNeedsPairing));

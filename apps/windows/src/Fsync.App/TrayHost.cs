@@ -2,6 +2,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using Fsync.App.Clipboard;
 using Fsync.App.Files;
+using Fsync.App.Services;
 using Fsync.App.ViewModels;
 using H.NotifyIcon;
 using H.NotifyIcon.Core;
@@ -110,7 +111,7 @@ internal sealed class TrayHost : IDisposable
         _activity.Text = activity ?? "";
         _activity.Visibility = activity is null ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
         _pastePending.IsEnabled = _clipboard.Pending is not null;
-        _pastePending.Text = _clipboard.Pending is { } p ? $"Paste from {p.fromName} ({ClipboardService.PasteHotKeyText})" : $"Paste from another device ({ClipboardService.PasteHotKeyText})";
+        _pastePending.Text = _clipboard.Pending is { } p ? $"Paste from {PeerText.DisplayName(p.fromName)} ({ClipboardService.PasteHotKeyText})" : $"Paste from another device ({ClipboardService.PasteHotKeyText})";
         // Regenerate the icon only when the badge changes: clipboard activity calls this often
         // and each GeneratedIconSource renders a new bitmap.
         if (_badge == _status.Kind) return;

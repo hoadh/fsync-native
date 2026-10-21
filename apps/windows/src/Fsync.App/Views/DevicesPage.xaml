@@ -3,51 +3,62 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:Fsync.App.ViewModels"
+    xmlns:controls="using:Fsync.App.Views.Controls"
     xmlns:local="using:Fsync.App.Views">
-    <Grid RowSpacing="12">
+    <Grid RowSpacing="{StaticResource FsyncSpace12}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <StackPanel>
-            <TextBlock Text="Your devices" Style="{StaticResource TitleTextBlockStyle}" />
-            <TextBlock Text="Drop files on a device to send them." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-        </StackPanel>
-        <StackPanel Grid.Row="1" Spacing="8">
+        <!-- Ui.PageHeader("Your devices", hint), set in code. -->
+        <Border x:Name="HeaderHost" />
+        <StackPanel Grid.Row="1" Spacing="{StaticResource FsyncSpace8}">
             <InfoBar Severity="Warning" IsOpen="True" IsClosable="False" Message="{x:Bind Bridge.StatusMessage, Mode=OneWay}"
                      Visibility="{x:Bind local:Ui.ShowIf(Bridge.StatusMessage), Mode=OneWay}">
+                <InfoBar.IconSource><FontIconSource Glyph="&#xE783;" /></InfoBar.IconSource>
                 <InfoBar.ActionButton>
                     <Button Content="Retry" Click="OnRetry" />
                 </InfoBar.ActionButton>
             </InfoBar>
             <InfoBar Severity="Error" IsOpen="True" IsClosable="False" Message="{x:Bind ViewModel.Error, Mode=OneWay}"
                      Visibility="{x:Bind local:Ui.ShowIf(ViewModel.Error), Mode=OneWay}" />
+            <!-- Phase 11 seam: AddExtraBanners adds first-device / offline extras here. -->
+            <StackPanel x:Name="ExtraBannerHost" Spacing="{StaticResource FsyncSpace8}" />
         </StackPanel>
         <ListView x:Name="List" Grid.Row="2" ItemsSource="{x:Bind ViewModel.Devices}" SelectionMode="None">
             <ListView.ItemTemplate>
+                <!-- The row's UIA Name is DeviceItem.ToString() (e2e-locked): children may change, not that. -->
                 <DataTemplate x:DataType="vm:DeviceItem">
-                    <Grid ColumnSpacing="12" Padding="0,8" Background="Transparent" AllowDrop="{x:Bind CanRemove}"
+                    <Grid ColumnSpacing="{StaticResource FsyncSpace12}" Padding="0,8" Background="Transparent" AllowDrop="{x:Bind CanRemove}"
                           DragOver="OnDragOver" Drop="OnDrop" Tag="{x:Bind}">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <Ellipse Width="10" Height="10" VerticalAlignment="Center" Fill="{x:Bind local:Ui.StatusBrush(Kind)}" />
-                        <StackPanel Grid.Column="1">
-                            <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" />
-                            <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                        <Ellipse Style="{x:Bind local:Ui.StatusDotStyle(Kind)}" />
+                        <FontIcon Grid.Column="1" Glyph="{x:Bind controls:PageText.PlatformGlyph(PlatformText, IsSelf)}" FontSize="20"
+                                  VerticalAlignment="Center" AutomationProperties.AccessibilityView="Raw" />
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="{x:Bind controls:PageText.PeerName(Name)}" Style="{StaticResource FsyncSectionTitleTextStyle}" />
+                            <TextBlock Style="{StaticResource FsyncCaptionTextStyle}">
                                 <Run Text="{x:Bind PlatformText}" /><Run Text=" · " /><Run Text="{x:Bind StatusText}" />
                             </TextBlock>
-                            <TextBlock Text="{x:Bind LastSeenText}" Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            <TextBlock Text="{x:Bind LastSeenText}" Style="{StaticResource FsyncCaptionTextStyle}"
                                        Visibility="{x:Bind local:Ui.ShowIf(LastSeenText)}" />
                         </StackPanel>
-                        <Button Grid.Column="2" Content="Remove" Visibility="{x:Bind local:Ui.Show(CanRemove)}"
+                        <Button Grid.Column="3" Content="Remove" Visibility="{x:Bind local:Ui.Show(CanRemove)}"
                                 Tag="{x:Bind}" Click="OnRemove" />
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>
+            <ListView.Footer>
+                <controls:EmptyState Margin="0,24,0,0" Glyph="&#xE772;" Title="No other devices yet."
+                                     Body="Pair one to start syncing." ActionText="Pair now" ActionClick="OnPairNow"
+                                     Visibility="{x:Bind local:Ui.Show(ShowEmpty), Mode=OneWay}" />
+            </ListView.Footer>
         </ListView>
     </Grid>
 </Page>

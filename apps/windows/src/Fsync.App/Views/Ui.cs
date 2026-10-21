@@ -3,7 +3,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 
 namespace Fsync.App.Views;
 
@@ -17,8 +16,6 @@ public static class Ui
     /// <summary>Visible when <paramref name="value"/>'s name is one of the comma-separated <paramref name="names"/>.</summary>
     public static Visibility When(Enum value, string names) =>
         Show(names.Split(',', StringSplitOptions.TrimEntries).Contains(value.ToString()));
-
-    public static Brush StatusBrush(StatusKind kind) => new SolidColorBrush(TrayHost.BadgeColor(kind));
 
     /// <summary>
     /// Theme-aware status dot: <c>&lt;Ellipse Style="{x:Bind local:Ui.StatusDotStyle(Kind)}" /&gt;</c>.

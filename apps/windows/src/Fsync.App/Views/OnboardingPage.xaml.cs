@@ -7,5 +7,9 @@ public sealed partial class OnboardingPage : Page
 {
     public OnboardingViewModel ViewModel { get; } = new(App.Current.Bridge);
 
-    public OnboardingPage() => InitializeComponent();
+    public OnboardingPage()
+    {
+        InitializeComponent();
+        HeaderHost.Child = Ui.PageHeader("Sign in to fsync");
+    }
 }
