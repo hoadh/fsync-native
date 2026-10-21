@@ -2,7 +2,7 @@
 machine: waso
 owns: ["apps/windows/src/Fsync.App/Views/TransfersPage.Drop.cs", "apps/windows/src/Fsync.App/Views/PairingPage.Countdown.cs", "apps/windows/src/Fsync.App/Views/DevicesPage.Extras.cs", "apps/windows/src/Fsync.App.Core/Files/DropPaths.cs", "apps/windows/src/Fsync.App.Core/Bridge/EngineBridge.FirstDevice.cs", "apps/windows/src/Fsync.App.Core/ViewModels/PairingViewModel.cs", "apps/windows/tests/Fsync.App.Tests/DropPathsTests.cs", "apps/windows/tests/Fsync.App.Tests/PairingCountdownTests.cs", "apps/windows/tests/Fsync.App.Tests/FirstDeviceTests.cs"]
 dependsOn: [10]
-reviewedSha: 07907bb87e998a2ac58ec9a0e98e18063087771a
+reviewedSha: 686c67813fd99b657d3c6dfd259106e49115cf68
 reviewScore: 9
 ---
 
