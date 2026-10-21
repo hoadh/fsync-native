@@ -15,6 +15,9 @@ reviewScore: 9
 - Phase 08: Tokens keys, `Ui.PageHeader`, `Ui.StatusBrush`, `Dialogs.ConfirmAsync`, `BannerHost`; phase 09: `App.TrustReset`, `App.Recovery`
 - Current pages: `apps/windows/src/Fsync.App/Views/*Page.xaml(.cs)`
 
+> Owns grants (owner, 2026-10-20/21): `Views/Controls/PageText.cs` (helpers moved out of phase-08 `Ui.cs`), core peer-name sanitizing in `HistoryViewModel.cs`, `TransferItem.cs`, `ClipboardService.Incoming.cs`, `ClipboardService.Downloads.cs` + `PeerNameDisplayTests.cs`. `TrayHost.cs` (phase 09) touched for the tray Paste-from name.
+> Review note: 3 rounds + 1 owner-approved extra round (scores 7 → 8 → 8 → 9, 0 critical). Owner approved manually at 686c678 (9/10). Independent test at 686c678: build 0 warnings, 199/199. Remaining lows (not gating): multi-file offer title has no name cap (count only), Settings Error restore can flip DevicesPage `_loadedOk` if still subscribed, separator assert is culture-theoretical.
+
 ## Overview
 - Priority: P1. Status: pending.
 - Restyle the 6 pages with tokens + headers + empty states, rename page titles, add the account recovery UI (Settings → Account), and declare partial seams for stretch phase 11.
