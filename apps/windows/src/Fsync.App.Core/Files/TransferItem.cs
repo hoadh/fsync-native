@@ -63,10 +63,10 @@ public sealed partial class TransferItem : ObservableObject
 public sealed record IncomingOffer(ClipItem Item)
 {
     public string Title => Item.files.Length == 1
-        ? $"{Sender} sent {Item.files[0].name} ({TransferItem.Size(Item.totalSize)})"
+        ? $"{Sender} sent {PeerText.DisplayName(Item.files[0].name, 80)} ({TransferItem.Size(Item.totalSize)})"
         : $"{Sender} sent {Item.files.Length} files ({TransferItem.Size(Item.totalSize)})";
 
-    /// <summary>Peer-supplied sender name, sanitized (spec section 5).</summary>
+    /// <summary>Peer-supplied sender name, sanitized (spec section 5); the file name above is too (cap 80, as PageText.OfferSummary).</summary>
     private string Sender => PeerText.DisplayName(Item.fromName);
 
     public override string ToString() => Title;

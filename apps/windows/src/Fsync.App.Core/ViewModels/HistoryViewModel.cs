@@ -19,7 +19,7 @@ public sealed partial class HistoryRow(HistoryItem item, string peerName, bool c
         _ => "(no preview)",
     };
     /// <summary>Who, when, size; the peer name is peer-supplied, so it is sanitized (spec section 5).</summary>
-    public string Meta => $"{(Item.outgoing ? "Copied here" : $"From {PeerText.DisplayName(peerName)}")} ·{When(Item.createdMs)} · {Files.TransferItem.Size(Item.totalSize)}";
+    public string Meta => $"{(Item.outgoing ? "Copied here" : $"From {PeerText.DisplayName(peerName)}")} · {When(Item.createdMs)} · {Files.TransferItem.Size(Item.totalSize)}";
     public bool CanCopy { get; } = canCopy;
     [ObservableProperty] private bool _pinned = item.pinned;
 

@@ -16,10 +16,10 @@ public sealed class PeerNameDisplayTests
     public static TheoryData<string, string> Names => new()
     {
         { "Mac\nmini", "Macmini" },
-        { "‮evil", "evil" },
-        { "a‍b​c", "abc" },
+        { "\U0000202Eevil", "evil" },
+        { "a\U0000200Db\U0000200Bc", "abc" },
         { "", "another device" },
-        { "\u0007​\n", "another device" },
+        { "\U00000007\U0000200B\n", "another device" },
     };
 
     private static HistoryRow Row(string peerName) =>
@@ -33,16 +33,23 @@ public sealed class PeerNameDisplayTests
     [MemberData(nameof(Names))]
     public void HistoryRowMetaShowsTheSanitizedPeer(string raw, string shown)
     {
-        Assert.StartsWith($"From {shown} ·", Row(raw).Meta); // the time after it is culture-formatted
+        var meta = Row(raw).Meta;
+        Assert.StartsWith($"From {shown} · ", meta); // the time after it is culture-formatted
+        AssertSeparatorsSpaced(meta);
     }
 
     [Fact]
     public void HistoryRowMetaForThisPcHasNoPeer()
     {
-        var mine = new HistoryRow(new HistoryItem("id", true, null, ClipKind.Text, 0, 10, "x", false), "‮evil", true);
-        Assert.StartsWith("Copied here ·", mine.Meta);
+        var mine = new HistoryRow(new HistoryItem("id", true, null, ClipKind.Text, 0, 10, "x", false), "\U0000202Eevil", true);
+        Assert.StartsWith("Copied here · ", mine.Meta);
         Assert.DoesNotContain("evil", mine.Meta);
+        AssertSeparatorsSpaced(mine.Meta);
     }
+
+    /// <summary>Every middle dot is followed by a space ("From Mac · 14:03 · 1 B", not "·14:03").</summary>
+    private static void AssertSeparatorsSpaced(string meta) =>
+        Assert.DoesNotMatch("·[^ ]", meta);
 
     [Theory]
     [MemberData(nameof(Names))]
@@ -59,5 +66,16 @@ public sealed class PeerNameDisplayTests
     {
         Assert.Equal($"{shown} sent 2 files (1 B)", new IncomingOffer(Clip(raw, ClipKind.Files, 2)).Title);
         Assert.StartsWith($"{shown} sent f0.txt", new IncomingOffer(Clip(raw, ClipKind.Files, 1)).Title);
+    }
+
+    /// <summary>The single file name is peer-supplied too: a bidi override cannot flip "gpj.exe" into "exe.jpg".</summary>
+    [Fact]
+    public void OfferTitleSanitizesTheFileName()
+    {
+        var clip = Clip("Mac", ClipKind.Files, 0) with
+        {
+            files = [new CoreFile(0, "gp\U0000202Ej.exe", "gp\U0000202Ej.exe", 1)],
+        };
+        Assert.Equal("Mac sent gpj.exe (1 B)", new IncomingOffer(clip).Title);
     }
 }
