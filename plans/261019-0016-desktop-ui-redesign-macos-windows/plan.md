@@ -28,8 +28,8 @@ Windows IA (Devices, History, Files, Pair, Settings) is the reference; each plat
 | 07 | [Windows core VMs: trust, recovery, notices](phase-07-windows-core-viewmodels-trust-recovery-notices.md) | Completed |
 | 08 | [Windows shell + e2e helpers](phase-08-windows-shell-mica-titlebar-nav-e2e-helpers.md) | Completed |
 | 09 | [Windows trust gate, toasts, tray menu](phase-09-windows-trust-gate-toasts-tray-menu.md) | Completed |
-| 10 | [Windows pages + recovery UI](phase-10-windows-pages-polish-and-recovery-ui.md) | In Progress |
-| 11 | [Windows stretch (optional)](phase-11-windows-stretch-drop-countdown-first-device.md) | Pending |
+| 10 | [Windows pages + recovery UI](phase-10-windows-pages-polish-and-recovery-ui.md) | Completed |
+| 11 | [Windows stretch (optional)](phase-11-windows-stretch-drop-countdown-first-device.md) | Skipped |
 | 12 | [Integration, QA, docs](phase-12-integration-qa-and-docs.md) | Pending |
 
 Open items (not gating): 05 manual bundle smoke (owner). 04 manual `swift run` smoke (owner). 06 skipped by owner. 08 min window size deferred (Q2). Phase 10 must re-check "no page title equals nav name".
