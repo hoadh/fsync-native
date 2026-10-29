@@ -138,7 +138,7 @@ public final class ClipboardSync: ObservableObject {
                 return
             }
         }
-        let snapshot = RepresentationMapper.snapshot(pasteboard)
+        let snapshot = RepresentationMapper.snapshot(pasteboard, folders: request.explicit)
         guard pasteboard.changeCount == count else { return }
         let limit = settings.maxClipBytes
         let read = await Task.detached(priority: .userInitiated) { snapshot.build(maxBytes: limit) }.value

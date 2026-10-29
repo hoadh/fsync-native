@@ -59,8 +59,9 @@ public enum RepresentationMapper {
     }
 
     /// Files take precedence over text, text over images. Image bytes are read only when there is no text.
-    public static func snapshot(_ pb: NSPasteboard) -> Snapshot {
-        let files = fileURLs(pb)
+    /// `folders`: explicit sends only, so an ordinary ⌘C in Finder never pushes a whole folder.
+    public static func snapshot(_ pb: NSPasteboard, folders: Bool = false) -> Snapshot {
+        let files = fileURLs(pb, folders: folders)
         guard files.isEmpty else { return Snapshot(files: files, text: nil, html: nil, rtf: nil, png: nil, tiff: nil) }
         func data(_ type: NSPasteboard.PasteboardType) -> Data? { pb.data(forType: type).flatMap { $0.isEmpty ? nil : $0 } }
         if let text = pb.string(forType: .string), !text.isEmpty {
@@ -71,16 +72,17 @@ public enum RepresentationMapper {
     }
 
     /// What the pasteboard holds now, as a clip (reads and converts on the calling thread).
-    public static func read(_ pb: NSPasteboard, maxBytes: UInt64) -> ClipRead {
-        snapshot(pb).build(maxBytes: maxBytes)
+    public static func read(_ pb: NSPasteboard, maxBytes: UInt64, folders: Bool = false) -> ClipRead {
+        snapshot(pb, folders: folders).build(maxBytes: maxBytes)
     }
 
-    /// Regular files only; folders are out of scope for the MVP.
-    static func fileURLs(_ pb: NSPasteboard) -> [URL] {
+    /// Regular files, plus folders when `folders` is set (core expands them and keeps their layout).
+    /// Symlinks are skipped, as core does.
+    static func fileURLs(_ pb: NSPasteboard, folders: Bool = false) -> [URL] {
         let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
         return urls.filter { url in
-            var isDir: ObjCBool = false
-            return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) && !isDir.boolValue
+            guard let kind = try? url.resourceValues(forKeys: [.isRegularFileKey, .isDirectoryKey]) else { return false }
+            return kind.isRegularFile == true || (folders && kind.isDirectory == true)
         }
     }
 

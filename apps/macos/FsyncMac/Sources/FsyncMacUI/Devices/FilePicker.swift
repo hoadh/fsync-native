@@ -7,12 +7,12 @@ enum FilePicker {
     static func chooseFiles() -> [URL]? {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
+        panel.canChooseDirectories = true
         panel.prompt = "Send"
         return panel.runModal() == .OK && !panel.urls.isEmpty ? panel.urls : nil
     }
 
-    /// Resolves dropped providers to file URLs (plain files only) and reports them on the main queue.
+    /// Resolves dropped providers to file and folder URLs and reports them on the main queue.
     static func fileURLs(from providers: [NSItemProvider], completion: @escaping ([URL]) -> Void) {
         nonisolated(unsafe) let completion = completion
         let group = DispatchGroup()
@@ -21,7 +21,8 @@ enum FilePicker {
         for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
             group.enter()
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                if let url, url.isFileURL, (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true {
+                let kind = try? url?.resourceValues(forKeys: [.isRegularFileKey, .isDirectoryKey])
+                if let url, url.isFileURL, kind?.isRegularFile == true || kind?.isDirectory == true {
                     lock.lock(); urls.append(url); lock.unlock()
                 }
                 group.leave()

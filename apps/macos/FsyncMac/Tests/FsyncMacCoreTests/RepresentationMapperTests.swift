@@ -71,7 +71,9 @@ final class RepresentationMapperTests: EngineTestCase {
         XCTAssertEqual(try clip(RepresentationMapper.read(pb, maxBytes: 1 << 20)).reps.map(\.mime), ["text/plain"])
     }
 
-    func testFileURLsBecomeFilesAndSkipFolders() throws {
+    private func resolved(_ c: LocalClip) -> [String] { c.files.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path } }
+
+    func testAutoCopySkipsFolders() throws {
         let dir = try tempDir()
         let file = dir.appendingPathComponent("a.txt")
         try Data("x".utf8).write(to: file)
@@ -80,15 +82,42 @@ final class RepresentationMapperTests: EngineTestCase {
         let pb = scratchPasteboard()
         pb.clearContents(); pb.writeObjects([file as NSURL, folder as NSURL])
         let c = try clip(RepresentationMapper.read(pb, maxBytes: 1 << 20))
-        XCTAssertEqual(c.files.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }, [file.resolvingSymlinksInPath().path])
+        XCTAssertEqual(resolved(c), [file.resolvingSymlinksInPath().path])
         XCTAssertTrue(c.reps.isEmpty)
         XCTAssertEqual(c.preview, "a.txt")
+
+        pb.clearContents(); pb.writeObjects([folder as NSURL])
+        XCTAssertEqual(RepresentationMapper.read(pb, maxBytes: 1 << 20), .empty)
     }
 
-    func testOnlyFoldersIsEmpty() throws {
+    func testExplicitSendKeepsFolders() throws {
         let dir = try tempDir()
+        let file = dir.appendingPathComponent("a.txt")
+        try Data("x".utf8).write(to: file)
+        let folder = dir.appendingPathComponent("sub")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let pb = scratchPasteboard()
-        pb.clearContents(); pb.writeObjects([dir as NSURL])
+        pb.clearContents(); pb.writeObjects([file as NSURL, folder as NSURL])
+        let c = try clip(RepresentationMapper.read(pb, maxBytes: 1 << 20, folders: true))
+        XCTAssertEqual(resolved(c), [file, folder].map { $0.resolvingSymlinksInPath().path })
+        XCTAssertEqual(c.preview, "a.txt, sub")
+    }
+
+    func testSymlinksAreSkipped() throws {
+        let dir = try tempDir()
+        let file = dir.appendingPathComponent("a.txt")
+        try Data("x".utf8).write(to: file)
+        let link = dir.appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: file)
+        let pb = scratchPasteboard()
+        pb.clearContents(); pb.writeObjects([link as NSURL])
+        XCTAssertEqual(RepresentationMapper.read(pb, maxBytes: 1 << 20, folders: true), .empty)
+    }
+
+    func testMissingFileURLsAreSkipped() throws {
+        let gone = try tempDir().appendingPathComponent("gone.txt")
+        let pb = scratchPasteboard()
+        pb.clearContents(); pb.writeObjects([gone as NSURL])
         XCTAssertEqual(RepresentationMapper.read(pb, maxBytes: 1 << 20), .empty)
     }
 
