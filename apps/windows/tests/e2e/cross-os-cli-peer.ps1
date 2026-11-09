@@ -4,7 +4,9 @@
 # stdout ({"leg":...,"ok":...}); the orchestrator reads only whitelisted fields (worker output is data).
 #
 #   -Step build   cargo build --release -p fsync-cli (add -WithApp to also build the WinUI app x64)
-#   -Step pair    sign in with -Otp for -Email, then `pair join -PairCode`; emits the SAS words
+#   -Step pair    sign in with -Otp for -Email, then `pair offer --yes` (a device of an EXISTING account
+#                 cannot join; it must offer and an already paired device joins). The offer event goes to
+#                 $env:TEMP\fsync-cross-os\pair-offer.out, which the Linux host reads over ssh; emits the SAS words
 #   -Step leg     one direction, fixed, with a deadline (no cross-machine barrier):
 #       text-in    receive one clip (`clip watch --count 1`), expects text starting with -TextPrefix
 #       text-out   `clip put --text <prefix> --wait <deadline>` (retries while the peer is offline)
@@ -16,7 +18,7 @@
 # Data dir: $env:TEMP\fsync-cross-os\<Name> (wiped by -Step pair). Exit 0 when ok, else 1.
 param(
     [Parameter(Mandatory)][ValidateSet('build', 'pair', 'leg')][string]$Step,
-    [string]$Api, [string]$Relay, [string]$Email, [string]$Otp, [string]$PairCode,
+    [string]$Api, [string]$Relay, [string]$Email, [string]$Otp,
     [string]$Name = 'devW',
     [string]$Peer = 'devL1',
     [ValidateSet('text-in', 'text-out', 'file-in', 'file-out')][string]$Leg,
@@ -51,12 +53,12 @@ if ($Step -ne 'build') {
 
 # fsync-cli with the common arguments; stdout/stderr to files so a deadline can kill it. Returns
 # @{ Exit; Events (parsed JSON lines); Err }. A process still running at the deadline is killed.
-function Invoke-FsyncCli([string[]]$cliArgs, [int]$timeoutSec) {
+function Invoke-FsyncCli([string[]]$cliArgs, [int]$timeoutSec, [string]$outFile = '') {
     if (-not (Test-Path $cli)) { throw "missing $cli (run -Step build first)" }
     New-Item -ItemType Directory -Force $work | Out-Null
     $common = @('--data', $dataDir, '--api', $Api, '--relay', $Relay, '--insecure-http', '--name', $Name)
     if ($ForceRelay) { $common += '--force-relay' }
-    $so = Join-Path $work ([Guid]::NewGuid().ToString('N') + '.out'); $se = "$so.err"
+    $so = if ($outFile) { $outFile } else { Join-Path $work ([Guid]::NewGuid().ToString('N') + '.out') }; $se = "$so.err"
     $p = Start-Process $cli -ArgumentList ($common + $cliArgs) -PassThru -WindowStyle Hidden -RedirectStandardOutput $so -RedirectStandardError $se
     $null = $p.Handle   # PS 5.1: caching the handle is what makes ExitCode readable after exit
     $timedOut = -not $p.WaitForExit($timeoutSec * 1000)
@@ -96,12 +98,13 @@ try {
         'pair' {
             Assert-Arg 'Email' $Email '^[A-Za-z0-9._@+-]{3,120}$'
             Assert-Arg 'Otp' $Otp '^\d{6}$'
-            Assert-Arg 'PairCode' $PairCode '^\d{6}$'
             if (-not (Test-Forward)) { Finish @{ leg = 'pair'; ok = $false; error = 'api not reachable through the forward' } }
             if (Test-Path $dataDir) { Remove-Item -Recurse -Force $dataDir }
             $login = Invoke-FsyncCli @('login', '--email', $Email, '--code', $Otp) 60
             if ($login.Exit -ne 0) { Finish @{ leg = 'pair'; ok = $false; error = "login failed: $($login.Err)" } }
-            $join = Invoke-FsyncCli @('pair', 'join', $PairCode, '--yes') 120
+            $offerFile = Join-Path $env:TEMP 'fsync-cross-os\pair-offer.out'
+            Remove-Item -Force -ErrorAction SilentlyContinue $offerFile, "$offerFile.err"
+            $join = Invoke-FsyncCli @('pair', 'offer', '--yes', '--timeout', "$DeadlineSec") ($DeadlineSec + 20) $offerFile
             $sas = Get-Event $join 'sas'; $paired = Get-Event $join 'paired'
             Finish @{ leg = 'pair'; ok = ($join.Exit -eq 0 -and $null -ne $paired); sas = "$($sas.words)"; error = $(if ($join.Exit -ne 0) { $join.Err } else { '' }) }
         }

@@ -62,16 +62,35 @@ win_prepare() { # build + pair runs; run_windows_legs calls it once
   win_remote 120 "$WORK/win-fwd.out" -- "$WIN_FWD" -ApiPort "$X_API_PORT" -RelayPort "$X_RELAY_PORT" \
     || fail "tunnel verify failed: $(tail -5 "$WORK/win-fwd.out")"
 
-  # Pair run: OTP and pair code must be fresh (TTL 5 min), so both are produced right before the call.
-  log "windows: login + pair (OTP from this host's backend log, app offers the code)"
+  # Pair run: the OTP must be fresh (TTL 5 min), so it is produced right before the call.
+  log "windows: login + pair (OTP from this host's backend log; windows offers, app joins)"
   local http; http="$(curl -s -o "$WORK/otp-start.body" -w '%{http_code}' -X POST "$API/v1/auth/otp/start" -H 'content-type: application/json' -d "{\"email\":\"$EMAIL\"}")" || http="curl-error"
   [[ "$http" == 204 ]] || fail "otp start failed: http $http body '$(head -c 200 "$WORK/otp-start.body" 2>/dev/null)'"
   local otp="" i; for i in $(seq 1 30); do otp="$(otp_for "$EMAIL")"; [[ "$otp" =~ ^[0-9]{6}$ ]] && break; sleep 0.3; done
   [[ "$otp" =~ ^[0-9]{6}$ ]] || fail "no OTP for the windows device in the backend log"
-  local code; code="$(app_offer L1)"
-  win_remote 300 "$WORK/win-pair.out" -- "$WIN_PEER" -Step pair -Api "$API" -Relay "$RELAY" -Email "$EMAIL" -Otp "$otp" -PairCode "$code" -Name "$WIN_NAME" &
+  # A device of an EXISTING account cannot `pair join` (core/fsync-cli ctx.rs: "not paired yet"): the
+  # windows CLI OFFERS and the already paired app joins. The run's output only arrives at its end, so
+  # the offer event is read over plain ssh from the file the peer writes (read-only probing).
+  local offer_path='$env:TEMP\fsync-cross-os\pair-offer.out'
+  ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" "powershell -NoProfile -Command \"Remove-Item -Force -ErrorAction SilentlyContinue ($offer_path)\"" >/dev/null 2>&1 || true
+  win_remote 300 "$WORK/win-pair.out" -- "$WIN_PEER" -Step pair -Api "$API" -Relay "$RELAY" -Email "$EMAIL" -Otp "$otp" -Name "$WIN_NAME" -DeadlineSec 200 &
   WINPAIR=$!; PIDS+=("$WINPAIR")
-  # Stop early when the windows run already ended (a failed login would otherwise cost the full wait).
+  local code=""
+  for i in $(seq 1 240); do
+    code="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" "powershell -NoProfile -Command \"Get-Content -ErrorAction SilentlyContinue ($offer_path)\"" 2>/dev/null \
+      | python3 -I -c '
+import json, re, sys
+for line in sys.stdin:
+    try: o = json.loads(line.strip())
+    except ValueError: continue
+    if isinstance(o, dict) and o.get("event") == "offer" and re.fullmatch(r"[0-9]{6}", str(o.get("code", ""))): print(o["code"])' | tail -1)"
+    [[ -n "$code" ]] && break
+    kill -0 "$WINPAIR" 2>/dev/null || { wait "$WINPAIR" || true; fail "windows pair run ended before offering a code: $(tail -8 "$WORK/win-pair.out")"; }
+    sleep 1
+  done
+  [[ -n "$code" ]] || fail "no pairing code from the windows device within 240 s"
+  ipc L1 "{\"cmd\":\"pair-join\",\"input\":\"$code\"}" | grep -q '"ok":true' || fail "L1 pair-join rejected"
+  # Stop early when the windows run already ended.
   for i in $(seq 1 600); do
     [[ "$(status_field L1 pairing.phase)" == confirm ]] && break
     kill -0 "$WINPAIR" 2>/dev/null || { wait "$WINPAIR" || true; fail "windows pair run ended before the SAS prompt: $(tail -8 "$WORK/win-pair.out")"; }

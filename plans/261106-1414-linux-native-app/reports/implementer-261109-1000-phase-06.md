@@ -18,3 +18,6 @@ Run 1: local flake before Windows (L1<->devB pairing "network: connection lost",
 
 ## Update 261109 (ref b29b91c)
 Pair run still reports `exit=` empty after plain WaitForExit(); login itself succeeds (`logged_in needs_pairing`). Next fix prepared (uncommitted): `$null = $p.Handle` right after Start-Process (PS 5.1 handle caching), and pair accepts a `logged_in` event as login success when the exit code is unknown. Local L1<->devB pairing flake count: 1 in 5 full runs (run at 8578433: "Pairing failed: network: connection lost"); this run: 0.
+
+## Update 261109 (ref e7956c4, handle fix in)
+ExitCode fix works (login now accepted). Next failure: `pair join` on the Windows CLI -> "this device is not paired yet: run `pair offer` here and `pair join` elsewhere" (core/fsync-cli ctx.rs:73). A device of an existing account (login state needs_pairing) must OFFER; only an already paired device joins (same as devB vs L1 in X1). Redesign prepared (uncommitted): windows `-Step pair` runs `pair offer --yes` writing stdout to %TEMP%\fsync-cross-os\pair-offer.out; the host polls that file over ssh (code validated ^\d{6}$), L1 `pair-join`s, SAS equality still asserted. Pair-flake count: 1 in 6 full runs (unchanged).
