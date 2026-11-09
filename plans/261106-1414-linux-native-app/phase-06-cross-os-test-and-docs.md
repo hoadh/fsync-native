@@ -66,7 +66,7 @@ Modify:
 
 ## Todo List
 - [ ] waso-vm Rig reinstall + setup + doctor green (user)
-- [ ] Build run on waso-vm (BLOCKED 261109: worker has no pwsh, only PS 5.1; scripts adjusted to powershell.exe, needs push + rerun; report implementer-261109-1000-phase-06.md)
+- [x] Build run on waso-vm (PASS 261109 after Perl install; tunnel verify run r261109101828-d7b97c; report implementer-261109-1000-phase-06.md)
 - [ ] Port-forward transport verified from waso-vm
 - [x] X1 local PASS (docs/test-results/linux-cross-os-261109-1628.json)
 - [ ] X2 + X5 via split `remote run`s PASS

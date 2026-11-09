@@ -64,13 +64,20 @@ win_prepare() { # build + pair runs; run_windows_legs calls it once
 
   # Pair run: OTP and pair code must be fresh (TTL 5 min), so both are produced right before the call.
   log "windows: login + pair (OTP from this host's backend log, app offers the code)"
-  curl -fs -X POST "$API/auth/otp/start" -H 'content-type: application/json' -d "{\"email\":\"$EMAIL\"}" >/dev/null || fail "otp start failed"
+  local http; http="$(curl -s -o "$WORK/otp-start.body" -w '%{http_code}' -X POST "$API/v1/auth/otp/start" -H 'content-type: application/json' -d "{\"email\":\"$EMAIL\"}")" || http="curl-error"
+  [[ "$http" == 204 ]] || fail "otp start failed: http $http body '$(head -c 200 "$WORK/otp-start.body" 2>/dev/null)'"
   local otp="" i; for i in $(seq 1 30); do otp="$(otp_for "$EMAIL")"; [[ "$otp" =~ ^[0-9]{6}$ ]] && break; sleep 0.3; done
   [[ "$otp" =~ ^[0-9]{6}$ ]] || fail "no OTP for the windows device in the backend log"
   local code; code="$(app_offer L1)"
   win_remote 300 "$WORK/win-pair.out" -- "$WIN_PEER" -Step pair -Api "$API" -Relay "$RELAY" -Email "$EMAIL" -Otp "$otp" -PairCode "$code" -Name "$WIN_NAME" &
   WINPAIR=$!; PIDS+=("$WINPAIR")
-  wait_status L1 pairing.phase confirm 120
+  # Stop early when the windows run already ended (a failed login would otherwise cost the full wait).
+  for i in $(seq 1 600); do
+    [[ "$(status_field L1 pairing.phase)" == confirm ]] && break
+    kill -0 "$WINPAIR" 2>/dev/null || { wait "$WINPAIR" || true; fail "windows pair run ended before the SAS prompt: $(tail -8 "$WORK/win-pair.out")"; }
+    sleep 0.2
+  done
+  [[ "$(status_field L1 pairing.phase)" == confirm ]] || fail "L1 never reached the SAS prompt"
   local app_sas; app_sas="$(status_field L1 pairing.sas)"
   app_confirm L1
   wait "$WINPAIR" || fail "windows pair run failed: $(tail -8 "$WORK/win-pair.out")"
