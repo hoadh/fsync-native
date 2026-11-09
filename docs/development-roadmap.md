@@ -1,6 +1,6 @@
 # Development Roadmap
 
-Last updated: 2026-10-17. Plan of record: [plans/261013-2029-fsync-native-mvp](../plans/261013-2029-fsync-native-mvp/plan.md). Its phase files still show "pending"; this page is the current status.
+Last updated: 2026-11-09. Plan of record: [plans/261013-2029-fsync-native-mvp](../plans/261013-2029-fsync-native-mvp/plan.md). Its phase files still show "pending"; this page is the current status. The Linux desktop app has its own plan: [plans/261106-1414-linux-native-app](../plans/261106-1414-linux-native-app/plan.md) (table below).
 
 ## Phase Status
 
@@ -24,6 +24,24 @@ Last updated: 2026-10-17. Plan of record: [plans/261013-2029-fsync-native-mvp](.
 | 16 | Release: signing, notarization, auto-update | Not started | Depends on 10, 12, 14. |
 
 Phase names and dependencies follow the MVP plan. Its own status column still reads "pending" or "Partial"; the table above is the current state.
+
+## Linux Desktop App
+
+Plan `261106-1414-linux-native-app`, ADR [014](./adr/014-linux-desktop-app.md). Status as of 2026-11-09: 1 of 7 phases closed (01); phases 02-06 open with LIVE checks.
+
+| Phase | Scope | Status | Notes |
+|-------|-------|--------|-------|
+| 01 | Spike (CXX-Qt on Qt 6.2), scaffold, GNOME test host, ADR 014 draft | Done | Qt 6.2 floor builds; `--smoke` passes on Ubuntu 22.04, Debian 12, Fedora and Arch containers. |
+| 02 | Engine bridge, app shell, single instance, tray, sign-in, pairing, devices, secrets | In progress | Code done, review 9.5/10. Open LIVE: GNOME VM without AppIndicator (tray absent, launcher reaches the window); keyring relaunch keeps node id. |
+| 03 | Clipboard: Wayland data-control, X11 (thin), GNOME manual window, filters, eager inbound | In progress | Implemented. GNOME VM manual send/paste pass (2026-11-07). Open LIVE: Hyprland KeePassXC / Bitwarden copy not sent. |
+| 04a | Eager file inbox, retention, offers, history copy-back | In progress | Code done. Open LIVE: Omarchy file-manager paste, GNOME Nautilus paste of received files. |
+| 04b | Settings, drag-drop send, CLI hotkey binds | In progress | Code done. Open LIVE: Omarchy `SUPER ALT, C` bind and settings after restart; drop from a file manager untested. |
+| 05 | Packaging: PKGBUILD, `.deb`, `.rpm`, AppImage; release guard; install smoke | Done | Container smoke passes for every format (2026-11-07). AppImage on GNOME 50 (xcb) pass. Omarchy `makepkg -si` + autostart pass (2026-11-09). |
+| 06 | Cross-OS test (fsync-cli here and on waso-vm; Windows app GUI) + docs, ADR 014 final | In progress | X1, X2, X5 PASS (2026-11-09, sha 994119f). X3 and X4 (Windows GUI, interactive task) pending. Docs updated 2026-11-09; ADR stays draft until X3/X4. |
+
+Phase 05 is marked "Completed" in the plan's overview table; its phase file says In Progress, and this page follows the phase file.
+
+Linux open items: the Platform emit gate (the app sends `Cli` until the backend and Mac/Windows releases decode `Linux`), the pairing flakes in ADR 014, and the untested desktops (KDE, Sway live, other X11).
 
 ## Open Items (priority order)
 
@@ -54,5 +72,7 @@ Phase names and dependencies follow the MVP plan. Its own status column still re
 | 2026-10-15 | Hardening round 2 merged into local main (`3c405b1`): core redial after peer restart (~2 s), `history_item_reps` and typed `EngineAlreadyRunning`, macOS and Windows copy-back, `/health/otp`, health probe, rollback guard, off-box backups; rollback rehearsal incident (about 5 min API 502) |
 | 2026-10-16 | Core hardening and netns matrix merged into local main (`026fb5a`): offline start from the cached list (7-day bound), fetch retry, staged redial cleanup, CLI `path` tier, clip/2 refusal ack (N8) |
 | 2026-10-17 | Netns N3 and N4 un-quarantined (test relay CA and QAD, `test-relay-ca` feature, release guards); `FsyncError::PeerRefused`; Windows OLE clipboard retries (local main `c429406`) |
+| 2026-11-07 | Linux app: GNOME VM manual clip send and paste pass; packaging smoke green on all formats |
+| 2026-11-09 | Linux app: cross-OS X1, X2 and X5 pass (fsync-cli here and on waso-vm, `--force-relay` leg); docs and ADR 014 updated |
 
 See [project-changelog.md](./project-changelog.md) for details.

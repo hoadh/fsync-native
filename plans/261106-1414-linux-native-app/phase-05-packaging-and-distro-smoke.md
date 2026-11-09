@@ -7,7 +7,7 @@
 - Phase 01 decisions (ADR 014 draft): one binary vs per-distro builds, AppImage Qt (6.2 vs pinned 6.8 LTS); phase 02 `--build-info` + `e2e-control` compile guard; [red team](reports/red-team-261106-1438-plan-review.md) #6 #13 #14 #15
 
 ## Overview
-- Priority: P2. Status: In Progress (implemented and container-verified 2026-11-07; open: Omarchy manual step 9 and the LIVE row). Estimate: 4 d.
+- Priority: P2. Status: Completed (container-verified 2026-11-07; GNOME AppImage LIVE 2026-11-07; Omarchy makepkg + autostart 2026-11-09). Estimate: 4 d.
 - Build shape follows the phase 01 decision (Gate **Qt floor go/no-go**): default one release binary built in `ubuntu:22.04` feeds .deb and .rpm; per-distro builds if the fedora/arch run failed. AppImage uses the Qt chosen in 01. PKGBUILD builds from source on Arch. <!-- red-team 2026-11-06 #13 --> Install + start smoke in clean containers.
 
 ## Key Insights

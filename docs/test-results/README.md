@@ -1,6 +1,6 @@
 # E2E test results
 
-Machine-written metrics from the e2e harness. One file per run: `netns-<YYMMDD-HHMM>.json`.
+Machine-written metrics from the e2e harness. One file per run: `netns-<YYMMDD-HHMM>.json`, and `linux-cross-os-<YYMMDD-HHMM>.json` for the Linux app cross-OS runs.
 
 ## Produce
 
@@ -107,3 +107,10 @@ Computed from byte-counter deltas over the file transfer only (SIZE is the file 
 | mixed | anything else; fails every expectation |
 
 Control traffic is about 30 KB, so the thresholds are meaningful from 1 MiB up (the default sizes are 16 and 64 MiB).
+
+## Linux app cross-OS (phase 06)
+
+`apps/linux/tests/e2e/cross-os-with-windows.sh` writes `linux-cross-os-<YYMMDD-HHMM>.json`: `scope` (X1, X2, X5),
+`git_sha`, per-leg `latency_ms`, `limit_ms`, `sha_ok` and a `note` (clock-skew correction for Windows legs). Gates: text
+clips <= 5 s, file hash equal; Windows file legs are gated at 30 s (owner decision pending, ADR 014).
+Latest full pass: `linux-cross-os-261109-1753.json` (X1, X2, X5 at 994119f). Results table: [ADR 014](../adr/014-linux-desktop-app.md#cross-os-results-phase-06).

@@ -2,6 +2,28 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-11-09 - Linux desktop app, packaging and tolerant Platform codec
+
+Plan `plans/261106-1414-linux-native-app`, ADR [014](./adr/014-linux-desktop-app.md). Branch `feat/linux-app`, not yet merged.
+
+### Added
+- Linux desktop app `apps/linux`: Qt6/QML over Rust (CXX-Qt 0.10.0), calling `FsyncService` directly. Covers sign-in, pairing (code, QR, SAS), devices, clipboard sync (Wayland data-control, X11, GNOME manual window), files (eager inbox up to 20 MiB), history, settings, drag-drop and `--send`, tray, autostart. See [system architecture](./system-architecture.md#linux-app).
+- Packaging: one release binary built in `ubuntu:22.04` (Qt 6.2), shipped as `.deb` (Ubuntu 22.04+, Debian 12+), `.rpm` (Fedora), AppImage and an Arch PKGBUILD (system Qt and OpenSSL). Release guard refuses test features; install smoke runs in clean containers.
+- Core: `BUILT_FEATURES` export for release checks (`e07b967`).
+- Test harness: `apps/linux/tests/e2e/cross-os-with-windows.sh` (X1, X2, X5) and the Windows peer `apps/windows/tests/e2e/cross-os-cli-peer.ps1`, with the reverse-tunnel check `cross-os-port-forward.ps1`.
+
+### Changed
+- `fsync-proto`: `Platform` decodes forward-compatibly. `Linux` is recognised; any other index is kept as `Unknown(n)` and re-encoded unchanged, so a tolerant client never rewrites a newer peer's platform in a signed device list. Known variants keep their old wire bytes (Mac=0, Win=1, Cli=2). The FFI enum is unchanged (`Mac`, `Win`, `Cli`); `Linux` and unknown platforms show as `Cli`.
+- The Linux app announces `Platform::Cli`. `Platform::Linux` stays behind the cargo feature `emit-platform-linux`, off in every build (see [ADR 014](./adr/014-linux-desktop-app.md#platform-emit-gate-future)).
+
+### Upgrade
+- Nothing to do for current Mac, Windows and backend builds: no peer emits `Linux` yet.
+- Before the Platform emit gate opens: the backend and the Mac and Windows apps must carry the tolerant decoder (deploy and release). Not done yet.
+
+### Verification
+- Cross-OS X1, X2 and X5 PASS at `994119f`: `docs/test-results/linux-cross-os-261109-1753.json`, all 12 legs equal by sha256, no echo or duplicate clips. Text clips 51-2973 ms, 3 MB and 8 MiB files 2.1-4.5 s (Windows file legs over the tunnel gated at 10 s; that run used 30 s).
+- Open: X3 and X4 (Windows app GUI), LIVE items on Hyprland and GNOME, two pairing flakes (see ADR 014 "Known issues").
+
 ## 2026-10-17 - QUIC address discovery on both production relays
 
 ### Changed

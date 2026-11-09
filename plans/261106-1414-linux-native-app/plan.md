@@ -23,10 +23,10 @@ Inputs: [brainstorm](../reports/brainstorm-261106-1354-linux-native-app.md), [re
 | [03](phase-03-clipboard-backends.md) | Clipboard: Wayland data-control, thin X11, GNOME manual window, filters, eager inbound, lifecycle (6 d) | In Progress |
 | [04a](phase-04a-files-and-history.md) | Eager file inbox, retention, offers, history copy-back (3 d) | In Progress (code done, review 9.5; LIVE checks open) |
 | [04b](phase-04b-settings-drag-drop-cli-hotkeys.md) | Settings, drag-drop send, CLI hotkey binds (2 d, below MVP cut line) | In Progress (code done, review 9.5; manual Omarchy checks open) |
-| [05](phase-05-packaging-and-distro-smoke.md) | PKGBUILD, .deb, .rpm, AppImage; release guard; install smoke (4 d) | Completed (review 9.5; GNOME AppImage xcb LIVE + Omarchy makepkg/autostart pass) |
-| [06](phase-06-cross-os-test-and-docs.md) | Cross-OS (fsync-cli, Windows app on waso-vm via port-forward) + docs, ADR 014 final (4 d) | Pending |
+| [05](phase-05-packaging-and-distro-smoke.md) | PKGBUILD, .deb, .rpm, AppImage; release guard; install smoke (4 d) | Completed (review 9.5; container smoke, GNOME AppImage xcb LIVE, Omarchy makepkg + autostart pass) |
+| [06](phase-06-cross-os-test-and-docs.md) | Cross-OS (fsync-cli, Windows app on waso-vm via port-forward) + docs, ADR 014 final (4 d) | In Progress (X1, X2, X5 PASS; X3/X4 pending; docs updated, ADR draft until X3/X4) |
 
-Progress: 0/7. Estimate ~29 working days (single dev).
+Progress: 1/7 (01 completed). Estimate ~29 working days (single dev).
 
 # Dependencies
 - Sequential: 01 -> 02 -> 03 -> 04a -> 04b -> 05 -> 06. 03/04a/04b all touch `app/src/bridge/mod.rs`, `main.rs`, `Main.qml`, `tray.rs`: no parallel run.

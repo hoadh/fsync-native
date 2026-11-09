@@ -1,5 +1,5 @@
 # ADR 014 — Linux desktop app: Qt6/QML over CXX-Qt, distro floor, packaging shape
-Status: draft (phase 01 of `plans/261106-1414-linux-native-app`, 2026-11-06). Final after phase 06.
+Status: draft (phase 01 of `plans/261106-1414-linux-native-app`, 2026-11-06). Stays draft until the phase 06 Windows GUI legs (X3, X4) pass; then accepted. Cross-OS results: see "Cross-OS results (phase 06)" below.
 
 ## Context
 fsync has macOS (SwiftUI over UniFFI) and Windows (WinUI 3 over uniffi-bindgen-cs) apps.
@@ -62,6 +62,15 @@ GNOME Shell 50.1 (distro Qt 6.10.2), Hyper-V VM on the WASO host. Used for the G
 The Linux app may emit `Platform::Linux` only after the prod backend and Mac/Windows app
 releases containing the tolerant decoder are deployed and adopted. Until then the cargo
 feature `emit-platform-linux` stays off in every packaged build.
+
+- Current state (2026-11-09): gate closed. The app sends `Platform::Cli` (`app/src/engine/boot.rs`);
+  `emit-platform-linux` is off by default (`app/Cargo.toml`).
+- The tolerant decoder is in `fsync-proto` (`platform.rs`, commit c2d1e4f): `Linux` decodes, any
+  other index is kept as `Unknown(n)` and re-encoded unchanged. The FFI shows `Linux` and unknown
+  platforms as `Cli`.
+- Not yet done: no deploy of the backend and no Mac/Windows release carrying this decoder is
+  recorded in this plan. Opening the gate needs both, plus adoption.
+- Cross-OS evidence (phase 06) ran with the app emitting `Cli`; the Windows peer accepted it unchanged.
 
 ## Untested desktops
 KDE Plasma 6, Sway live sessions, X11 desktops other than Xvfb, Thunar/KWallet integration.
@@ -485,5 +494,65 @@ Docker starts; `smoke-install.sh fedora <release binary with e2e-control>` exits
 - **Results:** ubuntu-2204, debian-12, ubuntu-2404 deb, fedora rpm, appimage (ubuntu:22.04,
   fedora, arch): all exit 0 after the round; arch PKGBUILD (local source, system OpenSSL 3.6.5, Qt 6.12.0): pass 12/12 + `PASS namcap: no errors`, package 13 MB, build 20 min + check 8 min; the makepkg `$srcdir` warning is gone. namcap warnings now also list `gcc-libs` "may not be needed" (kept: provides libgcc/libstdc++).
 
+## Cross-OS results (phase 06)
+Evidence: `docs/test-results/linux-cross-os-261109-1753.json` (scope X1+X2+X5, git sha 994119f,
+all 12 legs sha256 equal, no echo or duplicate clips). Earlier runs: `linux-cross-os-261109-1628.json`
+(X1 only, 5f54542) and `linux-cross-os-261109-1741.json` (X1+X2, 994119f). Harness:
+`apps/linux/tests/e2e/cross-os-with-windows.sh` (Linux side), `apps/windows/tests/e2e/cross-os-cli-peer.ps1`
+(Windows side, headless `fsync-cli`, Windows PowerShell 5.1 on waso-vm).
+
+| Leg | Path | Kind | Latency (ms) | Limit (ms) | Note |
+|---|---|---|---|---|---|
+| X1 | Linux app -> fsync-cli (this host) | text | 51 | 5000 | |
+| X1 | fsync-cli -> Linux app | text | 79 | 5000 | |
+| X1 | fsync-cli -> Linux app | file, 3 MB | 2239 | 5000 | accept scripted |
+| X1 | Linux app -> fsync-cli | file, 3 MB | 2125 | 5000 | pick-device, fetch |
+| X2 | Linux app -> fsync-cli on waso-vm | text | 2973 | 5000 | clock skew corrected, +-1127 |
+| X2 | fsync-cli on waso-vm -> Linux app | text | 1067 | 5000 | clock skew corrected, +-1052 |
+| X2 | Linux app -> waso-vm | file, 3 MB | 4256 | 30000 | hash equal |
+| X2 | waso-vm -> Linux app | file, 3 MB | 4471 | 30000 | accept scripted, hash equal |
+| X5 | Linux app -> waso-vm, `--force-relay` | text | 2706 | 5000 | clock skew corrected, +-395 |
+| X5 | waso-vm -> Linux app, `--force-relay` | text | 424 | 5000 | clock skew corrected, +-410 |
+| X5 | Linux app -> waso-vm, `--force-relay` | file, 8 MiB | 3229 | 30000 | hash equal |
+| X5 | waso-vm -> Linux app, `--force-relay` | file, 8 MiB | 4478 | 30000 | accept scripted, hash equal |
+
+Pending (not run): X3 (Linux app <-> Windows app GUI, text/html/png both ways, file clip both ways) and
+X4 (pairing in the Windows GUI, SAS words equal). Both need `taskMode: interactive` on waso-vm, which is
+machine-wide and must be restored afterwards, or the manual checklist. Until they pass, this ADR stays draft.
+
+### Deviations and findings (owner decision needed)
+- **File legs over Windows are gated at 10 s, not 5 s.** The spec gates clips at 5 s and file hash
+  equality only; file legs over the ssh tunnel measure 3.2-5.0 s (one earlier X2 run hit 5014 ms). The
+  recorded 1753 run used a 30 s gate (column above); the harness now gates file legs at 10 s (controller
+  decision 2026-11-09). Text legs and all X1 legs keep 5 s.
+- **Transport is a reverse SSH tunnel** (`ssh -R` opened by this host, waso-vm's own `127.0.0.1` forwarded
+  back), not `netsh portproxy`. `cross-os-port-forward.ps1` only verifies it. Relay legs run over TCP, so
+  QUIC address discovery is not forwarded. The tunnel lives for one run and leaves nothing on waso-vm.
+- **A device of an existing account cannot join.** The Windows CLI must `pair offer`; the Linux app joins.
+  The offer code reaches the host by reading a file over ssh (`%TEMP%\fsync-cross-os\pair-offer.out`),
+  because `remote run` returns output only at the end.
+- **OTP is not bound to the requesting client** (backend `otp.rs`: keyed by email and code hash, single use,
+  5 min TTL). The host requests it, reads it from the dev backend log and passes it to the Windows run.
+  `login --code` does not start a new OTP.
+- Windows runs use **Windows PowerShell 5.1** (waso-vm has no pwsh 7). Builds need Strawberry Perl and NASM
+  for vendored OpenSSL (`apps/windows/README.md`).
+- Windows clocks run about 10 s ahead of this host. Windows legs subtract a skew estimated from min-RTT ssh
+  samples; the uncertainty is in each `note`.
+
+### Known issues (pairing flakes, not yet root-caused)
+Both happen on a just-started endpoint that the relay has not yet made addressable over the TCP-only tunnel.
+Both passed on rerun. Not confirmed as a product bug or a harness artefact.
+
+| Flake | Seen | Symptom |
+|---|---|---|
+| Local L1 <-> devB pairing (no Windows involved) | about 1 in 12 full runs | "Pairing failed: network: connection lost" right after the joiner signs in |
+| Windows offer / Linux join | 2 of 5 attempts, once each | one run hung 120 s with no progress (an orphan Windows `pair offer` was left); another failed with "Can't reach the fsync server (No addressing information available)" |
+
+An orphan Windows `pair offer` can linger up to 200 s after a failed pair run.
+
 ## Open
-- Phase 06 appends cross-OS results (real desktops, the LIVE rows above).
+- X3 and X4 (above). Then set status to accepted.
+- LIVE items carried from phases 02-05 and the Hyprland check (KeePassXC / Bitwarden not sent): tables above.
+- Pairing flakes: root cause, and whether the TCP-only relay path is the trigger.
+- Platform emit gate: the backend deploy and the Mac/Windows releases with the tolerant decoder.
+- Confirm no tunnel process or portproxy rule remains on waso-vm and this host (phase 06 step 8).
