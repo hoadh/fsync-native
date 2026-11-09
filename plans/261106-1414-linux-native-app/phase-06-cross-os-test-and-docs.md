@@ -66,9 +66,9 @@ Modify:
 
 ## Todo List
 - [ ] waso-vm Rig reinstall + setup + doctor green (user)
-- [ ] Build run on waso-vm
+- [ ] Build run on waso-vm (BLOCKED 261109: worker has no pwsh, only PS 5.1; scripts adjusted to powershell.exe, needs push + rerun; report implementer-261109-1000-phase-06.md)
 - [ ] Port-forward transport verified from waso-vm
-- [ ] X1 local PASS
+- [x] X1 local PASS (docs/test-results/linux-cross-os-261109-1628.json)
 - [ ] X2 + X5 via split `remote run`s PASS
 - [ ] X3 + X4 (interactive or manual) PASS, evidence recorded; taskMode restored
 - [ ] LIVE items (Hyprland, GNOME VM, waso-vm) resolved; rest in ADR untested list

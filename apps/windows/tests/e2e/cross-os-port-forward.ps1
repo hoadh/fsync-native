@@ -4,7 +4,7 @@
 # 127.0.0.1:<RelayPort> reach the dev backend and relay on the Linux host. The Windows peer then uses
 # the SAME http://127.0.0.1:<port> URLs as the Linux apps (plain http is accepted only for loopback;
 # no override is added anywhere). TCP only: QUIC address discovery is not forwarded, so relay legs
-# run over TCP. This script changes nothing; it only checks. PowerShell 7, idempotent.
+# run over TCP. This script changes nothing; it only checks. Windows PowerShell 5.1 or 7, idempotent.
 #
 #   cross-os-port-forward.ps1 -ApiPort 18080 -RelayPort 18090
 # Exit 0: GET /health answers 200 and the relay port accepts a TCP connection. Output: one JSON line.

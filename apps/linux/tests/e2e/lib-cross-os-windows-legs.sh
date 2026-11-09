@@ -22,7 +22,7 @@ WIN_SSH="$(python3 -I -c 'import json,os,sys; d=json.load(open(os.path.expanduse
 win_remote() {
   local t="$1" out="$2"; shift 3
   win_health_gate
-  node "$REMOTE_JS" run "$WIN_MACHINE" --ref "$REF" --timeout "$t" -- pwsh -NoProfile -File "$@" >"$out" 2>&1
+  node "$REMOTE_JS" run "$WIN_MACHINE" --ref "$REF" --timeout "$t" -- powershell -NoProfile -ExecutionPolicy Bypass -File "$@" >"$out" 2>&1
 }
 
 # win_health_gate: through the reverse tunnel, waso-vm's own 127.0.0.1:API must answer /health (ssh, no Rig).

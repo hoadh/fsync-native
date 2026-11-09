@@ -59,7 +59,7 @@ function Invoke-FsyncCli([string[]]$cliArgs, [int]$timeoutSec) {
     $so = Join-Path $work ([Guid]::NewGuid().ToString('N') + '.out'); $se = "$so.err"
     $p = Start-Process $cli -ArgumentList ($common + $cliArgs) -PassThru -WindowStyle Hidden -RedirectStandardOutput $so -RedirectStandardError $se
     $timedOut = -not $p.WaitForExit($timeoutSec * 1000)
-    if ($timedOut) { try { $p.Kill($true) } catch {} }
+    if ($timedOut) { try { Stop-Process -Id $p.Id -Force -ErrorAction Stop } catch {} }
     $events = @(Get-Content $so -ErrorAction SilentlyContinue | Where-Object { $_ -like '{*' } | ForEach-Object { try { $_ | ConvertFrom-Json } catch {} })
     $err = (Get-Content $se -ErrorAction SilentlyContinue | Select-Object -Last 3) -join ' | '
     @{ Exit = $(if ($timedOut) { -1 } else { $p.ExitCode }); Events = $events; Err = $err; TimedOut = $timedOut }
