@@ -78,6 +78,7 @@ EngineConfig { data_dir, api_base, relay_url: String?, device_name, platform: Pl
                device_secret: bytes32, history_key: bytes32, force_relay: Bool, allow_insecure_http: Bool,
                relay_urls: [String] = [] }   // last on purpose: uniffi records are positional
 Platform { Mac, Win, Cli }      ClipKind { Text, Rich, Image, Files }
+                                // core also decodes Linux and unknown platforms (ADR 014); FFI shows them as Cli
 SessionTokens { access, refresh, account_id }
 Device { node_id, name, platform, status: DeviceStatus{Offline,Lan,Relay}, online: Bool, last_seen_ms, is_self }
 RepInfo { mime, size }   FileInfo { file_id, name, rel_path, size }

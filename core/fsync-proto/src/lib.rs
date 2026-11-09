@@ -11,6 +11,7 @@ pub mod frame;
 pub mod names;
 pub mod node_id;
 pub mod pairing;
+pub mod platform;
 pub mod presence;
 pub mod shape;
 pub mod sig;

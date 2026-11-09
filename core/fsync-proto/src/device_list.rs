@@ -13,12 +13,8 @@ use uuid::Uuid;
 pub const DEVLIST_DOMAIN: &[u8] = b"fsync-devlist-v1";
 pub const DEVLIST_VERSION: u8 = 1;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Platform {
-    Mac,
-    Win,
-    Cli,
-}
+/// Forward-compatible platform tag (see `crate::platform`).
+pub use crate::platform::Platform;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeviceEntry {
