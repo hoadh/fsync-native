@@ -15,3 +15,6 @@ Build run on waso-vm PASSED (cargo + vendored OpenSSL), verify-only run PASSED (
 
 ## Update 261109 (ref 8578433)
 Run 1: local flake before Windows (L1<->devB pairing "network: connection lost", the known just-signed-in joiner flake; rerun passed that stage). Run 2: Windows login WORKED (stdout `logged_in needs_pairing`), but cli-peer treated it as failed: in PS 5.1 `Process.ExitCode` is $null after `WaitForExit(ms)` (exit= empty), so `$login.Exit -ne 0`. Fix prepared (uncommitted): plain `$p.WaitForExit()` after the timed wait + [int] coercion (-2 when still null). CLI `login --code` does NOT start a new OTP (cmd_account.rs: start only when --code absent), so no OTP invalidation. X2/X5 not reached yet.
+
+## Update 261109 (ref b29b91c)
+Pair run still reports `exit=` empty after plain WaitForExit(); login itself succeeds (`logged_in needs_pairing`). Next fix prepared (uncommitted): `$null = $p.Handle` right after Start-Process (PS 5.1 handle caching), and pair accepts a `logged_in` event as login success when the exit code is unknown. Local L1<->devB pairing flake count: 1 in 5 full runs (run at 8578433: "Pairing failed: network: connection lost"); this run: 0.

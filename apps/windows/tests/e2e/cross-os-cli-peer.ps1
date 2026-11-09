@@ -58,6 +58,7 @@ function Invoke-FsyncCli([string[]]$cliArgs, [int]$timeoutSec) {
     if ($ForceRelay) { $common += '--force-relay' }
     $so = Join-Path $work ([Guid]::NewGuid().ToString('N') + '.out'); $se = "$so.err"
     $p = Start-Process $cli -ArgumentList ($common + $cliArgs) -PassThru -WindowStyle Hidden -RedirectStandardOutput $so -RedirectStandardError $se
+    $null = $p.Handle   # PS 5.1: caching the handle is what makes ExitCode readable after exit
     $timedOut = -not $p.WaitForExit($timeoutSec * 1000)
     # PS 5.1: ExitCode stays $null after WaitForExit(ms) unless the plain WaitForExit() runs too.
     if (-not $timedOut) { $p.WaitForExit() }
