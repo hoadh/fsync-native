@@ -6,6 +6,8 @@
 #
 #   cross-os-with-windows.sh --local-only    X1: Linux app <-> fsync-cli on THIS host (no Windows, no Rig)
 #   cross-os-with-windows.sh                 X1 + X2 (+ X5 with X5=1): Linux app <-> fsync-cli on waso-vm
+#   X3=1 cross-os-with-windows.sh            X1 + X4 + X3: Linux app <-> the Windows GUI app on waso-vm (needs an
+#                                            INTERACTIVE Rig task and a logged-on dev user; SKIP_WIN_BUILD=1 skips the app build)
 #
 # X1: text both ways, file push both ways (sha256 equal), latency per leg <= 5 s, no echo/duplicate
 # clips. Result: docs/test-results/linux-cross-os-<yymmdd-hhmm>.json (override: RESULT_FILE).
@@ -35,6 +37,7 @@ BUILD="${CARGO_TARGET_DIR:-$ROOT/target}"
 mkdir -p "$BUILD" && BUILD="$(cd "$BUILD" && pwd)"
 LIN="$ROOT/apps/linux"
 APP_BIN="$LIN/target/debug/fsync-linux"
+OFFER_BIN="$LIN/target/debug/examples/clip_offer"
 STAMP="$(date +%y%m%d-%H%M)"
 RESULT_FILE="${RESULT_FILE:-$ROOT/docs/test-results/linux-cross-os-$STAMP.json}"
 MAX_S=5
@@ -87,6 +90,8 @@ if [[ -z "${SKIP_BUILD:-}" ]]; then
   (cd "$ROOT" && cargo build --release -p fsync-backend -p fsync-cli)
   (cd "$ROOT/spikes/iroh-discovery" && CARGO_TARGET_DIR="$BUILD/spike" cargo build --release)
   (cd "$LIN" && QMAKE="${QMAKE:-/usr/bin/qmake6}" cargo build --features e2e-control)
+  # X3 offers html/png/file clips from a helper that owns a multi-MIME selection (wl-copy offers one type).
+  [[ -z "${X3:-}" ]] || (cd "$LIN" && QMAKE="${QMAKE:-/usr/bin/qmake6}" cargo build --features e2e-control --example clip_offer -p fsync-linux-platform)
 fi
 CLI="$BUILD/release/fsync-cli"; BACKEND="$BUILD/release/fsync-backend"; SPIKE="$BUILD/spike/release/iroh-discovery-spike"
 for b in "$CLI" "$BACKEND" "$SPIKE" "$APP_BIN"; do [[ -x "$b" ]] || fail "missing binary $b"; done
@@ -116,6 +121,8 @@ RELAY="$(sed -n 's/^RELAY //p' "$WORK/relay.log" | head -1)"
 TUNNEL_PID=""
 if [[ $LOCAL_ONLY -eq 0 ]]; then
   . "$HERE/lib-cross-os-windows-legs.sh"
+  . "$HERE/lib-cross-os-gui-legs.sh"
+  [[ -z "${X3:-}" || -x "$OFFER_BIN" ]] || { echo "[e2e] missing $OFFER_BIN (build without SKIP_BUILD=1 for X3)" >&2; exit 2; }
   log "reverse tunnel: $WIN_SSH 127.0.0.1:{$API_PORT,$RELAY_PORT} -> this host"
   setsid ssh -N -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 \
     -R "127.0.0.1:$API_PORT:127.0.0.1:$API_PORT" -R "127.0.0.1:$RELAY_PORT:127.0.0.1:$RELAY_PORT" "$WIN_SSH" \
@@ -265,7 +272,9 @@ assert_eq "$(history_count L1 "$IN")" 1 "history items for the received text"
 assert_eq "$(history_count L1 "$TXT")" 1 "history items for the copied text"
 
 # ==== X2 / X5: Linux app <-> fsync-cli on waso-vm ===============================================
-if [[ $LOCAL_ONLY -eq 0 ]]; then run_windows_legs; fi
+if [[ $LOCAL_ONLY -eq 0 ]]; then
+  if [[ -n "${X3:-}" ]]; then run_windows_gui_legs; else run_windows_legs; fi
+fi
 
 # ---- result file ------------------------------------------------------------------------------
 mkdir -p "$(dirname "$RESULT_FILE")"
@@ -278,7 +287,7 @@ for line in open(legs_f):
     legs.append({"id": i, "direction": d, "kind": k, "latency_ms": int(lat), "limit_ms": int(lim), "sha_ok": ok == "true", "note": note})
 res = {
     "run": "linux-cross-os", "git_sha": sha, "date": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
-    "scope": "X1" if local_only == "1" else "X1+X2" + ("+X5" if any(l["id"].startswith("x5-") for l in legs) else ""),
+    "scope": "X1" if local_only == "1" else ("X1+X4+X3" if any(l["id"].startswith("x3-") for l in legs) else "X1+X2" + ("+X5" if any(l["id"].startswith("x5-") for l in legs) else "")),
     "threshold_ms": int(max_s) * 1000, "checks": {"no_echo_or_duplicates": True, "latency_within_threshold": all(l["latency_ms"] <= l["limit_ms"] for l in legs)},
     "legs": legs,
 }
