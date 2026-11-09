@@ -67,9 +67,9 @@ Modify:
 ## Todo List
 - [ ] waso-vm Rig reinstall + setup + doctor green (user)
 - [x] Build run on waso-vm (PASS 261109 after Perl install; tunnel verify run r261109101828-d7b97c; report implementer-261109-1000-phase-06.md)
-- [ ] Port-forward transport verified from waso-vm
+- [x] Port-forward transport verified from waso-vm (reverse ssh -R tunnel instead; verify-only run PASS, docs/test-results/linux-cross-os-261109-1753.json)
 - [x] X1 local PASS (docs/test-results/linux-cross-os-261109-1628.json)
-- [ ] X2 + X5 via split `remote run`s PASS
+- [x] X2 + X5 via split `remote run`s PASS (docs/test-results/linux-cross-os-261109-1753.json, ref 994119f)
 - [ ] X3 + X4 (interactive or manual) PASS, evidence recorded; taskMode restored
 - [ ] LIVE items (Hyprland, GNOME VM, waso-vm) resolved; rest in ADR untested list
 - [ ] Docs + ADR 014 final (emit gate, lifecycle policy, untested list)

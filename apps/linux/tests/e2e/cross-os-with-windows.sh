@@ -72,10 +72,13 @@ now_ms() { date +%s%3N; }
 sha() { sha256sum | cut -d' ' -f1; }
 make_file() { mkdir -p "$(dirname "$1")"; head -c "$2" /dev/urandom >"$1"; }
 # leg ID DIRECTION KIND LATENCY_MS SHA_OK NOTE: records the leg; the latency gate is applied here.
+# LEG_MAX_MS overrides the gate (default 5 s: clips, and every X1 leg; the spec gates clips, and file
+# legs across the ssh tunnel are only recorded against a looser bound).
 leg() {
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" "${6:-}" >>"$LEGS"
-  log "leg $1 ($2, $3): ${4} ms, sha_ok=$5 ${6:-}"
-  [[ "$4" -le $((MAX_S * 1000)) ]] || fail "leg $1 latency $4 ms is over ${MAX_S} s"
+  local limit="${LEG_MAX_MS:-$((MAX_S * 1000))}"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" "${6:-}" "$limit" >>"$LEGS"
+  log "leg $1 ($2, $3): ${4} ms (limit ${limit}), sha_ok=$5 ${6:-}"
+  [[ "$4" -le "$limit" ]] || fail "leg $1 latency $4 ms is over ${limit} ms"
 }
 
 # ---- build ----------------------------------------------------------------------------------
@@ -271,12 +274,12 @@ import json, sys, datetime
 legs_f, out, sha, local_only, max_s = sys.argv[1:6]
 legs = []
 for line in open(legs_f):
-    i, d, k, lat, ok, note = (line.rstrip("\n").split("\t") + [""] * 6)[:6]
-    legs.append({"id": i, "direction": d, "kind": k, "latency_ms": int(lat), "sha_ok": ok == "true", "note": note})
+    i, d, k, lat, ok, note, lim = (line.rstrip("\n").split("\t") + [""] * 7)[:7]
+    legs.append({"id": i, "direction": d, "kind": k, "latency_ms": int(lat), "limit_ms": int(lim), "sha_ok": ok == "true", "note": note})
 res = {
     "run": "linux-cross-os", "git_sha": sha, "date": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
     "scope": "X1" if local_only == "1" else "X1+X2" + ("+X5" if any(l["id"].startswith("x5-") for l in legs) else ""),
-    "threshold_ms": int(max_s) * 1000, "checks": {"no_echo_or_duplicates": True, "latency_within_threshold": all(l["latency_ms"] <= int(max_s) * 1000 for l in legs)},
+    "threshold_ms": int(max_s) * 1000, "checks": {"no_echo_or_duplicates": True, "latency_within_threshold": all(l["latency_ms"] <= l["limit_ms"] for l in legs)},
     "legs": legs,
 }
 json.dump(res, open(out, "w"), indent=2); open(out, "a").write("\n")

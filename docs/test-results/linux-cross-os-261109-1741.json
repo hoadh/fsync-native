@@ -1,0 +1,77 @@
+{
+  "run": "linux-cross-os",
+  "git_sha": "994119f",
+  "date": "2026-11-09T17:43:22+07:00",
+  "scope": "X1+X2",
+  "threshold_ms": 5000,
+  "checks": {
+    "no_echo_or_duplicates": true,
+    "latency_within_threshold": true
+  },
+  "legs": [
+    {
+      "id": "x1-text-app-to-cli",
+      "direction": "app-to-cli",
+      "kind": "text",
+      "latency_ms": 30,
+      "sha_ok": true,
+      "note": ""
+    },
+    {
+      "id": "x1-text-cli-to-app",
+      "direction": "cli-to-app",
+      "kind": "text",
+      "latency_ms": 33,
+      "sha_ok": true,
+      "note": ""
+    },
+    {
+      "id": "x1-file-cli-to-app",
+      "direction": "cli-to-app",
+      "kind": "file",
+      "latency_ms": 2624,
+      "sha_ok": true,
+      "note": "3 MB; accept step is scripted (offer-accept), pending after 1587 ms"
+    },
+    {
+      "id": "x1-file-app-to-cli",
+      "direction": "app-to-cli",
+      "kind": "file",
+      "latency_ms": 2119,
+      "sha_ok": true,
+      "note": "3 MB, pick-device to fetch done"
+    },
+    {
+      "id": "x2-text-app-to-win",
+      "direction": "app-to-win",
+      "kind": "text",
+      "latency_ms": 3195,
+      "sha_ok": true,
+      "note": "cross-clock, skew 10319 ms corrected (+-901 ms)"
+    },
+    {
+      "id": "x2-text-win-to-app",
+      "direction": "win-to-app",
+      "kind": "text",
+      "latency_ms": 924,
+      "sha_ok": true,
+      "note": "cross-clock, skew 10319 ms corrected (+-900 ms)"
+    },
+    {
+      "id": "x2-file-app-to-win",
+      "direction": "app-to-win",
+      "kind": "file",
+      "latency_ms": 4383,
+      "sha_ok": true,
+      "note": "3000000 bytes; cross-clock, skew 10337 ms corrected (+-919 ms)"
+    },
+    {
+      "id": "x2-file-win-to-app",
+      "direction": "win-to-app",
+      "kind": "file",
+      "latency_ms": 4286,
+      "sha_ok": true,
+      "note": "3000000 bytes; accept step scripted; cross-clock, skew 10395 ms corrected (+-976 ms)"
+    }
+  ]
+}
