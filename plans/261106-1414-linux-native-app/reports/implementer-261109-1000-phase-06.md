@@ -1,0 +1,4 @@
+# Phase 06 scripts: implementer report (261109)
+Status: X1 PASS locally (docs/test-results/linux-cross-os-261109-1625.json: text 38/64 ms, file 2879/2124 ms, sha256 equal, no echo/dup). Windows legs written, NOT run (no pwsh here; ps1 not parse-checked). Not committed.
+Files: apps/linux/tests/e2e/{cross-os-with-windows.sh,lib-cross-os-windows-legs.sh}, apps/windows/tests/e2e/{cross-os-cli-peer.ps1,cross-os-port-forward.ps1}, docs/test-results/linux-cross-os-261109-1625.json.
+OTP: not bound to client (backend otp.rs: keyed by email+code hash, IP only rate-limited, single use, TTL 5 min). Host calls /auth/otp/start, reads OTP from backend log, passes -Otp.
