@@ -1,0 +1,52 @@
+# Linux desktop app (Qt6/QML + CXX-Qt). Own workspace so the root `cargo test --workspace`
+# never needs Qt. Core crates come in by path; keep shared crate versions equal to the root
+# Cargo.lock (scripts/check-lock-drift.sh).
+[workspace]
+resolver = "3"
+members = ["platform", "app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "UNLICENSED"
+publish = false
+
+[workspace.dependencies]
+fsync-core = { path = "../../core/fsync-core" }
+fsync-proto = { path = "../../core/fsync-proto" }
+fsync-linux-platform = { path = "platform" }
+# Exact pins: CXX-Qt changes its bridge syntax between minors.
+cxx = "1.0.176"
+cxx-qt = "=0.10.0"
+cxx-qt-lib = { version = "=0.10.0", features = ["qt_gui", "qt_qml", "qt_quickcontrols"] }
+cxx-qt-build = "=0.10.0"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+thiserror = "2"
+anyhow = "1"
+zeroize = "1"
+tempfile = "3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+blake3 = "1"
+rustix = { version = "1", features = ["fs", "net", "process", "system"] }
+# Exact pin: pre-1.0 API churn. Pure-Rust crypto, tokio runtime (no openssl).
+oo7 = { version = "=0.6.0", default-features = false, features = ["tokio", "native_crypto"] }
+notify-rust = { version = "4.18.2", default-features = false, features = ["z"] }
+# StatusNotifierItem tray; blocking API on its own thread (zbus on tokio).
+ksni = { version = "0.3.7", features = ["blocking"] }
+qrcode = { version = "0.14", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png"] }
+base64 = "0.22"
+# Clipboard backends: raw Wayland data-control (spike A: wl-clipboard-rs cannot stop or bound a
+# serve loop, ADR 014) and a thin pure-Rust X11 client (no libxcb).
+wayland-client = "0.31.15"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
+x11rb = { version = "0.14", features = ["xfixes", "res"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "std"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
