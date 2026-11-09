@@ -12,3 +12,6 @@ Build run reached cargo and failed (run r261109093248-008d97): openssl-src needs
 
 ## Update 261109 (ref a5f09f8, Perl installed)
 Build run on waso-vm PASSED (cargo + vendored OpenSSL), verify-only run PASSED ({"api_health":true,"relay_tcp":true} through the reverse tunnel, run r261109101828-d7b97c). Bug found + fixed on the Linux side: OTP start URL needs the /v1 prefix (`$API/v1/auth/otp/start`, was 404). Pair run (r261109101830-81be8c) failed in 2 s: `login failed:` with EMPTY stderr tail; cause not visible. Prepared (uncommitted): cli-peer error text now carries exit code + stderr and stdout tails; Linux side stops waiting as soon as the pair run ends. Needs push + rerun to see the login error. X2/X5 not reached.
+
+## Update 261109 (ref 8578433)
+Run 1: local flake before Windows (L1<->devB pairing "network: connection lost", the known just-signed-in joiner flake; rerun passed that stage). Run 2: Windows login WORKED (stdout `logged_in needs_pairing`), but cli-peer treated it as failed: in PS 5.1 `Process.ExitCode` is $null after `WaitForExit(ms)` (exit= empty), so `$login.Exit -ne 0`. Fix prepared (uncommitted): plain `$p.WaitForExit()` after the timed wait + [int] coercion (-2 when still null). CLI `login --code` does NOT start a new OTP (cmd_account.rs: start only when --code absent), so no OTP invalidation. X2/X5 not reached yet.

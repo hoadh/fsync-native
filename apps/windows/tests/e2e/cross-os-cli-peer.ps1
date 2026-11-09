@@ -59,13 +59,15 @@ function Invoke-FsyncCli([string[]]$cliArgs, [int]$timeoutSec) {
     $so = Join-Path $work ([Guid]::NewGuid().ToString('N') + '.out'); $se = "$so.err"
     $p = Start-Process $cli -ArgumentList ($common + $cliArgs) -PassThru -WindowStyle Hidden -RedirectStandardOutput $so -RedirectStandardError $se
     $timedOut = -not $p.WaitForExit($timeoutSec * 1000)
+    # PS 5.1: ExitCode stays $null after WaitForExit(ms) unless the plain WaitForExit() runs too.
+    if (-not $timedOut) { $p.WaitForExit() }
     if ($timedOut) { try { Stop-Process -Id $p.Id -Force -ErrorAction Stop } catch {} }
     $events = @(Get-Content $so -ErrorAction SilentlyContinue | Where-Object { $_ -like '{*' } | ForEach-Object { try { $_ | ConvertFrom-Json } catch {} })
     # stderr tail plus stdout tail (the CLI reports some failures as JSON on stdout) and the exit code.
     $errTail = (Get-Content $se -ErrorAction SilentlyContinue | Select-Object -Last 3) -join ' | '
     $outTail = (Get-Content $so -ErrorAction SilentlyContinue | Select-Object -Last 3) -join ' | '
     $err = "exit=$(if ($timedOut) { 'timeout' } else { $p.ExitCode }) stderr=[$errTail] stdout=[$outTail]"
-    @{ Exit = $(if ($timedOut) { -1 } else { $p.ExitCode }); Events = $events; Err = $err; TimedOut = $timedOut }
+    @{ Exit = $(if ($timedOut) { -1 } elseif ($null -eq $p.ExitCode) { -2 } else { [int]$p.ExitCode }); Events = $events; Err = $err; TimedOut = $timedOut }
 }
 function Get-Event($r, [string]$name) { $r.Events | Where-Object { $_.event -eq $name } | Select-Object -Last 1 }
 
