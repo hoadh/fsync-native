@@ -39,6 +39,16 @@ deploy/updates/       # static hosting (object storage + CDN) layout: /mac/{beta
 4. Release runbook: tagging, promote, hotfix, key rotation, revoked-cert procedure.
 5. Dry-run full release to beta; update from previous beta build both OS.
 6. Crash reporting (if ADR 006 approved, opt-in) wired before stable.
+7. Linux release supply chain (deferred here from the Linux app review, phase 05 low L5; ADR 014):
+   - Pin the container base images by digest for releases (`ubuntu:22.04` in `build.Dockerfile` /
+     `release.Dockerfile`, `fedora:latest` and `archlinux:latest` in the smoke and run images), not
+     floating tags.
+   - Pin `rustup-init` (version + sha256) instead of fetching the unpinned script.
+   - Add `--proto-redir '=https'` to every `curl --proto '=https'` download.
+   - linuxdeploy and its Qt plugin are trust-on-first-use (sha256 pinned, no upstream signature):
+     re-verify on each tag bump, or build them from a pinned source commit.
+   - Sign `SHA256SUMS` of the Linux artifacts (review L7), and run `updpkgsums` on the PKGBUILD once
+     `_commit` is a real release commit (pacman >= 6.1 git checksum instead of `SKIP`).
 
 ## Todo List
 - [ ] Mac signing + notarization CI
@@ -48,6 +58,7 @@ deploy/updates/       # static hosting (object storage + CDN) layout: /mac/{beta
 - [ ] Update hosting + channels
 - [ ] Runbook
 - [ ] Beta dry-run with update
+- [ ] Linux supply chain (L5): base image digests, pinned rustup-init, `--proto-redir`, linuxdeploy trust, signed SHA256SUMS, PKGBUILD git checksum
 
 ## Success Criteria
 - Fresh install on clean macOS & Windows with no Gatekeeper/SmartScreen block (SmartScreen reputation may need time — document); beta N → N+1 auto-update works on both OS; release from tag < 60 min unattended.

@@ -41,6 +41,8 @@ Plan `261106-1414-linux-native-app`, ADR [014](./adr/014-linux-desktop-app.md). 
 
 Phase 05 is marked "Completed" in the plan's overview table; its phase file says In Progress, and this page follows the phase file.
 
+Follow-ups plan `261110-2344-linux-app-follow-ups`: phase 04 (packaging hardening, license `MIT OR Apache-2.0`, maintainer) implemented on `fix/packaging-hardening` (2026-11-11), review pending. Review low L5 (supply-chain pinning) moved to MVP phase 16.
+
 Linux open items: the Platform emit gate (the app sends `Cli` until the backend and Mac/Windows releases decode `Linux`), the pairing flakes in ADR 014, the untested desktops (KDE, Sway live, other X11), the X4 QR-text pairing path (untested), and an offline account device that delays each following Windows publish by up to 7 s (product issue, open).
 
 ## Open Items (priority order)
@@ -75,5 +77,6 @@ Linux open items: the Platform emit gate (the app sends `Cli` until the backend 
 | 2026-11-07 | Linux app: GNOME VM manual clip send and paste pass; packaging smoke green on all formats |
 | 2026-11-09 | Linux app: cross-OS X1, X2 and X5 pass (fsync-cli here and on waso-vm, `--force-relay` leg); docs and ADR 014 updated |
 | 2026-11-10 | Linux app: cross-OS X3 and X4 pass against the Windows app on waso-vm (sha 312a67a); ADR 014 accepted. Windows CF_DIBV5 3 px shift fixed |
+| 2026-11-11 | Repo licensed `MIT OR Apache-2.0`; Linux packaging hardening (git sha in the PKGBUILD, one asset list, maintainer, licenses in every package; plan 261110 phase 04) |
 
 See [project-changelog.md](./project-changelog.md) for details.
