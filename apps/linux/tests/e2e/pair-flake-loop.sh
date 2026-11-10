@@ -9,7 +9,8 @@
 # Env: FORCE_RELAY=1 (relay-only on both CLIs), JOIN_DELAY_S (sleep between the offer code and
 # the join, default 0), RUST_LOG (default iroh=debug,fsync_core=debug), STOP_ON_FAIL=1,
 # CARGO_TARGET_DIR, NO_BUILD=1, PAIR_LOOP_OUT (log dir, default a new /tmp dir), KEEP=1.
-# Logs: one dir per run under the log dir; kept when a run failed or KEEP=1, else removed.
+# Logs: one dir per run under the log dir. A dir the script made itself is removed after an
+# all-pass run unless KEEP=1; a PAIR_LOOP_OUT given by the caller is always kept.
 # Prints a summary line `runs=N pass=P fail=F` and exits 1 when any run failed.
 # Ports come from free_port (bind 0, then release): a race with another process is possible but
 # shows up loudly (backend not healthy / no RELAY line), not as a pairing failure.
@@ -24,11 +25,25 @@ RUNS="${1:-30}"
 need() { command -v "$1" >/dev/null 2>&1 || { echo "[e2e] missing prerequisite: $1 ($2)" >&2; exit 2; }; }
 need docker "needed for Postgres"; need python3 ""; need curl ""; need cargo "rustup"
 
-OUT="${PAIR_LOOP_OUT:-$(mktemp -d /tmp/fsync-pair-loop.XXXXXX)}"
-mkdir -p "$OUT"
+# Only a log dir this script created is ever removed; a given PAIR_LOOP_OUT must be new or empty.
+OUT_OWNED=""
+if [[ -n "${PAIR_LOOP_OUT:-}" ]]; then
+  OUT="$PAIR_LOOP_OUT"
+  if [[ -e "$OUT" && -n "$(ls -A "$OUT" 2>/dev/null)" ]]; then
+    echo "[e2e] PAIR_LOOP_OUT=$OUT exists and is not empty; pick a new dir" >&2; exit 2
+  fi
+  mkdir -p "$OUT"
+else
+  OUT="$(mktemp -d /tmp/fsync-pair-loop.XXXXXX)"; OUT_OWNED=1
+fi
 PG_NAME="fsync-pair-loop-pg-$$"
 PIDS=()
-. "$ROOT/tests/e2e/lib/assert.sh"; . "$ROOT/tests/e2e/lib/cli-session.sh"; . "$HERE/lib-postgres-ready.sh"
+# shellcheck source=../../../../tests/e2e/lib/assert.sh
+. "$ROOT/tests/e2e/lib/assert.sh"
+# shellcheck source=../../../../tests/e2e/lib/cli-session.sh
+. "$ROOT/tests/e2e/lib/cli-session.sh"
+# shellcheck source=lib-postgres-ready.sh
+. "$HERE/lib-postgres-ready.sh"
 
 FAILN=0
 cleanup() {
@@ -37,7 +52,8 @@ cleanup() {
   for p in ${PIDS[@]+"${PIDS[@]}"}; do kill "$p" 2>/dev/null || true; done
   for p in ${PIDS[@]+"${PIDS[@]}"}; do wait "$p" 2>/dev/null || true; done
   docker rm -f -v "$PG_NAME" >/dev/null 2>&1 || true
-  if [[ $rc -ne 0 || $FAILN -ne 0 || -n "${KEEP:-}" ]]; then log "logs in $OUT"; else rm -rf "$OUT"; fi
+  if [[ $rc -ne 0 || $FAILN -ne 0 || -n "${KEEP:-}" || -z "$OUT_OWNED" ]]; then log "logs in $OUT"
+  else rm -rf "$OUT"; fi
   exit $rc
 }
 trap cleanup EXIT INT TERM
@@ -82,6 +98,7 @@ PIDS+=($!)
 wait_for '^RELAY http' "$OUT/relay.log" 20
 RELAY="$(sed -n 's/^RELAY //p' "$OUT/relay.log" | head -1)"
 log "api=$API relay=$RELAY force_relay=${FORCE_RELAY:-0} join_delay=${JOIN_DELAY_S:-0}"
+# shellcheck disable=SC2034  # EXTRA is read by cli() in cli-session.sh
 if [[ "${FORCE_RELAY:-0}" == 1 ]]; then EXTRA=(--force-relay); fi
 export RUST_LOG="${RUST_LOG:-iroh=debug,fsync_core=debug}" NO_COLOR=1
 
