@@ -185,7 +185,8 @@ try {
             Invoke-Name $w 'Devices'
             $row = Wait-Like $w "*$Peer*" 60
             $rowText = $row.Current.Name
-            $isCli = [bool](Get-Names $w | Where-Object { $_ -like "*$Peer*Cli*" -or $_ -eq 'Cli' -or $_ -like 'Cli *' })
+            # The Devices row reads "<name>, <platform label>, <presence>, <link>"; Platform.Cli is labelled "Command line".
+            $isCli = $rowText -like "*$Peer*Command line*"
             Finish @{ leg = 'pair'; ok = $true; sas = "$sas"; peer_row = "$rowText"; peer_listed_as_cli = $isCli }
         }
         'legs' {
