@@ -56,7 +56,9 @@ pub enum PairingEvent {
         sas: String,
         decision: PairDecision,
     },
-    /// New list pinned (new device) or published (existing device).
+    /// New list pinned (new device) or published (existing device). On the new device it comes
+    /// only after the existing device closed the session (it has the final `Done` frame), so a
+    /// listener may shut the node down right away.
     Completed {
         peer: NodeId,
         seq: u64,

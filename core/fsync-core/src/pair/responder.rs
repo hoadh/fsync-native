@@ -28,6 +28,8 @@ use std::time::Duration;
 
 /// First bi stream must open quickly: a silent connector must not hold a pairing slot.
 const ACCEPT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Bound on waiting for the existing device to close after the last frame.
+const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Serve one session; reports the outcome through the window ticket.
 pub async fn run_responder(
@@ -41,7 +43,7 @@ pub async fn run_responder(
         let (mut tx, mut rx) = tokio::time::timeout(ACCEPT_TIMEOUT, conn.accept_bi())
             .await
             .map_err(|_| CoreError::Pair(PairError::Timeout))?
-            .map_err(CoreError::net)?;
+            .map_err(CoreError::net_chain)?;
         let r = session(&conn, &mut ticket, me, trust, events, &mut tx, &mut rx).await;
         if let Err(e) = &r {
             let reason = match e {
@@ -53,8 +55,10 @@ pub async fn run_responder(
             let _ = wire::send(&mut tx, &PairFrame::Abort { reason }).await;
         }
         let _ = tx.finish();
-        // Let the final frame drain before the connection goes away.
-        let _ = tokio::time::timeout(Duration::from_secs(5), conn.closed()).await;
+        // Let the final frame drain before the connection goes away. The existing device closes
+        // the connection once it has read `Done`, so this is also the delivery ack for `Done`.
+        let drained = tokio::time::timeout(DRAIN_TIMEOUT, conn.closed()).await;
+        tracing::debug!(closed = ?drained.as_ref().ok(), ok = r.is_ok(), "pair/1 responder drained");
         r
     }
     .await;
@@ -69,6 +73,14 @@ pub async fn run_responder(
         Err(e) => Err(CoreError::Net(e.to_string())),
     };
     ticket.finish(reply);
+    // Only now, with `Done` delivered: a listener may tear the node down on `Completed` (the
+    // CLI exits), and that drops this connection, discarding any frame not yet sent.
+    if let Ok(seq) = &res {
+        events.pairing(PairingEvent::Completed {
+            peer: node_id_of(&conn),
+            seq: *seq,
+        });
+    }
     res.map(|_| ())
 }
 
@@ -179,6 +191,6 @@ async fn session(
         _ => trust.pin_paired_chain(&chain, &n_id, &e_id)?,
     };
     wire::send(tx, &PairFrame::Done).await?;
-    events.pairing(PairingEvent::Completed { peer: e_id, seq });
+    // `Completed` is emitted by `run_responder` once `Done` has drained.
     Ok(seq)
 }

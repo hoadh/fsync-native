@@ -10,16 +10,20 @@ use std::time::Duration;
 
 pub async fn send(tx: &mut SendStream, frame: &PairFrame) -> Result<()> {
     let bytes = encode_frame(frame)?;
-    tx.write_all(&bytes).await.map_err(CoreError::net)
+    tx.write_all(&bytes).await.map_err(CoreError::net_chain)
 }
 
 /// Read one frame; `PairError::Timeout` if the peer is silent for `wait`.
 pub async fn recv(rx: &mut RecvStream, wait: Duration) -> Result<PairFrame> {
     tokio::time::timeout(wait, async {
         let mut hdr = [0u8; HEADER_LEN];
-        rx.read_exact(&mut hdr).await.map_err(CoreError::net)?;
+        rx.read_exact(&mut hdr)
+            .await
+            .map_err(CoreError::net_chain)?;
         let mut buf = vec![0u8; payload_len(hdr)?];
-        rx.read_exact(&mut buf).await.map_err(CoreError::net)?;
+        rx.read_exact(&mut buf)
+            .await
+            .map_err(CoreError::net_chain)?;
         Ok(decode_payload::<PairFrame>(&buf)?)
     })
     .await

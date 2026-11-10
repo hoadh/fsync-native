@@ -104,4 +104,17 @@ impl CoreError {
     pub fn net(e: impl std::fmt::Display) -> Self {
         Self::Net(e.to_string())
     }
+
+    /// Like [`Self::net`], plus the error's source chain. A QUIC stream error only says
+    /// "connection lost"; why (closed by peer with a code, timed out, reset) is in its source.
+    pub fn net_chain(e: impl std::error::Error) -> Self {
+        let mut msg = e.to_string();
+        let mut src = e.source();
+        while let Some(s) = src {
+            msg.push_str(": ");
+            msg.push_str(&s.to_string());
+            src = s.source();
+        }
+        Self::Net(msg)
+    }
 }

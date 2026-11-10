@@ -29,7 +29,7 @@ pub async fn run_initiator<B: ListBackend>(
     events: &EventSink,
     backend: &B,
 ) -> Result<u64> {
-    let (mut tx, mut rx) = conn.open_bi().await.map_err(CoreError::net)?;
+    let (mut tx, mut rx) = conn.open_bi().await.map_err(CoreError::net_chain)?;
     let res = session(conn, me, secret, trust, events, backend, &mut tx, &mut rx).await;
     match &res {
         Ok(seq) => {
