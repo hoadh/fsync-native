@@ -77,14 +77,19 @@ _env() {
   # CARGO_ENCODED_RUSTFLAGS is split on 0x1f, not on spaces: a BUILDDIR with spaces survives.
   CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$srcdir=/build"$'\x1f'"--remap-path-prefix=$cargo_home=/cargo"
   export CARGO_ENCODED_RUSTFLAGS
-  # cc-rs splits CFLAGS/CXXFLAGS on whitespace and has no encoded form: with whitespace in the
-  # path the C/C++ remap is skipped (then only __FILE__ of the C++ bridge keeps the build path).
-  if [[ $srcdir == *[[:space:]]* ]]; then
-    echo "PKGBUILD: BUILDDIR contains whitespace, C/C++ paths are not remapped" >&2
-  else
-    export CXXFLAGS="${CXXFLAGS:-} -ffile-prefix-map=$srcdir=/build"
-    export CFLAGS="${CFLAGS:-} -ffile-prefix-map=$srcdir=/build"
-  fi
+  # The same two remaps for C/C++ __FILE__ (cxx.cc comes from the cargo registry). cc-rs splits
+  # CFLAGS/CXXFLAGS on whitespace and has no encoded form: a path with whitespace is skipped.
+  local from to
+  for from in "$srcdir" "$cargo_home"; do
+    to=/build; [[ $from == "$cargo_home" ]] && to=/cargo
+    if [[ $from == *[[:space:]]* ]]; then
+      echo "PKGBUILD: '$from' contains whitespace, its C/C++ paths are not remapped" >&2
+      continue
+    fi
+    CXXFLAGS="${CXXFLAGS:-} -ffile-prefix-map=$from=$to"
+    CFLAGS="${CFLAGS:-} -ffile-prefix-map=$from=$to"
+  done
+  export CFLAGS CXXFLAGS
 }
 
 # Assert on a built binary: exact version, the expected git sha, NO test features (red team #6).

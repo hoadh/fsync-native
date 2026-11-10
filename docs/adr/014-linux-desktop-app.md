@@ -377,8 +377,9 @@ Parity with ADR 013 d6/d10/d13/d14, minus virtual files (Linux has none, ADR 009
     committed yet). Rebuild on every Arch Qt 6 minor bump (`pkgrel`). `$srcdir` is remapped out of
     the binary (`--remap-path-prefix`, `-ffile-prefix-map`).
     Update 2026-11-11 (plan 261110 phase 04): the remap goes through `CARGO_ENCODED_RUSTFLAGS`
-    (`$srcdir` -> `/build`, `$CARGO_HOME` -> `/cargo`; a BUILDDIR with spaces works, the C/C++
-    remap is then skipped because cc-rs splits `CFLAGS` on whitespace). `FSYNC_GIT_SHA` is the
+    (`$srcdir` -> `/build`, `$CARGO_HOME` -> `/cargo`; a BUILDDIR with spaces works). The same two
+    go into `-ffile-prefix-map` for C/C++ (`cxx.cc` from the registry leaked the builder's home);
+    a path with whitespace is skipped there because cc-rs splits `CFLAGS` on whitespace. `FSYNC_GIT_SHA` is the
     pinned commit (release) or the host sha passed in the env (tarball; else `local`), and
     `package()` asserts it. `--printsrcinfo` refuses `FSYNC_LOCAL_SRC`. `updpkgsums` replaces `SKIP`
     once `_commit` is real (release step, MVP phase 16).
