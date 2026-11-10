@@ -8,6 +8,7 @@
 set -uo pipefail
 mode="${1:?mode}"
 appimage="${2:-}"
+assets=/smoke/assets.list   # scripts/lib/assets.list, mounted by smoke-install.sh
 fail=0
 pass() { echo "PASS  $*"; }
 bad()  { echo "FAIL  $*"; fail=1; }
@@ -31,6 +32,13 @@ if info=$(run --build-info 2>&1); then
   echo "      build-info: $info"
   if [[ "$info" == *'"features":[]'* ]]; then pass "--build-info has no features"
   else bad "--build-info lists features: $info"; fi
+  # A packaged build names its commit (a tarball build gets it from FSYNC_GIT_SHA).
+  sha=$(sed -n 's/.*"git_sha":"\([^"]*\)".*/\1/p' <<<"$info")
+  if [[ -n ${FSYNC_EXPECT_GIT_SHA:-} ]]; then
+    [[ $sha == "$FSYNC_EXPECT_GIT_SHA" ]] && pass "git_sha is $sha" || bad "git_sha '$sha', want $FSYNC_EXPECT_GIT_SHA"
+  elif [[ $mode != bare ]]; then
+    [[ -n $sha && $sha != unknown && $sha != local ]] && pass "git_sha is $sha" || bad "git_sha '$sha' names no commit"
+  fi
 else bad "--build-info failed: $info"; fi
 
 # 3. --smoke (QML loads without warnings) and the core variant (SQLCipher/OpenSSL open+close)
@@ -45,13 +53,23 @@ case "$mode" in
   installed)
     if missing=$(ldd "$(command -v fsync-linux)" | grep 'not found'); then bad "unresolved libraries: $missing"
     else pass "ldd: all libraries resolve"; fi
-    desktop=/usr/share/applications/app.fsync.Fsync.desktop
-    [[ -f $desktop ]] && pass "desktop file installed" || bad "missing $desktop"
-    for f in /usr/share/icons/hicolor/48x48/apps/app.fsync.Fsync.png \
-             /usr/share/icons/hicolor/256x256/apps/app.fsync.Fsync.png \
-             /usr/share/icons/hicolor/scalable/apps/app.fsync.Fsync.svg; do
-      [[ -f $f ]] && pass "installed $f" || bad "missing $f"
-    done
+    # Desktop file, icons and license texts: the shared list (scripts/lib/assets.list).
+    n=0
+    while read -r want_mode _ dest; do
+      n=$((n + 1))
+      if [[ ! -f $dest ]]; then bad "missing $dest"
+      elif [[ $(stat -c '%a' "$dest") != "$want_mode" ]]; then bad "$dest mode $(stat -c '%a' "$dest"), want $want_mode"
+      else pass "installed $dest ($want_mode)"; fi
+    done < <(grep -Ev '^[[:space:]]*(#|$)' "$assets")
+    [[ $n -gt 0 ]] || bad "asset list $assets is empty"
+    desktop=$(grep -Eo '/usr/share/applications/[^ ]+\.desktop' "$assets" | head -1)
+    # Debian: the DEP-5 copyright file names both licenses.
+    if command -v dpkg >/dev/null; then
+      cr=/usr/share/doc/fsync-linux/copyright
+      if grep -q '^License: MIT or Apache-2.0' "$cr" 2>/dev/null && grep -q '^License: MIT$' "$cr" \
+         && grep -q '^License: Apache-2.0$' "$cr"; then pass "DEP-5 copyright with MIT and Apache-2.0"
+      else bad "$cr is missing or lacks the MIT / Apache-2.0 stanzas"; fi
+    fi
     for docfile in /usr/share/doc/fsync-linux/THIRD-PARTY-LICENSES.txt \
                    /usr/share/licenses/fsync-linux/THIRD-PARTY-LICENSES.txt; do
       [[ -s $docfile ]] && break
@@ -74,6 +92,10 @@ case "$mode" in
     fi
     desktop_to_check=$(ls "$root"/*.desktop 2>/dev/null | head -1)
     docfile=$root/usr/share/doc/fsync-linux/THIRD-PARTY-LICENSES.txt
+    # The license texts of the shared list travel with the AppImage too.
+    while read -r _ _ dest; do
+      [[ -s $root$dest ]] && pass "AppImage has $dest" || bad "AppImage lacks $dest"
+    done < <(grep -E '^[0-9]+ [^ ]+ /usr/share/licenses/' "$assets")
     # The Wayland QPA plugin must be bundled AND its code must run. With no compositor a working
     # plugin ends in "Failed to create wl_display"; a missing plugin or an unresolved dependency
     # ends in "Cannot load library ...qwayland" / "Could not find the Qt platform plugin". The
