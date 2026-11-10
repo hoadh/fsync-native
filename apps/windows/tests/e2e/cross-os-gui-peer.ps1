@@ -26,6 +26,37 @@ param(
     [int]$DeadlineSec = 120
 )
 $ErrorActionPreference = 'Stop'
+
+# `remote run` executes over ssh in session 0: no desktop, and the WinUI app dies on start there
+# (Microsoft.UI.Xaml fault 0xc000027b). The pair/legs steps therefore re-run THIS script, with the same
+# arguments, as a one-shot scheduled task bound to the logged-on user's desktop session (/it), and
+# relay its output and exit code. The user must be logged on (RDP window open).
+if ($Step -ne 'build-app' -and [System.Diagnostics.Process]::GetCurrentProcess().SessionId -eq 0) {
+    foreach ($k in $PSBoundParameters.Keys) { if ("$($PSBoundParameters[$k])" -notmatch '^[A-Za-z0-9._@+:/-]*$') { throw "bad character in -$k" } }
+    $tmp = Join-Path $env:TEMP 'fsync-cross-os\gui-launch'
+    if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }
+    New-Item -ItemType Directory -Force $tmp | Out-Null
+    $argText = ($PSBoundParameters.Keys | ForEach-Object { "-$_ '$($PSBoundParameters[$_])'" }) -join ' '
+    $outFile = Join-Path $tmp 'out.txt'; $codeFile = Join-Path $tmp 'exit.txt'
+    $launcher = Join-Path $tmp 'launch.ps1'
+    @(
+        "& '$PSCommandPath' $argText *> '$outFile'",
+        "Set-Content -Path '$codeFile' -Value `$LASTEXITCODE -Encoding ASCII"
+    ) | Set-Content -Path $launcher -Encoding ASCII
+    $task = 'fsync-xos-gui'
+    & schtasks /create /tn $task /tr "powershell -NoProfile -ExecutionPolicy Bypass -File $launcher" /sc once /st 00:00 /it /ru $env:USERNAME /f | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'schtasks /create failed (is the dev user logged on?)' }
+    try {
+        & schtasks /run /tn $task | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'schtasks /run failed' }
+        $limit = [DateTime]::UtcNow.AddSeconds($DeadlineSec + 120)
+        while (-not (Test-Path $codeFile) -and [DateTime]::UtcNow -lt $limit) { Start-Sleep -Milliseconds 500 }
+        if (-not (Test-Path $codeFile)) { & schtasks /end /tn $task | Out-Null; Write-Output '{"ok":false,"error":"interactive task did not finish in time"}'; exit 1 }
+        if (Test-Path $outFile) { Get-Content $outFile | ForEach-Object { Write-Output $_ } }
+        exit ([int](Get-Content $codeFile | Select-Object -First 1))
+    } finally { & schtasks /delete /tn $task /f 2>&1 | Out-Null }
+}
+
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
 Import-Module (Join-Path $PSScriptRoot 'Uia.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'ClipTools.psm1') -Force
