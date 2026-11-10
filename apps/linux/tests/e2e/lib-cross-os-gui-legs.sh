@@ -112,6 +112,13 @@ for l in sys.stdin.read().split("\r\n"):
 
 # --- X4: pairing the two apps ---
 gui_prepare() {
+  # Every device of the account is a publish target for the Windows app, and its publishes run one at
+  # a time: an OFFLINE peer costs one publish up to 7 s (2 s cached attempt + 5 s send timeout), which
+  # delays the next clip by that long (seen: 2nd clip always 5.2 s late with devB offline). devA's watch
+  # is still running; keep devB online too so no peer is unreachable during the X3 legs.
+  cli B clip watch --json --timeout 1500 >"$WORK/watch-B.out" 2>"$WORK/watch-B.err" &
+  PIDS+=($!)
+  wait_for '"event":"ready"' "$WORK/watch-B.out" 40
   REF="${REF:-$(git -C "$ROOT" rev-parse HEAD)}"
   git -C "$ROOT" fetch -q origin 2>/dev/null || true
   git -C "$ROOT" branch -r --contains "$REF" 2>/dev/null | grep -q . || fail "REF $REF is not pushed"
