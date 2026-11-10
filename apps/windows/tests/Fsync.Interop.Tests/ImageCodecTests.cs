@@ -92,24 +92,30 @@ public sealed class ImageCodecTests
     }
 
     /// <summary>A packed bottom-up DIB: 40-byte BITMAPINFOHEADER, optional mask bytes, then the pixels of <paramref name="px"/> (BGRA, top-down) as 24 or 32 bpp.</summary>
-    private static byte[] BuildDib(byte[] px, int w, int h, int bpp, uint compression, uint[]? masks = null)
+    private static byte[] BuildDib(byte[] px, int w, int h, int bpp, uint compression, uint[]? masks = null, int headerSize = 40)
     {
         var bytesPP = bpp / 8;
         var stride = (w * bytesPP + 3) & ~3;
         var maskBytes = masks is null ? 0 : masks.Length * 4;
-        var dib = new byte[40 + maskBytes + stride * h];
-        BitConverter.GetBytes(40u).CopyTo(dib, 0);
+        var dib = new byte[headerSize + maskBytes + stride * h];
+        BitConverter.GetBytes((uint)headerSize).CopyTo(dib, 0);
         BitConverter.GetBytes(w).CopyTo(dib, 4);
         BitConverter.GetBytes(h).CopyTo(dib, 8); // positive: bottom-up
         BitConverter.GetBytes((ushort)1).CopyTo(dib, 12);
         BitConverter.GetBytes((ushort)bpp).CopyTo(dib, 14);
         BitConverter.GetBytes(compression).CopyTo(dib, 16);
         BitConverter.GetBytes((uint)(stride * h)).CopyTo(dib, 20);
-        for (var m = 0; masks is not null && m < masks.Length; m++) BitConverter.GetBytes(masks[m]).CopyTo(dib, 40 + m * 4);
+        // Masks: after a 40-byte header they are the only place; V4/V5 carry them in the header AND (as the
+        // synthesized CF_DIBV5 of Windows does) repeated right after it.
+        for (var m = 0; masks is not null && m < masks.Length; m++)
+        {
+            BitConverter.GetBytes(masks[m]).CopyTo(dib, 40 + m * 4);
+            if (headerSize > 40) BitConverter.GetBytes(masks[m]).CopyTo(dib, headerSize + m * 4);
+        }
         for (var y = 0; y < h; y++)
             for (var x = 0; x < w; x++)
                 for (var c = 0; c < bytesPP; c++)
-                    dib[40 + maskBytes + (h - 1 - y) * stride + x * bytesPP + c] = px[(y * w + x) * 4 + c];
+                    dib[headerSize + maskBytes + (h - 1 - y) * stride + x * bytesPP + c] = px[(y * w + x) * 4 + c];
         return dib;
     }
 
@@ -126,6 +132,16 @@ public sealed class ImageCodecTests
     {
         var px = DistinctPixels(40, 40);
         var dib = BuildDib(px, 40, 40, 32, 3, [0x00FF0000u, 0x0000FF00u, 0x000000FFu]);
+        await AssertDibPixelsAsync(dib, px, 40, 40);
+    }
+
+    // The app reads CF_DIBV5 first; Windows synthesizes it from SetImage's BITFIELDS DIB as a 124-byte header
+    // followed by 12 more mask bytes before the pixels (found by cross-OS test X3: the PNG was shifted 3 pixels).
+    [Fact]
+    public async Task SynthesizedDibV5WithTrailingMasksKeepsEveryPixel()
+    {
+        var px = DistinctPixels(40, 40);
+        var dib = BuildDib(px, 40, 40, 32, 3, [0x00FF0000u, 0x0000FF00u, 0x000000FFu], headerSize: 124);
         await AssertDibPixelsAsync(dib, px, 40, 40);
     }
 
