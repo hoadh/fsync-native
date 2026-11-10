@@ -50,7 +50,12 @@ if ($Step -ne 'build-app' -and [System.Diagnostics.Process]::GetCurrentProcess()
         & schtasks /run /tn $task | Out-Null
         if ($LASTEXITCODE -ne 0) { throw 'schtasks /run failed' }
         $limit = [DateTime]::UtcNow.AddSeconds($DeadlineSec + 120)
-        while (-not (Test-Path $codeFile) -and [DateTime]::UtcNow -lt $limit) { Start-Sleep -Milliseconds 500 }
+        $started = [DateTime]::UtcNow
+        while (-not (Test-Path $codeFile) -and [DateTime]::UtcNow -lt $limit) {
+            Start-Sleep -Milliseconds 500
+            # The task was ended from outside (the Linux host aborts it): stop waiting.
+            if (([DateTime]::UtcNow - $started).TotalSeconds -gt 10 -and -not ((& schtasks /query /tn $task /fo csv /nh 2>$null) -match 'Running')) { Start-Sleep 1; break }
+        }
         if (-not (Test-Path $codeFile)) { & schtasks /end /tn $task | Out-Null; Write-Output '{"ok":false,"error":"interactive task did not finish in time"}'; exit 1 }
         if (Test-Path $outFile) { Get-Content $outFile | ForEach-Object { Write-Output $_ } }
         exit ([int](Get-Content $codeFile | Select-Object -First 1))
