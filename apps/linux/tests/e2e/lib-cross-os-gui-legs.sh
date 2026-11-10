@@ -160,11 +160,12 @@ gui_out_legs() { # windows app copies, the Linux app must receive
   gui_sync_wait ready 150 >/dev/null
   for it in text html png file; do
     gui_sync_put "go-$it"
-    local ok=0 i
+    local ok=0 i types_ms=""
     for i in $(seq 1 400); do   # 40 s
       case "$it" in
         text) [[ "$(wl_a wl-paste --no-newline -t text/plain 2>/dev/null || true)" == "fsync-gui-$nonce-text" ]] && ok=1 ;;
-        html) t="$(wl_a wl-paste --no-newline -t text/html 2>/dev/null || true)"; [[ "$t" == *"fsync-gui-$nonce-html"* ]] && ok=1 ;;
+        html) [[ -z "$types_ms" ]] && wl_a wl-paste -l 2>/dev/null | grep -qx text/html && types_ms="$(now_ms)"
+              t="$(wl_a wl-paste --no-newline -t text/html 2>/dev/null || true)"; [[ "$t" == *"fsync-gui-$nonce-html"* ]] && ok=1 ;;
         png)  wl_a wl-paste -t image/png >"$WORK/gui-out.png" 2>/dev/null && gui_png_ok "$WORK/gui-out.png" 40 && ok=1 ;;
         file) t="$(gui_uri_paths | grep "gui-$nonce-out.bin" | head -1 || true)"; [[ -n "$t" && -f "$t" ]] && ok=1 ;;
       esac
@@ -177,6 +178,7 @@ gui_out_legs() { # windows app copies, the Linux app must receive
     sent="$(gui_sync_get "sent-$it")"; [[ "$sent" =~ ^[0-9]{13}$ ]] || fail "no send timestamp for $it"
     setd="$(gui_sync_get "set-$it")"; [[ "$setd" =~ ^[0-9]{13}$ ]] && setd="clipboard write took $((setd - sent)) ms; " || setd=""
     local sh_ms=$((sent - WIN_SKEW_MS)); setd="${setd}sent at $(date -u -d "@$((sh_ms / 1000)).$(printf %03d $((sh_ms % 1000)))" +%T.%3N)Z host clock; "
+    [[ -n "$types_ms" ]] && setd="${setd}text/html offered after $((types_ms - sh_ms)) ms; "
     if [[ "$it" == file ]]; then
       local want; want="$(gui_sync_get file-sha)"; [[ "$want" =~ ^[0-9a-f]{64}$ ]] || fail "no file sha from windows"
       [[ "$(sha <"$t")" == "$want" ]] || fail "file clip from windows differs (sha256)"
