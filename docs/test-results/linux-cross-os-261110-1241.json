@@ -1,0 +1,171 @@
+{
+  "run": "linux-cross-os",
+  "git_sha": "312a67a",
+  "date": "2026-11-10T12:46:29+07:00",
+  "scope": "X1+X4+X3",
+  "threshold_ms": 5000,
+  "checks": {
+    "echo_checked_scopes": [
+      "x1",
+      "x3"
+    ],
+    "echo_checks": {
+      "x1": [
+        "devL1 published 1 clip, devB 1; one history item per text"
+      ],
+      "x3-out": [
+        "x3 win-to-app: devWG published 4",
+        "linux app published 0 clips while receiving 4"
+      ],
+      "x3-in-auto": [
+        "x3 app-to-win (windows must not re-publish): devWG published 4",
+        "linux app published exactly 3 clips for 3 copies"
+      ],
+      "x3-in-lazy": [
+        "x3 lazy file (windows must not re-publish): devWG published 4"
+      ]
+    },
+    "echo_not_checked": [],
+    "latency_within_threshold": true,
+    "retries": 0
+  },
+  "legs": [
+    {
+      "id": "x1-text-app-to-cli",
+      "direction": "app-to-cli",
+      "kind": "text",
+      "latency_ms": 97,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": ""
+    },
+    {
+      "id": "x1-text-cli-to-app",
+      "direction": "cli-to-app",
+      "kind": "text",
+      "latency_ms": 81,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": ""
+    },
+    {
+      "id": "x1-file-cli-to-app",
+      "direction": "cli-to-app",
+      "kind": "file",
+      "latency_ms": 2160,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "3 MB; accept step is scripted (offer-accept), pending after 1036 ms"
+    },
+    {
+      "id": "x1-file-app-to-cli",
+      "direction": "app-to-cli",
+      "kind": "file",
+      "latency_ms": 2157,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "3 MB, pick-device to fetch done"
+    },
+    {
+      "id": "x4-pair-sas-and-cli-platform",
+      "direction": "app-to-win",
+      "kind": "pairing",
+      "latency_ms": 0,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "SAS equal: saja kaji kaso; peer listed as Cli"
+    },
+    {
+      "id": "x3-text-win-to-app",
+      "direction": "win-to-app",
+      "kind": "text",
+      "latency_ms": 327,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "clipboard write took 17 ms; sent at 05:45:20.749Z host clock",
+      "tries": 1,
+      "skew_ms": 8051,
+      "skew_err_ms": 8
+    },
+    {
+      "id": "x3-html-win-to-app",
+      "direction": "win-to-app",
+      "kind": "html",
+      "latency_ms": 214,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "clipboard write took 11 ms; sent at 05:45:23.662Z host clock; text/html offered after 206 ms",
+      "tries": 1,
+      "skew_ms": 8051,
+      "skew_err_ms": 8
+    },
+    {
+      "id": "x3-png-win-to-app",
+      "direction": "win-to-app",
+      "kind": "png",
+      "latency_ms": 346,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "clipboard write took 94 ms; sent at 05:45:26.792Z host clock",
+      "tries": 1,
+      "skew_ms": 8051,
+      "skew_err_ms": 8
+    },
+    {
+      "id": "x3-file-win-to-app",
+      "direction": "win-to-app",
+      "kind": "file",
+      "latency_ms": 1391,
+      "limit_ms": 10000,
+      "sha_ok": true,
+      "note": "clipboard write took 14 ms; sent at 05:45:29.861Z host clock; eager inbox",
+      "tries": 1,
+      "skew_ms": 8051,
+      "skew_err_ms": 8
+    },
+    {
+      "id": "x3-text-app-to-win",
+      "direction": "app-to-win",
+      "kind": "text",
+      "latency_ms": 1367,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "",
+      "skew_ms": 8054,
+      "skew_err_ms": 8
+    },
+    {
+      "id": "x3-html-app-to-win",
+      "direction": "app-to-win",
+      "kind": "html",
+      "latency_ms": 140,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "",
+      "skew_ms": 8054,
+      "skew_err_ms": 8
+    },
+    {
+      "id": "x3-png-app-to-win",
+      "direction": "app-to-win",
+      "kind": "png",
+      "latency_ms": 311,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "",
+      "skew_ms": 8054,
+      "skew_err_ms": 8
+    },
+    {
+      "id": "x3-file-app-to-win",
+      "direction": "app-to-win",
+      "kind": "file",
+      "latency_ms": 8701,
+      "limit_ms": 10000,
+      "sha_ok": true,
+      "note": "lazy virtual files, pasted by the shell copy engine (PasteHelper)",
+      "skew_ms": 8055,
+      "skew_err_ms": 8
+    }
+  ]
+}

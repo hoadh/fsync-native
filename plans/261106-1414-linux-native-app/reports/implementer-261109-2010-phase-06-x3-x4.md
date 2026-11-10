@@ -1,6 +1,6 @@
-# Phase 06 X3/X4 run report (COMPLETE: X4 + X3 all legs PASS in one run after the Windows DIB fix; see the final section)
+# Phase 06 X3/X4 run report (COMPLETE after fix round 1: X4 + X3 all legs PASS in one run; see the last two sections)
 
-Branch feat/linux-app, last pushed harness commit: see `git log` (test(e2e)/fix(e2e) commits after a4622a5). No result JSON committed (X3 not complete).
+Branch feat/linux-app, see `git log`. Result JSONs: docs/test-results/linux-cross-os-261110-1217.json (first pass, before review) and -1241.json (after fix round 1, the one to cite). The earlier sections below are the history of the first, partial run.
 
 ## Result so far
 - X4 PASS (3 runs): Windows GUI app signs in via UIA, offers a code, Linux app joins, SAS words equal on both sides, "Paired" shown,
@@ -63,3 +63,32 @@ Tests (ImageCodecTests, 7 new): BITFIELDS-40, V5+trailing masks, BI_RGB 32, 24 b
 164/164 (CoreBindings 9, Interop 53, App 102) on waso-vm.
 PngToDibAsync (Linux->Windows) was verified by the new byte-level test and by the app->win png leg (exact pixels at the Windows clipboard).
 VM left clean (no Fsync.exe, no scheduled tasks, scratch scripts deleted).
+
+## Fix round 1 (code review 7.5, 4 high): all re-verified against the code, none pushed back
+Run: docs/test-results/linux-cross-os-261110-1241.json, REF 312a67a (X1+X4+X3, one run, exit 0). Windows suite 173/173 on waso-vm (CoreBindings 9, Interop 61, App 103).
+- H1 (valid): `>=` room heuristic could shift pixels 3 px on slack bytes. Now the repeated masks are skipped only when `dib[headerSize..+12/16]` equal the header masks
+  (V3+ headers), and truncated pixel data is rejected. New tests: V5 without trailing masks + 16 slack bytes decodes exactly (fails with the old heuristic), V2 header
+  (52 bytes, no alpha mask, L1), truncated pixels. L2: trailing masks are checked straight after the header, before the colour table. L7: BITMAPCOREHEADER palette offset.
+- M3: bit count validated (1/4/8/16/24/32), |w|,|h| <= MaxSide via long (int.MinValue no longer overflows), stride arithmetic cannot overflow. Hostile-header theory test.
+  `RepresentationMapper.TryDibToPngAsync` now catches any non-OOM exception, so a codec failure can never drop text/html (test: hostile DIB + text keeps text).
+- M4: `AppLog.Warn("image not synced: ...")` on every drop (masks included). Swizzle for non-standard masks NOT done (optional); 16-bpp non-565/555 masks still go to WIC unchecked.
+- H2 (valid): retries rewrote `sent-`. Now `sent-`/`set-` keep the FIRST try, `tries-<item>` is recorded; JSON legs carry `tries`, a retry puts `RETRY: n tries` in the note,
+  `checks.retries` counts them. This run: 0 retries.
+- H3 (valid): real checks, only recorded when they passed (run aborts otherwise). X3 out: devA saw exactly +4 clips from devWG, the Linux app re-published 0, one L1 history item for the
+  received text. In-auto: devWG published 0 new clips (no echo), L1 published exactly 3 for 3 copies. In-lazy: devWG published 0 new clips. JSON: `checks.echo_checks` per scope,
+  `echo_checked_scopes`, `echo_not_checked` (x2/x5 when run without X3: they have no echo check, recorded as such instead of hardcoded true).
+- M1 (valid): the per-sample ssh probe had the handshake + PowerShell start-up inside each round trip. Now one ssh session streams the VM clock every 20 ms, stamped on arrival;
+  skew = max(t_win - t_arrival) over ~130 samples, error = the connection's TCP rtt (ss) + 6 ms. Skew measured 8051 +-8 ms (was +-541). `skew_ms`/`skew_err_ms` are JSON fields per leg;
+  `leg` fails when latency < -err and gates on latency + err <= limit (limits unchanged). No negative latencies in this run. An stdin-driven ping-pong was tried first and dropped:
+  Windows OpenSSH + PowerShell delivered only the first stdin line.
+- M2 (valid): coloured png R=(x*7+y*3) G=(x*5+y*9+31) B=(x*11+y*13+97), both sides (grey rejected by the verifier). No alpha test: CF_DIB has none, the product path drops it.
+- M5: `gui_abort` kills only the Fsync.exe whose Path equals the exact path the run recorded in `%TEMP%\fsync-cross-os\gui\exe-path.txt` (cmd.exe default shell confirmed). M6: launcher writes
+  exit code 99 when `$LASTEXITCODE` is null, atomically (tmp + move); wrapper exits 98 on a missing/non-numeric code. L3: task state via `Get-ScheduledTask` (locale independent).
+  L4: the per-run launch dir (OTP) is removed in `finally` and by the abort (a stale pre-fix `gui-launch` dir on the VM was deleted). L5: unique task name `fsync-xos-gui-<pid>`, quote check on the script path.
+- Commit note: the H1 fix and its tests are in one commit (1e066a8 `fix(windows)`), not split test-first; the negative test fails against the old `>=` rule by construction (not re-run against the old code).
+- Left for the docs pass (H4): ADR 014, phase-06 file, plan.md, test-results README; the "taskMode restored" evidence; X4 QR-text gap.
+- VM clean: no Fsync.exe, no fsync scheduled tasks. Foreign `work-*` dirs in %TEMP%\fsync-cross-os are older run leftovers, untouched.
+
+## Observations
+- Lazy file app->win took 8701 ms in this run (4577 ms before) against the 10 s gate: variance is large, the gate is thin. Worth a look (Win+Alt+V poll 1.5 s steps + PasteHelper), not changed.
+- The sync clock probe needs `ss` and `getent` on the Linux host.
