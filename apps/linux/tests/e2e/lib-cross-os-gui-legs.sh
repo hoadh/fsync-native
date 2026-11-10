@@ -41,6 +41,13 @@ gui_sync_wait() { # NAME [SECS]: prints the value; fails when the windows run en
   fail "timeout waiting for sync file '$1'"
 }
 
+# gui_abort: after a failed run the Windows peer can still be waiting (its remote run keeps the worker
+# busy for minutes). Ending the interactive task and the app lets that run finish at once.
+gui_abort() {
+  [[ -n "${GUI_PID:-}" ]] || return 0
+  ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" 'schtasks /end /tn fsync-xos-gui & taskkill /F /IM Fsync.exe & schtasks /delete /tn fsync-xos-gui /f' >/dev/null 2>&1 || true
+}
+
 # gui_run_start TAG ARGS...: one remote run in the background; GUI_PID/GUI_OUT name it.
 gui_run_start() {
   GUI_OUT="$WORK/win-gui-$1.out"; shift

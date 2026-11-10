@@ -58,6 +58,7 @@ LEGS="$WORK/legs.tsv"; : >"$LEGS"   # id <TAB> direction <TAB> kind <TAB> latenc
 cleanup() {
   local rc=$?
   app_cleanup
+  if declare -F gui_abort >/dev/null; then gui_abort; fi
   for p in ${PIDS[@]+"${PIDS[@]}"}; do kill "$p" 2>/dev/null || true; done
   for p in ${PIDS[@]+"${PIDS[@]}"}; do wait "$p" 2>/dev/null || true; done
   hs_stop_all
