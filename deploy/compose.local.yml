@@ -6,13 +6,14 @@ services:
   caddy:
     image: caddy:2
     restart: "no"
-    extra_hosts: ["host.docker.internal:host-gateway"]
     environment:
       API_HOST: api.localhost
       RELAY_HOST: relay.localhost
       CADDY_GLOBAL_OPTIONS: "local_certs"
-      BACKEND_UPSTREAM: host.docker.internal:${BACKEND_PORT}
-      RELAY_UPSTREAM: host.docker.internal:${RELAY_HTTP_PORT}
+      # Same compose network as the stack (FSYNC_SUBNET, already in TRUSTED_PROXIES). The host ports
+      # bind 127.0.0.1 only, so host.docker.internal would be refused.
+      BACKEND_UPSTREAM: backend:8080
+      RELAY_UPSTREAM: relay:3340
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
