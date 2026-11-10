@@ -71,3 +71,53 @@ Skip map (`unreachable_peers.rs`, `Shared.unreachable`, `receive.rs` clear) remo
 - Concurrent publishes (not done by apps) report a superseded older clip as `failed` for that peer.
 
 **Rework status:** DONE_WITH_CONCERNS (concerns above are observational).
+
+## Fix round (after re-review 9.0/10)
+
+Commits: 8ae0021 (L3), f59ee84 (M3 + L4/L5), 02c31de (M1 FFI + bindings), fe4a80c (M1/M2 apps), f820439 (docs, L6). Pushed to feat/linux-app.
+
+### M1: `pending` in the FFI record
+- `fsync_ffi::Published.pending: Vec<String>` appended LAST (same shape as delivered/failed/refused). Docs on the fields are real doc comments now (bindings regenerate anyway).
+- Swift: `scripts/gen-bindings.sh` cannot run on Linux as is (hardcodes `libfsync_ffi.dylib`). Ran its exact steps with `libfsync_ffi.so` (same `uniffi-bindgen` bin, library mode): diff vs the checked-in file = only the `Published` hunks (no checksum or other drift), so the Linux run is equivalent. Copied `fsync_ffi.swift` only; header/modulemap go to untracked `build/`.
+- C#: `uniffi-bindgen-cs` v0.10.0+v0.29.4 (commit e4f18be, the ADR 008 pin) built locally into the scratchpad, same args as `gen-bindings-cs.ps1` (`--library .so --config core/fsync-ffi/uniffi.toml --no-format`). Cross-check on waso-vm: `scripts/build-windows-dll.ps1 -Rids win-x64` (runs `gen-bindings-cs.ps1`) then `git diff --exit-code` on `Generated/` = identical. No hand edits.
+- ffi-contract: record line, Semantics (pending = "not confirmed"; `delivered` empty + `pending` non-empty is not "no device connected"), "Additive since v2" entry (C# positional: regenerate + ship with the DLL).
+
+### M1/M2: status wording (static, accurate without a later update)
+| delivered / pending / failed | Linux | Windows LastActivity (LastError) | macOS message |
+|---|---|---|---|
+| 2/0/0 | Sent to 2 devices. | Sent to 2 devices | nil |
+| 1/1/0 | Sent to 1 device; 1 not confirmed. | Sent to 1 device; 1 not confirmed | Sent to 1 device; 1 not confirmed. |
+| 0/2/0 | Not confirmed by 2 devices. | Not confirmed by 2 devices | Not confirmed by 2 devices. |
+| any/any/1 | ...; 1 did not get it. | (1 device(s) did not get it) — unchanged | Some devices couldn't be reached. — unchanged |
+| 0/0/0 or only failed | Not sent: ... (unchanged) | Copied, but no other device is connected (unchanged) | failed msg or nil |
+- Linux `describe` used to say "Sending to N device(s)..." (never resolved); now static. Linux also appends failed when something was delivered/pending (was silent).
+- Windows: pure `ClipboardService.DescribePublished(delivered, pending, failed)`; app log line gains `pending=`. New `PublishStatusTextTests` (8 cases).
+- macOS: `ClipboardSync.publishMessage(_:)` + XCTest `testPublishMessageCallsPendingDevicesNotConfirmedNeverUnreachable`. Uses `FsyncCoreKit.Published` (bare `Published` clashes with Combine). NOT compiled or run (no macOS here).
+- No new event plumbing. ffi-contract states a pending peer's late outcome is only logged (debug).
+
+### M3: latest-wins against a slow live peer
+- New test hook `EngineConfig::clip_accept_delay` (`test-hooks` only, like `serve_delay`; release DLL check in build-windows-dll.ps1 still refuses test-hooks): receiver sleeps after reading an offer, before applying + acking.
+- `slow_live_peer_gets_the_newest_clip_never_an_older_one_after_it`: b answers after 1 s (< 2 s first attempt, no retry), a's `publish_wait` 200 ms. Publish n (pending), n+1, n+2 (both pending at once: busy lane, not failed). b receives exactly `[n, n+2]`, then 2.5 s of silence. Mutation check: with the `latest == seq` check removed the test FAILS (`[n, n+1, n+2]`).
+- `returning_peer_gets_the_next_clip`: after `next` arrives, keeps listening until the "while away" attempt surely ended (away publish + 8 s, at least 1 s), then asserts `next` is last and nothing else arrived.
+
+### Lows
+- L3: `background_sends` logs `warn` for a panicked send task (reap and close); unit test `a_panicking_send_is_reaped_and_does_not_poison_the_set`.
+- L4: `QUICK` 2 s -> 3 s (dead peer still costs 7 s); busy-lane bound 1 s -> 1.25 s (still < 1.5 s `publish_wait`). Rate-limit test left as is (60 sequential publishes; not cheap to widen without losing the rate-limit hit).
+- L5: close test uses `send_timeout` 30 s, so close < 10 s only if the send is aborted (measured 3.0 s; mutation without `abort_all` FAILS at 10 s). Publish after close now asserted: `Sent`, `failed == [b]`, delivered/pending empty.
+- L6: protocol-spec + system-architecture: "2 s attempt, then 5 s retry (`send_timeout`), 7 s at most" instead of "5 s per-peer timeout".
+- L1 (noted, not changed): concurrent publishes can interleave per-peer tickets; ordering holds only for serialized publishes (all apps serialize).
+- L2 (noted, not changed): queued tasks behind a dead peer each hold their frame (<= ~256 KiB inline) up to ~7 s; a single latest slot per lane would avoid it.
+
+### Verification
+- Root: `cargo test --workspace --locked` 377 passed / 0 failed / 3 ignored; clippy `-D warnings` clean; `cargo fmt --all --check` clean. `clip_offline_peer_publish` 5/5 tests, 5 repeat runs (~8.1 s each).
+- apps/linux: `cargo build --locked --all-targets` OK (existing gold-linker warning only); platform lib 125, adversarial sync 7, rules 7 pass. Wayland/X11 backend tests not run.
+- Windows on waso-vm, ref f820439: DLL + bindings regenerated identical, `dotnet test Fsync.sln -c Release` 181/181 (CoreBindings 9, Interop 61, App 111).
+  - Rig note: the orchestrator's new Rig 2.0.1 plugin `remote.cjs` reports "Rig worker runtime missing" on waso-vm (worker is Rig 1.1.0, protocol 1). The run used the pre-upgrade remote.cjs from `~/.claude/rig-backups/global/261110-154027` (doctor ok, same `remote run --ref` path as earlier runs). No permission flags, no allowedTools change, registry untouched. Command passed as `-EncodedCommand` (cmd mangled a quoted `-Command`).
+- macOS: not built or tested (no macOS host). Swift binding is generated; app code + test unverified.
+
+### Unresolved
+- macOS compile/test of `publishMessage` and its test pending a macOS run (CI `macos` job will run on these paths).
+- Rig version drift: upgrade waso-vm to Rig 2.x (plugin runtime) or keep using the 1.x script.
+- `gen-bindings.sh` is macOS-only (`.dylib`); a `uname` switch to `.so` would let it run on Linux. Not changed.
+
+**Fix round status:** DONE_WITH_CONCERNS (macOS unverified).
