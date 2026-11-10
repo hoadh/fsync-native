@@ -123,6 +123,7 @@ No single run covers X1-X5. Runs, newest first:
 
 | file | git_sha | scope | status |
 | --- | --- | --- | --- |
+| `linux-cross-os-261110-1511.json` | `30a6f3c` | X1+X2+X5 | latest X2/X5 pass with the current harness (10 s file gate, skew probe +-8 ms); passed on the 3rd attempt, the first 2 hit the known local L1<->devA pairing flake (ADR 014) |
 | `linux-cross-os-261110-1241.json` | `312a67a` | X1+X4+X3 | latest X3/X4 pass; 0 retries; real echo checks |
 | `linux-cross-os-261110-1217.json` | `ea954a6` | X1+X4+X3 | superseded: echo field hardcoded, negative latencies from the old skew probe |
 | `linux-cross-os-261109-1753.json` | `994119f` | X1+X2+X5 | latest X2/X5 pass; file legs gated at 30 s (before the 10 s decision); pre-review harness |

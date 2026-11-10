@@ -1,0 +1,149 @@
+{
+  "run": "linux-cross-os",
+  "git_sha": "30a6f3c",
+  "date": "2026-11-10T15:14:48+07:00",
+  "scope": "X1+X2+X5",
+  "threshold_ms": 5000,
+  "checks": {
+    "echo_checked_scopes": [
+      "x1"
+    ],
+    "echo_checks": {
+      "x1": [
+        "devL1 published 1 clip, devB 1; one history item per text"
+      ]
+    },
+    "echo_not_checked": [
+      "x2",
+      "x5"
+    ],
+    "latency_within_threshold": true,
+    "retries": 0
+  },
+  "legs": [
+    {
+      "id": "x1-text-app-to-cli",
+      "direction": "app-to-cli",
+      "kind": "text",
+      "latency_ms": 41,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": ""
+    },
+    {
+      "id": "x1-text-cli-to-app",
+      "direction": "cli-to-app",
+      "kind": "text",
+      "latency_ms": 23,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": ""
+    },
+    {
+      "id": "x1-file-cli-to-app",
+      "direction": "cli-to-app",
+      "kind": "file",
+      "latency_ms": 1355,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "3 MB; accept step is scripted (offer-accept), pending after 323 ms"
+    },
+    {
+      "id": "x1-file-app-to-cli",
+      "direction": "app-to-cli",
+      "kind": "file",
+      "latency_ms": 2173,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "3 MB, pick-device to fetch done"
+    },
+    {
+      "id": "x2-text-app-to-win",
+      "direction": "app-to-win",
+      "kind": "text",
+      "latency_ms": 4132,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "cross-clock, skew 1993 ms corrected (+-8 ms)",
+      "skew_ms": 1993,
+      "skew_err_ms": 8
+    },
+    {
+      "id": "x2-text-win-to-app",
+      "direction": "win-to-app",
+      "kind": "text",
+      "latency_ms": 66,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "cross-clock, skew 1994 ms corrected (+-8 ms)",
+      "skew_ms": 1994,
+      "skew_err_ms": 8
+    },
+    {
+      "id": "x2-file-app-to-win",
+      "direction": "app-to-win",
+      "kind": "file",
+      "latency_ms": 5290,
+      "limit_ms": 10000,
+      "sha_ok": true,
+      "note": "3000000 bytes; cross-clock, skew 1996 ms corrected (+-8 ms)",
+      "skew_ms": 1996,
+      "skew_err_ms": 8
+    },
+    {
+      "id": "x2-file-win-to-app",
+      "direction": "win-to-app",
+      "kind": "file",
+      "latency_ms": 3279,
+      "limit_ms": 10000,
+      "sha_ok": true,
+      "note": "3000000 bytes; accept step scripted; cross-clock, skew 1997 ms corrected (+-8 ms)",
+      "skew_ms": 1997,
+      "skew_err_ms": 8
+    },
+    {
+      "id": "x5-text-app-to-win",
+      "direction": "app-to-win",
+      "kind": "text",
+      "latency_ms": 3126,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "cross-clock, skew 1998 ms corrected (+-8 ms)",
+      "skew_ms": 1998,
+      "skew_err_ms": 8
+    },
+    {
+      "id": "x5-text-win-to-app",
+      "direction": "win-to-app",
+      "kind": "text",
+      "latency_ms": 90,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "cross-clock, skew 1999 ms corrected (+-8 ms)",
+      "skew_ms": 1999,
+      "skew_err_ms": 8
+    },
+    {
+      "id": "x5-file-app-to-win",
+      "direction": "app-to-win",
+      "kind": "file",
+      "latency_ms": 3487,
+      "limit_ms": 10000,
+      "sha_ok": true,
+      "note": "8388608 bytes; cross-clock, skew 1999 ms corrected (+-8 ms)",
+      "skew_ms": 1999,
+      "skew_err_ms": 8
+    },
+    {
+      "id": "x5-file-win-to-app",
+      "direction": "win-to-app",
+      "kind": "file",
+      "latency_ms": 4404,
+      "limit_ms": 10000,
+      "sha_ok": true,
+      "note": "8388608 bytes; accept step scripted; cross-clock, skew 2001 ms corrected (+-8 ms)",
+      "skew_ms": 2001,
+      "skew_err_ms": 8
+    }
+  ]
+}

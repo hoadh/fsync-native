@@ -92,3 +92,9 @@ Run: docs/test-results/linux-cross-os-261110-1241.json, REF 312a67a (X1+X4+X3, o
 ## Observations
 - Lazy file app->win took 8701 ms in this run (4577 ms before) against the 10 s gate: variance is large, the gate is thin. Worth a look (Win+Alt+V poll 1.5 s steps + PasteHelper), not changed.
 - The sync clock probe needs `ss` and `getent` on the Linux host.
+
+## X2/X5 re-run at 30a6f3c (CLI legs, current harness)
+`X5=1 REF=30a6f3c... cross-os-with-windows.sh`: PASS on attempt 3, docs/test-results/linux-cross-os-261110-1511.json. Attempts 1 and 2 failed in the LOCAL L1<->devA pairing
+("Pairing failed: network: connection lost", before any Windows leg): the known ADR 014 pairing flake, no harness or Windows cause (only docs commits since 312a67a). 2 flakes in 3 runs is
+above the ADR's ~1 in 12, worth watching. Legs: x2 text app->win 4132 ms (gate 5000, close), win->app 66; x2 file 5290/3279 (gate 10000); x5 text 3126/90, x5 file 3487/4404. Skew +-8 ms. No echo
+checks for X2/X5 (`echo_not_checked`). VM left clean.
