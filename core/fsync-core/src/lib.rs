@@ -1,5 +1,14 @@
 //! fsync engine core: identity, trust, transport, pairing, backend client.
 
+/// Test-only cargo features this build carries (`fsync-linux --build-info`, release checks).
+/// Empty in every product build.
+pub const BUILT_FEATURES: &[&str] = &[
+    #[cfg(feature = "test-hooks")]
+    "test-hooks",
+    #[cfg(feature = "test-relay-ca")]
+    "test-relay-ca",
+];
+
 pub mod api;
 pub mod blobs;
 pub mod clip;

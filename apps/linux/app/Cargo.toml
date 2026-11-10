@@ -1,0 +1,97 @@
+[package]
+name = "fsync-linux"
+description = "fsync desktop app for Linux (Qt6/QML via CXX-Qt)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# Test-only IPC control commands (SAS bypass included). Release builds refuse it, see main.rs.
+e2e-control = ["fsync-linux-platform/e2e-control"]
+# Sends Platform::Linux instead of Cli. Off until the Platform emit gate (plan.md) is open.
+emit-platform-linux = []
+
+[dependencies]
+fsync-core.workspace = true
+fsync-proto.workspace = true
+fsync-linux-platform.workspace = true
+cxx.workspace = true
+cxx-qt.workspace = true
+cxx-qt-lib.workspace = true
+zeroize.workspace = true
+tempfile.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+ksni.workspace = true
+qrcode.workspace = true
+image.workspace = true
+base64.workspace = true
+rustix = { workspace = true, features = ["rand"] }
+signal-hook = "0.3"
+
+[build-dependencies]
+cxx-qt-build.workspace = true
+
+# ---- Packaging (phase 05). Built by scripts/build-release.sh inside the release container;
+# every dependency list below was derived with scripts/derive-runtime-deps.sh (ldd +
+# qmlimportscanner mapped through dpkg -S / rpm -qf), see ADR 014.
+# Asset sources under ../dist/stage are produced by build-release.sh (stripped binary and the
+# cargo-about license report); the rest are checked-in resources.
+
+# One .deb for Ubuntu 22.04+, Debian 12+: Ubuntu 24.04 renamed the Qt libraries with a t64
+# suffix, hence the alternatives. Qt QML modules are loaded as plugins at run time (invisible to
+# ldd), so they are listed explicitly; qt6-wayland carries the Wayland platform plugin.
+[package.metadata.deb]
+name = "fsync-linux"
+maintainer = "fsync <noreply@fsync.invalid>"
+copyright = "fsync, all rights reserved"
+section = "utils"
+priority = "optional"
+extended-description = "Syncs the clipboard and files between your devices (Qt6/QML desktop app)."
+depends = """libc6 (>= 2.34), libgcc-s1, libstdc++6, \
+libqt6core6 (>= 6.2.4) | libqt6core6t64 (>= 6.2.4), libqt6gui6 (>= 6.2.4) | libqt6gui6t64 (>= 6.2.4), \
+libqt6qml6 (>= 6.2.4), \
+qt6-qpa-plugins, qt6-wayland, \
+qml6-module-qtqml, qml6-module-qtqml-models, qml6-module-qtqml-workerscript, \
+qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, \
+qml6-module-qtquick-shapes, qml6-module-qtquick-templates, qml6-module-qtquick-window"""
+# Secret Service provider for the stored login (gnome-keyring, KeePassXC, KWallet).
+recommends = "gnome-keyring | keepassxc | kwalletmanager"
+assets = [
+  ["../dist/stage/fsync-linux", "usr/bin/fsync-linux", "755"],
+  ["../resources/app.fsync.Fsync.desktop", "usr/share/applications/app.fsync.Fsync.desktop", "644"],
+  ["../resources/icons/hicolor/48x48/apps/app.fsync.Fsync.png", "usr/share/icons/hicolor/48x48/apps/app.fsync.Fsync.png", "644"],
+  ["../resources/icons/hicolor/256x256/apps/app.fsync.Fsync.png", "usr/share/icons/hicolor/256x256/apps/app.fsync.Fsync.png", "644"],
+  ["../resources/icons/hicolor/scalable/apps/app.fsync.Fsync.svg", "usr/share/icons/hicolor/scalable/apps/app.fsync.Fsync.svg", "644"],
+  ["../dist/stage/THIRD-PARTY-LICENSES.txt", "usr/share/doc/fsync-linux/THIRD-PARTY-LICENSES.txt", "644"],
+]
+
+# Fedora (latest only). auto-req is off: the binary only needs these (ldd + scanner result).
+[package.metadata.generate-rpm]
+name = "fsync-linux"
+summary = "Sync clipboard and files between your devices"
+url = "https://github.com/hoadh/fsync-native"
+assets = [
+  { source = "../dist/stage/fsync-linux", dest = "/usr/bin/fsync-linux", mode = "755" },
+  { source = "../resources/app.fsync.Fsync.desktop", dest = "/usr/share/applications/app.fsync.Fsync.desktop", mode = "644" },
+  { source = "../resources/icons/hicolor/48x48/apps/app.fsync.Fsync.png", dest = "/usr/share/icons/hicolor/48x48/apps/app.fsync.Fsync.png", mode = "644" },
+  { source = "../resources/icons/hicolor/256x256/apps/app.fsync.Fsync.png", dest = "/usr/share/icons/hicolor/256x256/apps/app.fsync.Fsync.png", mode = "644" },
+  { source = "../resources/icons/hicolor/scalable/apps/app.fsync.Fsync.svg", dest = "/usr/share/icons/hicolor/scalable/apps/app.fsync.Fsync.svg", mode = "644" },
+  { source = "../dist/stage/THIRD-PARTY-LICENSES.txt", dest = "/usr/share/doc/fsync-linux/THIRD-PARTY-LICENSES.txt", mode = "644", doc = true },
+]
+auto-req = "disabled"
+
+[package.metadata.generate-rpm.requires]
+glibc = ">= 2.34"
+libgcc = "*"
+"libstdc++" = "*"
+qt6-qtbase = "*"
+qt6-qtbase-gui = "*"
+qt6-qtdeclarative = "*"
+qt6-qtwayland = "*"
+
+[package.metadata.generate-rpm.recommends]
+gnome-keyring = "*"

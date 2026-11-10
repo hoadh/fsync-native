@@ -9,6 +9,10 @@ use std::time::Duration;
 #[doc(hidden)]
 pub type ServeHook = Arc<dyn Fn(u64, &mut [u8]) + Send + Sync>;
 
+/// Default `EngineConfig::publish_wait`: a reachable peer acks in well under a second (LAN or
+/// relay), an unreachable one costs up to 7 s, which must not hold up the app's next clip.
+pub const PUBLISH_WAIT: Duration = Duration::from_millis(1500);
+
 #[derive(Clone)]
 pub struct EngineConfig {
     /// Largest clipboard item (sum of reps) we send or accept.
@@ -24,6 +28,10 @@ pub struct EngineConfig {
     pub spill_threshold: usize,
     /// Per-peer deadline for delivering an offer.
     pub send_timeout: Duration,
+    /// How long `publish_clip` waits for peers before it returns; peers still being tried then
+    /// are reported `pending` and finish in the background (explicit pushes and `wait_all`
+    /// publishes always wait for every peer's real result).
+    pub publish_wait: Duration,
     /// Deadline for one `read_file_range`.
     pub read_timeout: Duration,
     #[cfg(any(test, feature = "test-hooks"))]
@@ -34,6 +42,11 @@ pub struct EngineConfig {
     #[cfg(any(test, feature = "test-hooks"))]
     #[doc(hidden)]
     pub serve_delay: Option<Duration>,
+    /// Test hook (feature `test-hooks`): the receiver waits this long after reading each clip
+    /// offer, before applying and acking it (a live peer that is slow to answer).
+    #[cfg(any(test, feature = "test-hooks"))]
+    #[doc(hidden)]
+    pub clip_accept_delay: Option<Duration>,
 }
 
 impl Default for EngineConfig {
@@ -45,11 +58,14 @@ impl Default for EngineConfig {
             outbox_grace: Duration::from_secs(600),
             spill_threshold: 1024 * 1024,
             send_timeout: Duration::from_secs(5),
+            publish_wait: PUBLISH_WAIT,
             read_timeout: Duration::from_secs(30),
             #[cfg(any(test, feature = "test-hooks"))]
             serve_hook: None,
             #[cfg(any(test, feature = "test-hooks"))]
             serve_delay: None,
+            #[cfg(any(test, feature = "test-hooks"))]
+            clip_accept_delay: None,
         }
     }
 }

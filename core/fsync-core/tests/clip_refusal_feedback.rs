@@ -75,15 +75,17 @@ async fn old_clip_alpn_peer_fails_fast_not_hangs() {
     assert!(started.elapsed() < Duration::from_secs(10));
 }
 
-/// A rate-limited sender is told "failed" (not refused, not delivered).
+/// A rate-limited sender is told "failed" (not refused, not delivered). Back to back, as the apps
+/// publish: concurrent publishes to one peer would mostly be superseded (latest wins) instead.
 #[tokio::test(flavor = "multi_thread")]
 async fn rate_limited_offers_are_failed_not_refused() {
     let ps = group(vec![EngineConfig::default(); 2]).await;
     let b = &ps[1];
-    let all = futures_util::future::join_all(
-        (0..60).map(|i| async move { publish(b, &format!("burst {i}")).await }),
-    )
-    .await;
+    let mut all = vec![];
+    for i in 0..60 {
+        all.push(publish(b, &format!("burst {i}")).await);
+    }
+    assert!(all.iter().all(|p| p.pending.is_empty()), "{all:?}");
     let delivered: usize = all.iter().map(|p| p.delivered.len()).sum();
     let failed: usize = all.iter().map(|p| p.failed.len()).sum();
     assert!(all.iter().all(|p| p.refused.is_empty()), "{all:?}");

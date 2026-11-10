@@ -2,6 +2,49 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-11-10 - Linux cross-OS X3/X4 pass; Windows image decoding fixes
+
+Plan `plans/261106-1414-linux-native-app`, ADR [014](./adr/014-linux-desktop-app.md) (accepted). Branch `feat/linux-app`, not yet merged.
+
+### Added
+- Cross-OS GUI harness: `apps/windows/tests/e2e/cross-os-gui-peer.ps1` (the WinUI app over UI Automation, in the logged-on session) with `X3=1` in `apps/linux/tests/e2e/cross-os-with-windows.sh`. Covers text, html, png and file clips both ways, echo and duplicate counts, and SAS pairing.
+
+### Changed
+- Cross-OS harness: clock skew is streamed from the Windows host (error +-8 ms, down from +-541 ms). Result JSON records `tries`, `skew_ms`, `skew_err_ms` and real echo checks. Legs fail on impossible (negative) latencies.
+- ADR 014 accepted. Its acceptance condition (X3 and X4 pass) is met. The Platform emit gate stays closed.
+
+### Fixed
+- Core: an offline account device delayed every clip publish by about 7 s (2 s attempt plus 5 s retry), and the apps publish one clip at a time, so each following clip arrived late on the reachable devices. Severity: high (visible clipboard lag whenever one device is off). `publish_clip` now returns once every peer answered or after 1.5 s (`EngineConfig::publish_wait`); a peer still busy with an older clip's attempt is not waited for at all. Unanswered peers are `Published.pending` (core, service and FFI; appended last to the FFI record, Swift and C# bindings regenerated) and finish in an engine-owned task that `Engine::close` aborts; their late outcome is only logged. Sends to one peer stay ordered; an older queued clip is skipped once a newer one exists. A device that comes back gets the next clip (no skip list). `send_files` and `fsync-cli clip put` (`publish_clip_and_wait`) still wait for the real result. Status lines call a pending device "not confirmed", never failed or "not connected", and are accurate without a later update: Linux "Sent to 1 device; 1 not confirmed." / "Not confirmed by 2 devices.", Windows the same without the full stop (failed devices still get "N device(s) did not get it"), macOS the same as Linux when no device failed (a failure keeps "Some devices couldn't be reached.").
+- Windows: images copied from an app whose clipboard holds a 32-bpp BITFIELDS DIB were synced 3 px off. Windows synthesizes CF_DIBV5 with the 12 mask bytes repeated after the 124-byte header, and the decoder did not skip them. Severity: high (wrong pixels reach peers with no error). Impact: image clips only; text and html were not affected. Fixed in `ImageCodec.cs`: the repeated masks are skipped only when they equal the header masks.
+- Windows: non-standard 32-bpp masks (not BGR, alpha not 0 or 0xFF000000) are refused with a log line instead of decoded with swapped colours. Previously the image was decoded unchecked.
+- Windows: a malformed DIB (bad bit count, size or truncated pixels, `int.MinValue` width) raised an unhandled exception and dropped the whole clip, text and html included. Severity: medium. The header is now validated, and any codec failure drops only the image (logged as `image not synced`).
+
+### Verification
+- Cross-OS X1+X4+X3 PASS at `312a67a`: `docs/test-results/linux-cross-os-261110-1241.json`, exit 0, 0 retries. Windows suite 173/173 (CoreBindings 9, Interop 61, App 103).
+- Open: X4 QR-text path not tested (SAS path only); X2 and X5 not re-run since the harness fixes (last pass 994119f); lazy file Linux -> Windows took 8701 ms against a 10 s gate; an offline account device delayed each following Windows publish by up to 7 s (fixed in core, see Fixed; not re-run cross-OS); LIVE items on Hyprland and GNOME; two pairing flakes (see ADR 014 "Known issues").
+
+## 2026-11-09 - Linux desktop app, packaging and tolerant Platform codec
+
+Plan `plans/261106-1414-linux-native-app`, ADR [014](./adr/014-linux-desktop-app.md). Branch `feat/linux-app`, not yet merged.
+
+### Added
+- Linux desktop app `apps/linux`: Qt6/QML over Rust (CXX-Qt 0.10.0), calling `FsyncService` directly. Covers sign-in, pairing (code, QR, SAS), devices, clipboard sync (Wayland data-control, X11, GNOME manual window), files (eager inbox up to 20 MiB), history, settings, drag-drop and `--send`, tray, autostart. See [system architecture](./system-architecture.md#linux-app).
+- Packaging: one release binary built in `ubuntu:22.04` (Qt 6.2), shipped as `.deb` (Ubuntu 22.04+, Debian 12+), `.rpm` (Fedora), AppImage and an Arch PKGBUILD (system Qt and OpenSSL). Release guard refuses test features; install smoke runs in clean containers.
+- Core: `BUILT_FEATURES` export for release checks (`e07b967`).
+- Test harness: `apps/linux/tests/e2e/cross-os-with-windows.sh` (X1, X2, X5) and the Windows peer `apps/windows/tests/e2e/cross-os-cli-peer.ps1`, with the reverse-tunnel check `cross-os-port-forward.ps1`.
+
+### Changed
+- `fsync-proto`: `Platform` decodes forward-compatibly. `Linux` is recognised; any other index is kept as `Unknown(n)` and re-encoded unchanged, so a tolerant client never rewrites a newer peer's platform in a signed device list. Known variants keep their old wire bytes (Mac=0, Win=1, Cli=2). The FFI enum is unchanged (`Mac`, `Win`, `Cli`); `Linux` and unknown platforms show as `Cli`.
+- The Linux app announces `Platform::Cli`. `Platform::Linux` stays behind the cargo feature `emit-platform-linux`, off in every build (see [ADR 014](./adr/014-linux-desktop-app.md#platform-emit-gate-future)).
+
+### Upgrade
+- Nothing to do for current Mac, Windows and backend builds: no peer emits `Linux` yet.
+- Before the Platform emit gate opens: the backend and the Mac and Windows apps must carry the tolerant decoder (deploy and release). Not done yet.
+
+### Verification
+- Cross-OS X1, X2 and X5 PASS at `994119f`: `docs/test-results/linux-cross-os-261109-1753.json`, all 12 legs equal by sha256, no echo or duplicate clips. Text clips 51-2973 ms, 3 MB and 8 MiB files 2.1-4.5 s (Windows file legs over the tunnel gated at 10 s; that run used 30 s).
+- Open: X3 and X4 (Windows app GUI), LIVE items on Hyprland and GNOME, two pairing flakes (see ADR 014 "Known issues").
+
 ## 2026-10-17 - QUIC address discovery on both production relays
 
 ### Changed

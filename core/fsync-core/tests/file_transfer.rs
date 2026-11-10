@@ -174,6 +174,7 @@ async fn push_flag_surfaces_incoming_files() {
             PublishOpts {
                 targets: Some(vec![b]),
                 push: true,
+                ..PublishOpts::default()
             },
         )
         .await

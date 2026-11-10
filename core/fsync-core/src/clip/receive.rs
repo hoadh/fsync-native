@@ -105,6 +105,10 @@ impl ProtocolHandler for ClipHandler {
             tokio::spawn(async move {
                 let read =
                     tokio::time::timeout(READ_TIMEOUT, rx.read_to_end(MAX_FRAME_LEN + 4)).await;
+                #[cfg(any(test, feature = "test-hooks"))]
+                if let Some(d) = sh.cfg.clip_accept_delay {
+                    tokio::time::sleep(d).await;
+                }
                 let res = match read {
                     Ok(Ok(raw)) => sh.on_offer(from, &raw).await,
                     _ => Err(CoreError::Net("offer stream failed".into())),

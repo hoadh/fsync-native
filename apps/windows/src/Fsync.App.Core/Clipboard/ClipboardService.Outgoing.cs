@@ -70,13 +70,13 @@ public sealed partial class ClipboardService
             var clip = await RepresentationMapper.ToLocalClipAsync(snap);
             if (clip is null) return PublishOutcome.Nothing;
             var r = await _gate.RunAsync(() => _bridge.RunAsync(e => e.PublishClip(clip)));
-            AppLog.Info($"clipboard: published reps={clip.reps.Length} files={clip.files.Length} echo={r.echo} delivered={r.delivered.Length} failed={r.failed.Length}");
+            AppLog.Info($"clipboard: published reps={clip.reps.Length} files={clip.files.Length} echo={r.echo} delivered={r.delivered.Length} failed={r.failed.Length} pending={r.pending.Length}");
             if (r.echo) return PublishOutcome.Nothing; // the clip we just received: core's echo guard
+            var (activity, error) = DescribePublished(r.delivered.Length, r.pending.Length, r.failed.Length);
             Post(() =>
             {
-                LastActivity = r.delivered.Length == 0 ? "Copied, but no other device is connected"
-                    : $"Sent to {r.delivered.Length} device{(r.delivered.Length == 1 ? "" : "s")}";
-                LastError = r.failed.Length > 0 ? $"{r.failed.Length} device(s) did not get it" : null;
+                LastActivity = activity;
+                LastError = error;
             });
             return PublishOutcome.Sent;
         }
@@ -94,5 +94,21 @@ public sealed partial class ClipboardService
             return PublishOutcome.Failed;
         }
         finally { _outLane.Release(); }
+    }
+
+    /// <summary>
+    /// Status lines for one publish result. A pending device had not answered when publish_clip
+    /// returned and is still being tried in the background: it is "not confirmed", never "did not
+    /// get it" and never "not connected". The line is not updated when its late result comes in
+    /// (core only logs it), so it never claims more than was known when it was written.
+    /// </summary>
+    internal static (string Activity, string? Error) DescribePublished(int delivered, int pending, int failed)
+    {
+        static string Devices(int n) => $"{n} device{(n == 1 ? "" : "s")}";
+        var activity = delivered > 0
+            ? $"Sent to {Devices(delivered)}" + (pending > 0 ? $"; {pending} not confirmed" : "")
+            : pending > 0 ? $"Not confirmed by {Devices(pending)}"
+            : "Copied, but no other device is connected";
+        return (activity, failed > 0 ? $"{failed} device(s) did not get it" : null);
     }
 }

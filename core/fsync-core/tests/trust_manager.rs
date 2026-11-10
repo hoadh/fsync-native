@@ -194,3 +194,31 @@ fn file_store_persists_pin_and_blocks_rollback_after_restart() {
     let (sink, _r) = EventSink::channel();
     assert!(TrustManager::new(Arc::new(FileTrustStore::new(&path)), sink).is_err());
 }
+
+#[test]
+fn ingests_chain_with_unknown_platform_entry() {
+    // ADR 014: a peer on a platform this build does not know (or Linux) must not stall the
+    // chain head, so later lists (e.g. a revocation) are still ingested.
+    let (ac, tm, _rx) = setup();
+    let g = genesis(&ac.a, ac.id);
+    tm.pin_genesis(&g).unwrap();
+    let newer = DeviceList::next_add(
+        &g,
+        ac.a.node_id(),
+        ac.b.node_id(),
+        "future".into(),
+        Platform::Unknown(6),
+        2,
+    )
+    .unwrap();
+    let l1 = sign(ac.a.signing_key(), &newer).unwrap();
+    assert_eq!(tm.ingest(&l1).unwrap(), Ingest::Advanced { seq: 1 });
+    assert!(tm.is_trusted(&ac.b.node_id()));
+    let removal = DeviceList::next_remove(&l1, ac.a.node_id(), &ac.b.node_id(), 3).unwrap();
+    let l2 = sign(ac.a.signing_key(), &removal).unwrap();
+    assert_eq!(tm.ingest(&l2).unwrap(), Ingest::Advanced { seq: 2 });
+    assert!(
+        !tm.is_trusted(&ac.b.node_id()),
+        "revocation behind it applies"
+    );
+}

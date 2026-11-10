@@ -127,4 +127,14 @@ final class ClipboardSyncTests: EngineTestCase {
         XCTAssertNil(r.pb.string(forType: .string))
     }
 
+    func testPublishMessageCallsPendingDevicesNotConfirmedNeverUnreachable() {
+        func published(delivered: Int, failed: Int, pending: Int) -> FsyncCoreKit.Published {
+            FsyncCoreKit.Published(itemId: "i", echo: false, delivered: (0..<delivered).map { "d\($0)" },
+                      failed: (0..<failed).map { "f\($0)" }, refused: [], pending: (0..<pending).map { "p\($0)" })
+        }
+        XCTAssertNil(ClipboardSync.publishMessage(published(delivered: 2, failed: 0, pending: 0)))
+        XCTAssertEqual(ClipboardSync.publishMessage(published(delivered: 1, failed: 0, pending: 1)), "Sent to 1 device; 1 not confirmed.")
+        XCTAssertEqual(ClipboardSync.publishMessage(published(delivered: 0, failed: 0, pending: 2)), "Not confirmed by 2 devices.")
+        XCTAssertEqual(ClipboardSync.publishMessage(published(delivered: 0, failed: 1, pending: 1)), "Some devices couldn't be reached.")
+    }
 }

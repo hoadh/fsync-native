@@ -39,9 +39,12 @@ public static class RepresentationMapper
     private static async Task<byte[]?> TryDibToPngAsync(byte[] dib)
     {
         try { return await ImageCodec.DibToPngAsync(dib); }
-        catch (Exception e) when (e is InvalidDataException or ArgumentException or System.Runtime.InteropServices.COMException)
+        catch (Exception e) when (e is not OutOfMemoryException)
         {
-            return null; // a DIB WIC cannot read: sync the other formats only
+            // A DIB we cannot decode (hostile header, unsupported masks, WIC refusing it) must never drop the
+            // text/html of the same clip: sync the other formats only, and leave a trace of why.
+            Fsync.App.Services.AppLog.Warn($"image not synced: {e.GetType().Name}: {e.Message}");
+            return null;
         }
     }
 

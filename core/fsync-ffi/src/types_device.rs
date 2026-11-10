@@ -35,12 +35,14 @@ pub struct Device {
     pub is_self: bool,
 }
 
+/// FFI v1 knows Mac/Win/Cli only. Linux and platforms from newer peers show as `Cli`
+/// (`wire_compat`); the signed list keeps their real index.
 impl From<proto::Platform> for Platform {
     fn from(p: proto::Platform) -> Self {
-        match p {
+        match p.wire_compat() {
             proto::Platform::Mac => Self::Mac,
             proto::Platform::Win => Self::Win,
-            proto::Platform::Cli => Self::Cli,
+            _ => Self::Cli,
         }
     }
 }

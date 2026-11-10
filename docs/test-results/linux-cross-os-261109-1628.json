@@ -1,0 +1,45 @@
+{
+  "run": "linux-cross-os",
+  "git_sha": "5f54542",
+  "date": "2026-11-09T16:29:19+07:00",
+  "scope": "X1",
+  "threshold_ms": 5000,
+  "checks": {
+    "no_echo_or_duplicates": true,
+    "latency_within_threshold": true
+  },
+  "legs": [
+    {
+      "id": "x1-text-app-to-cli",
+      "direction": "app-to-cli",
+      "kind": "text",
+      "latency_ms": 31,
+      "sha_ok": true,
+      "note": ""
+    },
+    {
+      "id": "x1-text-cli-to-app",
+      "direction": "cli-to-app",
+      "kind": "text",
+      "latency_ms": 67,
+      "sha_ok": true,
+      "note": ""
+    },
+    {
+      "id": "x1-file-cli-to-app",
+      "direction": "cli-to-app",
+      "kind": "file",
+      "latency_ms": 3115,
+      "sha_ok": true,
+      "note": "3 MB; accept step is scripted (offer-accept), pending after 2219 ms"
+    },
+    {
+      "id": "x1-file-app-to-cli",
+      "direction": "app-to-cli",
+      "kind": "file",
+      "latency_ms": 1110,
+      "sha_ok": true,
+      "note": "3 MB, pick-device to fetch done"
+    }
+  ]
+}

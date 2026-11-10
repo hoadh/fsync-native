@@ -1,6 +1,6 @@
 # System Architecture
 
-Last updated: 2026-10-17. Covers the P0 Rust track (phases 01, 02, 06-09) with its hardening (read-ahead, logout revocation, data-dir lock, multiple relays), the production deployment (phase 10), the macOS FFI package, the macOS app (phases 04, 11, 12) and the Windows app (phases 03 C# half, 13, 14). Windows phase 05 is partial and phases 15-16 are not started; see [development-roadmap](./development-roadmap.md).
+Last updated: 2026-11-09. Covers the P0 Rust track (phases 01, 02, 06-09) with its hardening (read-ahead, logout revocation, data-dir lock, multiple relays), the production deployment (phase 10), the macOS FFI package, the macOS app (phases 04, 11, 12), the Windows app (phases 03 C# half, 13, 14) and the Linux desktop app (plan `261106-1414-linux-native-app`, phases 01-06 in progress). Windows phase 05 is partial and phases 15-16 are not started; see [development-roadmap](./development-roadmap.md).
 
 ## Overview
 
@@ -8,7 +8,7 @@ fsync syncs clipboard items and files between a user's own devices. Trust is roo
 
 - **Backend** (`backend/`): email-OTP auth, a signed device-list registry, pairing-code storage, and presence (which devices are online and where they can be reached). It never sees clipboard or file bytes.
 - **Core** (`core/`): the Rust engine. It verifies the device-list chain, pairs devices, moves clips and files over iroh QUIC, and keeps encrypted local history.
-- **Apps** (`apps/`): thin UI layers over the core through UniFFI. macOS (`apps/macos/Packages/FsyncCoreKit`, the `TrustResetPrompt` library, and the `apps/macos/FsyncMac` menubar app with clipboard and file sync) is built; Windows is partially built (see the roadmap).
+- **Apps** (`apps/`): thin UI layers over the core through UniFFI. macOS (`apps/macos/Packages/FsyncCoreKit`, the `TrustResetPrompt` library, and the `apps/macos/FsyncMac` menubar app with clipboard and file sync) is built; Windows is partially built, and Linux is built as a native Qt6/QML app over the Rust core (see [Linux app](#linux-app) and the roadmap).
 
 ```
   Backend (axum + Postgres 17)           metadata only: accounts, device lists, pairing codes, presence
@@ -72,6 +72,52 @@ Mac-side logic lives in `FsyncMacCore/Clipboard`, `Files`, `Settings` and `Featu
 
 - `HistoryModel` pages 50 items, with search, pin, delete and clear (pinned items kept by default). Rows show the sender's device name from `PeerText.deviceName(peer:in:)` ("another device" when unknown), as on Windows. History keeps 200-character previews; copy-back works only for text stored in full.
 - `ClipSettingsModel` loads settings off the main actor. Edits are refused until the load succeeds. Defaults: auto mode, 30-day retention, 1 GiB size cap, 50 MiB max clip, auto-accept off. Settings are stored by the core.
+
+## Linux app
+
+`apps/linux` is a native Qt6/QML desktop app (ADR 014). It calls `fsync_core::service::FsyncService`
+directly: no FFI layer. Its own Cargo workspace keeps the root `cargo test --workspace` Qt-free.
+
+| Unit | Path | Role |
+|---|---|---|
+| `fsync-linux-platform` | `apps/linux/platform` | OS integration with no Qt: clipboard backends, filters, file-clip guard, secrets, IPC, instance lock, autostart, notifications, sync engine. Unit and integration tests run without Qt. |
+| `fsync-linux` | `apps/linux/app` | Binary. CXX-Qt bridges in `src/bridge/` (one directory, a cxx-qt-build rule), QML in `qml/`, engine glue in `src/engine/`, tray (ksni). |
+| packaging | `apps/linux/packaging`, `apps/linux/scripts` | One release binary built in `ubuntu:22.04` (Qt 6.2, glibc 2.35), then `.deb`, `.rpm`, AppImage and an Arch PKGBUILD. |
+
+- **Threads.** Engine calls never run on the Qt GUI thread. Callbacks reach QML only through
+  `CxxQtThread::queue`. Quit order: the shutdown gate closes, IPC stops, the clipboard stops (backend first),
+  then core `stop()`.
+- **Single instance.** An exclusive `flock` on `<data_dir>/app.lock` is held for the process lifetime. The
+  holder alone binds the IPC socket `<runtime_dir>/<blake3(canonical data dir)[..16]>.sock` in a verified
+  private directory. The peer must be the same uid (SO_PEERCRED). Commands such as `--clip-send`, `--clip-paste`
+  and `--send` go over this socket to the running instance.
+- **Secrets.** Secret Service through oo7's D-Bus API (GNOME Keyring, KWallet, KeePassXC). Without one, a
+  0600 file `<data_dir>/secrets.json` is used with a visible warning. The backend choice is written once to
+  `<data_dir>/secrets-backend` and never re-detected: a locked keyring means "waiting", never new keys
+  (a new node id would otherwise follow).
+- **Clipboard backends** (`platform/src/clipboard/`, chosen in `detect.rs`; `FSYNC_CLIPBOARD_BACKEND=wayland|x11|manual`
+  overrides):
+
+| Session | Backend | Behaviour |
+|---|---|---|
+| Wayland with `ext-data-control-v1` (or `zwlr` fallback) | Wayland (raw `wayland-client`) | watch, publish and serve from one thread; bounded pipe I/O |
+| X11 session (`DISPLAY` answers) | X11 (`x11rb`, thin) | XFixes owner change; INCR receive only, no INCR send |
+| GNOME Wayland (no data-control) | Manual | `--clip-send` / `--clip-paste` open `QuickClipWindow` with the activation token; the clipboard is read or written only from a focused surface |
+
+- **Filters, before any read.** Own marker, privacy hints (`x-kde-passwordManagerHint`,
+  `org.nspasteboard.ConcealedType`), a built-in password-manager list plus the user's `denylist`. On Wayland
+  the source app is best effort (focused window via Hyprland or Sway IPC). Hints are advisory.
+- **File clips.** `text/uri-list` is published only as local absolute paths under `$HOME`, `/media`, `/mnt`
+  or `/run/media`, never under a protected root (fsync data, `~/.ssh`, keyrings, browser profiles, ...). Fails closed.
+- **Eager inbound.** Inbound is always eager: every representation is fetched before the entry is written.
+  A file clip of at most 20 MiB is downloaded into `<data_dir>/inbox/<item_id>/` and written as `text/uri-list`
+  plus `x-special/gnome-copied-files`. Larger clips are held for a History download. Newest clip wins.
+  Retention runs at start, every 24 h and on a settings change.
+- **Platform on the wire.** The app announces `Platform::Cli` (`app/src/engine/boot.rs`). `Platform::Linux`
+  is behind the cargo feature `emit-platform-linux`, off in every packaged build (ADR 014, "Platform emit gate").
+  Peers decode `Linux` and unknown indices with the tolerant codec in `fsync-proto/src/platform.rs`.
+- **Test-only control.** The `e2e-control` feature adds IPC commands for the e2e scripts. A release build with
+  it is a `compile_error!`, and `--build-info` lists the compiled features so packages can be checked.
 
 ## Repository crates
 
@@ -218,7 +264,7 @@ Limits: at most 3 unauthenticated sessions per window, one attempt per source no
 
 1. `publish_clip` builds a `ClipOffer`: each rep is hashed (blake3). Reps are inlined while the 256 KiB budget lasts. Reps over 1 MiB spill to the blob store. Files are snapshotted (size, mtime, blake3).
 2. The item is recorded in history (unless sensitive) and placed in the outbox before any send.
-3. One bi stream per target peer, each with one framed offer. Sends have a 5 s per-peer timeout. Delivery counts only when the peer answers with the app-level accept byte. A peer that closes the connection with 403 (it no longer trusts us) is reported in `Published.refused`, and `send_files` returns `PeerRefused` (`NotPaired` is only for a device we have no pairing with); this is distinct from offline.
+3. One bi stream per target peer, each with one framed offer. Each peer gets one 2 s attempt, then one 5 s retry on a fresh connection (`send_timeout`), so at most about 7 s. `publish_clip` returns after at most 1.5 s: a slow or offline peer is reported `pending` and finishes in the background (one send per peer at a time, latest clip wins), so an offline device no longer delays the next clip by about 7 s. Delivery counts only when the peer answers with the app-level accept byte. A peer that closes the connection with 403 (it no longer trusts us) is reported in `Published.refused`, and `send_files` returns `PeerRefused` (`NotPaired` is only for a device we have no pairing with); this is distinct from offline.
 4. Receiver: re-checks trust before each offer (a removed peer's connection is closed with 403, nothing is acked), then checks that the offer origin matches the connection peer, validates it (versions, hashes, budgets, `rel_path` safety), deduplicates by `item_id`, records history, then emits `RemoteClip`.
 5. Latency in the last e2e runs: about 0.02-0.03 s on LAN and on relay. The bound in the demo is 5 s.
 
@@ -339,6 +385,7 @@ Defaults (settings): history mode Auto, 30 days, 1 GiB size cap, 50 MiB max clip
 - Redial: a stalled redial closes the restarted peer's in-use clip and presence connections (stage 3, [Redial](#8-redial-after-a-peer-restarts)). They reconnect on next use, and running pulls are spared.
 - Offline start: a device whose list is never re-synced ages out after 7 days. Any successful sync resets the clock, so an app that calls `ensure_account` at each start rarely hits this.
 - Netns: the netns relay runs QAD and TLS with a private CA, so N3 (full-cone) goes direct and N4 (symmetric) relays, both with a 0.01 s first clip ([test results](./test-results/README.md)). Production relays have no QAD yet, so a direct WAN path and a fast first connect are not verified on the real relays.
+- Linux: cross-OS X1-X5 pass against fsync-cli and the Windows app on waso-vm (X1/X3/X4 at 312a67a, 2026-11-10; X2/X5 at 994119f, 2026-11-09). The X4 QR-text path and KDE, Sway live sessions and other X11 desktops are untested ([ADR 014](./adr/014-linux-desktop-app.md)). Peers see the Linux app as `Cli` until the Platform emit gate opens.
 - No Postgres TLS (`tls-rustls` not enabled in sqlx).
 - Email: Gmail SMTP is the only real sender. Gmail's consumer limit (about 500 recipients per day) is enforced by `OTP_DAILY_SEND_CAP` (450 per rolling 24 h). A transactional provider is needed before real traffic (only the `SMTP_*` values change).
 - Root of a fresh device's chain is learned only when a chain through the head is seen. An old genesis replayed to a fresh device triggers a reset prompt, not a silent accept.
@@ -354,5 +401,5 @@ Defaults (settings): history mode Auto, 30 days, 1 GiB size cap, 50 MiB max clip
 - [API](./api.md): backend HTTP and WebSocket contract
 - [FFI contract](./ffi-contract.md): UniFFI surface (contract v2) and error mapping
 - [Code standards](./code-standards.md): conventions and quality gates
-- [ADRs](./adr/): decisions 001-012
+- [ADRs](./adr/): decisions 001-014
 - [Codebase summary](./codebase-summary.md): map of the repository

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=fsync
+GenericName=Clipboard and file sync
+Comment=Sync clipboard and files between your devices
+Exec=fsync-linux
+Icon=app.fsync.Fsync
+Terminal=false
+Categories=Network;FileTransfer;
+StartupWMClass=app.fsync.Fsync
+StartupNotify=true
+Keywords=clipboard;sync;files;

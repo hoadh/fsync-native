@@ -1,6 +1,6 @@
 # fsync-native
 
-Cross-device clipboard and file sync for macOS and Windows. The P0 Rust track is the shared core (`core/`), a Postgres-backed backend (`backend/`), a UniFFI binding for Swift (`core/fsync-ffi`), and a headless CLI (`core/fsync-cli`).
+Cross-device clipboard and file sync for macOS, Windows and Linux. The P0 Rust track is the shared core (`core/`), a Postgres-backed backend (`backend/`), a UniFFI binding for Swift (`core/fsync-ffi`), and a headless CLI (`core/fsync-cli`).
 
 Documentation lives in [docs/](./docs/). Start with [codebase-summary.md](./docs/codebase-summary.md) for the repo map and [system-architecture.md](./docs/system-architecture.md) for design.
 
@@ -12,6 +12,7 @@ Documentation lives in [docs/](./docs/). Start with [codebase-summary.md](./docs
 | Xcode command line tools (macOS arm64 or x86_64) | `scripts/build-xcframework.sh`, `swift test` |
 | Docker | Backend tests (Postgres via testcontainers) and the e2e demo |
 | Python 3 | `tests/e2e/p0-exit-demo.sh` |
+| Qt 6 dev packages (`qmake6`, `qmlcachegen`, QtQuick and Controls) | Linux desktop app only (`apps/linux`); see [Linux desktop app](#linux-desktop-app) |
 
 ## Build and Test
 
@@ -83,6 +84,19 @@ cargo run -q -p fsync-cli -- --data ./dev-a --api http://127.0.0.1:8080 --insecu
 
 Global flags: `--api` (env `FSYNC_API`), `--relay` (env `FSYNC_RELAY`), `--force-relay`, `--name`.
 
+## Linux desktop app
+
+Qt6/QML app over the Rust core (`apps/linux`, ADR [014](./docs/adr/014-linux-desktop-app.md)). Host build and run, release packages and install checks, clipboard backends (GNOME uses a manual window) and the shortcut lines are in [apps/linux/README.md](./apps/linux/README.md).
+
+```bash
+cd apps/linux
+QMAKE=/usr/bin/qmake6 cargo build
+./target/debug/fsync-linux                                   # window
+QT_QPA_PLATFORM=offscreen ./target/debug/fsync-linux --smoke  # exit 0 = QML loads cleanly
+```
+
+Release packages (`.deb`, `.rpm`, AppImage, `SHA256SUMS`) are built in an `ubuntu:22.04` container with Docker: `apps/linux/scripts/build-release.sh`.
+
 ## Repository Layout
 
 | Path | Contents |
@@ -91,6 +105,7 @@ Global flags: `--api` (env `FSYNC_API`), `--relay` (env `FSYNC_RELAY`), `--force
 | `backend/` | `fsync-backend` service and migrations |
 | `apps/macos/Packages/FsyncCoreKit` | Swift package over the xcframework |
 | `apps/windows/` | Windows app (WinUI 3) and C# bindings |
+| `apps/linux/` | Linux desktop app: Rust core, Qt6/QML (CXX-Qt), packaging (own Cargo workspace) |
 | `spikes/iroh-discovery` | Standalone discovery/relay spike (not in the workspace) |
 | `scripts/` | Binding and xcframework build scripts |
 | `tests/e2e/` | End-to-end demo |
