@@ -588,10 +588,10 @@ the CLI does (the apps keep running).
   `conn::closed reason=ApplicationClosed { error_code: 0, reason: b"" }`, offerer `LocallyClosed` at the moment
   its router shutdown began (iroh "Shutting down remaining tasks" 0.6-0.7 s later, after `Endpoint::close`).
   Passing runs: the joiner closed first (`b"done"`).
-- In-process, first test (round 1, 6184390): only partly a regression test. Its existing-device assert depends
-  on timing: with the pre-fix responder it failed 7 of 40 rounds once on this host while it was loaded, then 0
-  of 40 here and 0 of 192 in review. It did fail pre-fix every time, through its window-outcome assert (the
-  dropped handler reported `shut down` in 38 to 40 of 40 rounds).
+- In-process, first test (round 1, 6184390): timing-dependent, not a reliable regression test. Against the
+  pre-fix responder its existing-device assert failed 7 of 40 rounds once on this host while it was loaded,
+  then 0 of 40 here and 0 of 192 in review. Its window-outcome assert also depended on timing and setup: it
+  failed 3 of 3 runs here (the scratch copy kept the newer `ticket.rs`), but passed 16 of 16 pre-fix in review.
 - Deterministic test since the fix round (`core/fsync-core/tests/pairing_done_delivery.rs`). Test hook
   `InitiatorHooks` (feature `test-hooks`) makes the existing device wait 300 ms after reading `Done` before it
   reports and closes. The test asserts that the existing device's `Completed` comes before the new device's.
@@ -601,11 +601,12 @@ the CLI does (the apps keep running).
   closed=...b"done"`). A joiner that never closes gets `Completed` after 5 s instead (test: about 5 s).
   `Done` can then still be lost, but only if the joiner neither read it nor closed within 5 s.
 - A node shutdown during the drain still emits `Completed`, and the window reports the pinned seq instead of
-  `shut down` (drop guard and `PairTicket::set_pinned`). The test failed in about 5 of 6 runs without the guard:
+  `shut down` (drop guard and `PairTicket::set_pinned`, both set at the pin). Once pinned the new device
+  reports success everywhere, even if sending `Done` then fails. The test failed in about 5 of 6 runs without the guard:
   iroh cancels the handler, unless the endpoint close ends the drain first.
 - Pair stream errors now carry their source chain (`CoreError::net_chain`, each source cut to 64 chars because
   the peer chooses its close reason). No retry added.
-- Verified: the core tests (ordering, 5 s cap, shutdown during the drain); the loop 30 of 30 and 20 of 20 in round 1, and 20 of 20 again on the fix-round tree (gate 20). Cross-OS X1+X2+X5: not run yet.
+- Verified: the core tests (ordering, 5 s cap, shutdown during the drain); the loop 30 of 30 and 20 of 20 in round 1, 20 of 20 again on the fix-round tree, and 20 of 20 after fix round 2 (gate 20). Cross-OS X1+X2+X5: not run yet.
 
 **Known, not changed: the two sides can disagree.** The existing device publishes the list and ingests it
 before it sends `SignedList`. If that frame or `Done` is lost afterwards (network loss, a joiner-side timeout of

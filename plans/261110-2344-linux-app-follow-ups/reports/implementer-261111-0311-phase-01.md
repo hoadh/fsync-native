@@ -128,3 +128,37 @@ This is a different cause and is not fixed. It is recorded separately in ADR 014
 **Unresolved (added).**
 - The M3 test cannot fail 6 of 6 without the guard, because of iroh's cancel/close race. It does pass deterministically with the guard.
 - shellcheck is not installed. Install it, or let CI lint the script?
+
+## Fix round 2 (re-review code-reviewer-261111-0505, 9.0)
+
+Build output and temp files for this round are on disk: `CARGO_TARGET_DIR=/home/alex/.cache/fsync-p01-target`, `TMPDIR=/home/alex/.cache/fsync-p01-tmp`, loop logs in `/home/alex/.cache/fsync-p01-logs/`.
+
+**M-1: the loop no longer deletes a caller's log dir.**
+- A caller-supplied `PAIR_LOOP_OUT` must be new or empty, and it is never removed. Checked by hand: a non-empty dir is refused with exit 2 and its contents are left as they were.
+- Only the script's own `mktemp` dir is removed after an all-pass run, and only without `KEEP=1`.
+
+**L-a: the pin now sets both flags at the same point.**
+- `session` sets the guard's `pinned` and `ticket.set_pinned` together, right after the pin.
+- Once pinned, the result is success everywhere (event, window, return value). That holds even if sending `Done` then fails, and no `Abort` is sent after the pin.
+- No new test: forcing a `Done` write failure after the pin needs a fault hook inside the stream write, which is not cheap. The existing shutdown-during-drain test still covers the guard.
+
+**L-b: the hook code is compiled only with `test-hooks`.**
+- The `InitiatorHooks` branches (the `after_done` sleep and the `keep_open` 10 s spawn) are under `#[cfg(feature = "test-hooks")]`.
+- The struct and field stay, so `run_initiator` keeps one signature. They are marked `#[doc(hidden)]` and are never read without the feature.
+
+**L-c:** ADR 014 now calls the round-1 test timing-dependent and records the reviewer's 16 of 16 pre-fix passes.
+
+**shellcheck:** run via `koalaman/shellcheck:stable -x`.
+- Findings: SC1091 (sourced libs not followed) and SC2034 (`EXTRA`, which `cli()` in `cli-session.sh` reads).
+- Fixed with `# shellcheck source=` and a scoped `disable` comment. Now clean (rc 0).
+
+**Checks.**
+- `cargo fmt --all` is clean.
+- Production clippy (`-p fsync-core`, `-p fsync-cli -p fsync-ffi`, without test-hooks) with `-D warnings` is clean. `--workspace --all-targets -D warnings` is clean.
+- Pairing tests pass: `pairing_done_delivery` 3/3, `pairing_hardening`, `pairing_iroh`, `e2e_pair_flow`, `pairing_repair_after_reset`, `pair_kdf`, and the lib `net_chain` test.
+- The responder logic changed (pinned now means success), so the 20-run loop gate was rerun: **20 of 20** clean runs. Every drain ended with the joiner's `b"done"` close (20 of 20), and no containers or processes were left. Logs: `/home/alex/.cache/fsync-p01-logs/gate-round2-20/`.
+
+**Commits (round 2).**
+- `4238d72` fix(core): pin sets window and guard together; hooks behind `test-hooks`
+- `10d37ed` test(e2e): loop never deletes a caller's log dir; shellcheck clean
+- docs, the re-review report and this section: the next commit
