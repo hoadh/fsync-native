@@ -1,4 +1,4 @@
-# Phase 06 X3/X4 run report (PARTIAL: X4 pass; X3 win->app text+html pass; png blocked by a Windows app finding)
+# Phase 06 X3/X4 run report (COMPLETE: X4 + X3 all legs PASS in one run after the Windows DIB fix; see the final section)
 
 Branch feat/linux-app, last pushed harness commit: see `git log` (test(e2e)/fix(e2e) commits after a4622a5). No result JSON committed (X3 not complete).
 
@@ -44,3 +44,22 @@ Worker left clean (no Fsync.exe, scheduled tasks deleted, my scratch scripts rem
 - Untested yet: in-auto png (Linux->Windows, expects the same exactness through PngToDibAsync), in-lazy file (Win+Alt+V, PasteHelper), and `file` win->app.
   UIA names for those paths (Save/Saved., manual-mode toggle, Win+Alt+V) are still unverified on the real UI.
 - Should an offline peer delaying consecutive publishes by up to 7 s be a product issue? (Observed 5.2 s extra on clip #2.)
+
+## Final run (2026-11-10): PASS
+Result: docs/test-results/linux-cross-os-261110-1217.json, REF ea954a6 (X1 + X4 + X3, one run, exit 0).
+- X3 win->app: text 956 ms, html 704, png 833 (exact pixels), file 1791 (limit 10000). app->win: text 787, html/png (negative after skew
+  correction, inside the +-458/331 ms skew error: effectively instant), file via Win+Alt+V lazy 4577 ms (limit 10000). sha256/pixels equal, no echo.
+- Gates unchanged (clips 5 s, files 10 s).
+
+### Root cause of the png shift (the earlier suspicion was close but not exact)
+`ClipboardReader` reads CF_DIBV5 first. Windows synthesizes it from SetImage's BI_BITFIELDS 40-byte CF_DIB as: 124-byte V5 header (compression=3,
+masks inside the header) FOLLOWED BY 12 mask bytes again, then pixels (len 6536 = 124+12+6400; dumped on waso-vm via GetClipboardData(17)).
+`DibToBmpFile` added the +12 only for 40-byte headers, so bfOffBits pointed 12 bytes (3 px) early. A BI_BITFIELDS-40 DIB itself decodes exactly
+(that test passed before the fix, so it was not the culprit).
+Fix (ImageCodec.DibToBmpFile): for V4/V5 + BITFIELDS/ALPHABITFIELDS add the mask bytes when the DIB has room for them besides the pixels
+(stride*height); 32-bpp BITFIELDS with non-standard masks (not BGR 00FF0000/0000FF00/000000FF, alpha 0 or FF000000) throw InvalidDataException.
+Tests (ImageCodecTests, 7 new): BITFIELDS-40, V5+trailing masks, BI_RGB 32, 24 bpp, non-standard masks rejected, PngToDib bytes (plain bottom-up
+32 bpp, exact pixels read without our decoder). Before the fix: V5-trailing and masks-rejected FAILED (pixels 27,232,178,255 vs 0,1,255,255). After: full suite
+164/164 (CoreBindings 9, Interop 53, App 102) on waso-vm.
+PngToDibAsync (Linux->Windows) was verified by the new byte-level test and by the app->win png leg (exact pixels at the Windows clipboard).
+VM left clean (no Fsync.exe, no scheduled tasks, scratch scripts deleted).
