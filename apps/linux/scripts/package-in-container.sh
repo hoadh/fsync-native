@@ -17,6 +17,9 @@ for cfg in "$CARGO_HOME/config.toml" "$CARGO_HOME/config" /src/.cargo/config.tom
   [[ ! -e "$cfg" ]] || { echo "FAIL: cargo config $cfg could change the build" >&2; exit 1; }
 done
 
+# The deb/rpm asset blocks must match the shared list before anything is built.
+scripts/check-assets.sh
+
 cargo build --release --locked -p fsync-linux
 bin="$CARGO_TARGET_DIR/release/fsync-linux"
 

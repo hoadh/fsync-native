@@ -1,0 +1,14 @@
+# Checked-in files that every Linux package installs. The ONE list (review L8), read by:
+#   packaging/arch/PKGBUILD package()        installs each line
+#   scripts/check-assets.sh                  .deb / .rpm blocks in app/Cargo.toml must match it
+#                                            (cargo-deb reads its assets from Cargo.toml only)
+#   scripts/container/smoke-checks.sh        every installed package must hold each file + mode
+#   packaging/appimage/build-appimage.sh     the license lines (/usr/share/licenses/...)
+# Format: <mode> <source, relative to apps/linux> <absolute install path>. No spaces in paths.
+# Not listed (built, their source differs per format): the binary and THIRD-PARTY-LICENSES.txt.
+644 resources/app.fsync.Fsync.desktop /usr/share/applications/app.fsync.Fsync.desktop
+644 resources/icons/hicolor/48x48/apps/app.fsync.Fsync.png /usr/share/icons/hicolor/48x48/apps/app.fsync.Fsync.png
+644 resources/icons/hicolor/256x256/apps/app.fsync.Fsync.png /usr/share/icons/hicolor/256x256/apps/app.fsync.Fsync.png
+644 resources/icons/hicolor/scalable/apps/app.fsync.Fsync.svg /usr/share/icons/hicolor/scalable/apps/app.fsync.Fsync.svg
+644 ../../LICENSE-MIT /usr/share/licenses/fsync-linux/LICENSE-MIT
+644 ../../LICENSE-APACHE /usr/share/licenses/fsync-linux/LICENSE-APACHE

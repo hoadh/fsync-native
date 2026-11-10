@@ -2,6 +2,24 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-11-11 - License MIT OR Apache-2.0; Linux packaging hardening
+
+Plan `plans/261110-2344-linux-app-follow-ups` phase 04, ADR [014](./adr/014-linux-desktop-app.md). Branch `fix/packaging-hardening`.
+
+### Added
+- The repository is licensed `MIT OR Apache-2.0` (owner decision): `LICENSE-MIT`, `LICENSE-APACHE`, both Cargo workspaces (were `UNLICENSED`), a README License section.
+- Linux: `apps/linux/scripts/lib/assets.list`, the one list of checked-in files a package installs (desktop file, three icons, both license texts in `/usr/share/licenses/fsync-linux/`). The PKGBUILD, the AppImage build and the install smoke read it; `scripts/check-assets.sh` fails the release build when the deb/rpm blocks of `app/Cargo.toml` drift from it.
+
+### Changed
+- Linux packages name the license and the maintainer `alex <danghuyhoa@gmail.com>`: PKGBUILD `license=('MIT OR Apache-2.0')` and `# Maintainer:`, a DEP-5 deb `copyright` with one stanza per license plus deb `Maintainer`, rpm `License` and `Vendor` (cargo-generate-rpm has no `Packager` key).
+- PKGBUILD: build paths are remapped for Rust (`CARGO_ENCODED_RUSTFLAGS`) and C/C++ (`-ffile-prefix-map`), `$srcdir` and `$CARGO_HOME` both; a build dir with whitespace is refused (the C/C++ remap cannot handle it). `--printsrcinfo`, `--source` and `--allsource` refuse `FSYNC_LOCAL_SRC`. The git checksum (`updpkgsums`, pacman >= 6.1) is documented, not done: deferred to the release step in MVP phase 16.
+- Third-party license report: plain text (no HTML escapes), `accepted` pruned to the licenses the graph uses (an unaccepted license fails the build), MPL-2.0 source note.
+- L5 of the phase 05 review (base image digests, rustup-init pin, `--proto-redir`, linuxdeploy trust) moved to MVP phase 16.
+
+### Fixed
+- Linux: THIRD-PARTY-LICENSES lacked SQLCipher's BSD-3 notice (Zetetic LLC), although SQLCipher is compiled into the binary (libsqlite3-sys declares only MIT). Severity: high (license condition for binary distribution). `about.toml` now clarifies libsqlite3-sys as `MIT AND BSD-3-Clause`; the smoke checks the notice in every format.
+- Linux: the Arch package showed `git_sha` from whatever git found (or `unknown` for a tarball build). Severity: low (provenance only). The PKGBUILD now sets `FSYNC_GIT_SHA` from the pinned commit, or from the env for a tarball build, and `package()` asserts it.
+
 ## 2026-11-10 - Linux cross-OS X3/X4 pass; Windows image decoding fixes
 
 Plan `plans/261106-1414-linux-native-app`, ADR [014](./adr/014-linux-desktop-app.md) (accepted). Branch `feat/linux-app`, not yet merged.

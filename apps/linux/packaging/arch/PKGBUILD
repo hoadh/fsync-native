@@ -1,14 +1,24 @@
-# Maintainer: fsync <noreply@fsync.invalid>
+# Maintainer: alex <danghuyhoa@gmail.com>
 #
 # Two source modes:
 #   release (default)  git source pinned to ONE commit. Fill _commit at release time with the
-#                      full 40-hex sha of the release commit, then regenerate .SRCINFO:
+#                      full 40-hex sha of the release commit, then (pacman >= 6.1):
+#                        updpkgsums                         # git checksum in place of SKIP
 #                        makepkg --printsrcinfo > .SRCINFO
-#                      A placeholder or moving branch is refused below. Generate .SRCINFO with
-#                      FSYNC_LOCAL_SRC UNSET, or it would publish a file:// source.
+#                      A placeholder or moving branch is refused below, and so are
+#                      --printsrcinfo / --source / --allsource with FSYNC_LOCAL_SRC set (that
+#                      .SRCINFO or source package would publish a file:// source).
 #   local              FSYNC_LOCAL_SRC=/abs/path/fsync-src.tar.gz (a tarball of the working tree
 #                      whose top directory is `fsync/`): used by scripts/smoke-install.sh arch
-#                      to build the current tree before anything is committed.
+#                      to build the current tree before anything is committed. The tarball has
+#                      no .git: pass the sha for --build-info in FSYNC_GIT_SHA (else "local").
+#
+# Build dir: BUILDDIR and CARGO_HOME must not contain whitespace (refused in _env): cc-rs splits
+# CFLAGS on whitespace, so the C/C++ path remap could not work and build paths would ship.
+# Cargo config: makepkg runs as you, so ~/.cargo/config.toml ([build] rustflags/rustc-wrapper,
+# [env], [profile]) applies to this build. RUSTFLAGS from it are overridden by
+# CARGO_ENCODED_RUSTFLAGS; anything else is not. Build release packages with no such config, or
+# point CARGO_HOME at a clean directory.
 #
 # Qt rebuild rule: this package compiles QML (qmlcachegen) against the system Qt. Bump pkgrel and
 # rebuild on EVERY Qt 6 minor update in Arch (6.12 -> 6.13), exactly like other Qt applications.
@@ -20,7 +30,7 @@ pkgrel=1
 pkgdesc='Sync clipboard and files between your devices (Qt6/QML desktop app)'
 arch=(x86_64)
 url='https://github.com/hoadh/fsync-native'
-license=('LicenseRef-fsync-proprietary')  # see /usr/share/licenses/fsync-linux for bundled crates
+license=('MIT OR Apache-2.0')  # /usr/share/licenses/fsync-linux also lists the bundled crates
 # openssl: SQLCipher links the SYSTEM OpenSSL here (OPENSSL_NO_VENDOR below), so pacman delivers its
 # security updates and no build-tree path is baked into the binary (deb/rpm keep the vendored copy).
 depends=(qt6-base qt6-declarative qt6-wayland hicolor-icon-theme openssl glibc gcc-libs)
@@ -35,43 +45,69 @@ options=(!lto !debug)
 _commit=REPLACE_WITH_RELEASE_COMMIT_SHA
 
 if [[ -n "${FSYNC_LOCAL_SRC:-}" ]]; then
+  # makepkg sets PRINTSRCINFO (--printsrcinfo) and SOURCEONLY (--source, --allsource) before it
+  # sources this file.
+  if (( ${PRINTSRCINFO:-0} || ${SOURCEONLY:-0} )); then
+    echo "PKGBUILD: unset FSYNC_LOCAL_SRC for .SRCINFO or a source package (it would publish a file:// source)" >&2
+    exit 1
+  fi
   source=("fsync-src.tar.gz::file://${FSYNC_LOCAL_SRC}")
   sha256sums=(SKIP)   # a freshly made tarball of the working tree; not a release input
+  _gitsha="${FSYNC_GIT_SHA:-local}"
 else
   if [[ ! $_commit =~ ^[0-9a-f]{40}$ ]]; then
     echo "PKGBUILD: set _commit to the release commit (40 hex) or use FSYNC_LOCAL_SRC" >&2
     exit 1
   fi
   source=("fsync::git+https://github.com/hoadh/fsync-native.git#commit=${_commit}")
-  sha256sums=(SKIP)   # integrity comes from the pinned commit sha (SHA-1; follow-up: checksum the
-                      # git source with pacman >= 6.1 once a release commit exists)
+  # Release template: once _commit is a real release commit, run `updpkgsums` (pacman >= 6.1
+  # checksums a git source as its `git archive` tree) and commit the value it writes here, so
+  # integrity no longer rests on the SHA-1 commit id alone. SKIP only while _commit is a
+  # placeholder.
+  sha256sums=(SKIP)
+  _gitsha="${_commit:0:7}"
 fi
 
 _srcdir() { echo "$srcdir/fsync/apps/linux"; }
 
 # Common build environment (build, check): system OpenSSL, no network, no toolchain download.
 _env() {
+  local cargo_home="${CARGO_HOME:-$HOME/.cargo}"
   export QMAKE=/usr/bin/qmake6
   export CARGO_TARGET_DIR="$srcdir/target"
+  export FSYNC_GIT_SHA="$_gitsha"      # --build-info (build.rs would otherwise ask git)
   export OPENSSL_NO_VENDOR=1           # link Arch's OpenSSL, not a copy built into $srcdir
   # With rustup as the cargo provider the repo's rust-toolchain.toml (1.99.0, the pin of the
   # container builds) would make rustup download a toolchain mid-build; use the installed one.
   export RUSTUP_TOOLCHAIN=stable
   # Never build test features into the package (also refused by compile_error! in the app).
-  unset FSYNC_ALLOW_TEST_FEATURES RUSTFLAGS CARGO_ENCODED_RUSTFLAGS
-  # Keep build paths out of the binary (panic locations, C++ __FILE__).
-  export RUSTFLAGS="--remap-path-prefix=$srcdir=/build --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo"
-  export CXXFLAGS="${CXXFLAGS:-} -ffile-prefix-map=$srcdir=/build"
-  export CFLAGS="${CFLAGS:-} -ffile-prefix-map=$srcdir=/build"
+  unset FSYNC_ALLOW_TEST_FEATURES RUSTFLAGS CARGO_BUILD_RUSTFLAGS
+  # Keep build paths and the builder's home out of the binary (panic locations, C++ __FILE__).
+  # cc-rs splits CFLAGS/CXXFLAGS on whitespace and has no encoded form, so a path with
+  # whitespace cannot be remapped for C/C++: refuse it instead of shipping the path.
+  local p
+  for p in "$srcdir" "$cargo_home"; do
+    if [[ $p == *[[:space:]]* ]]; then
+      echo "PKGBUILD: '$p' contains whitespace; use a BUILDDIR / CARGO_HOME without spaces" >&2
+      return 1
+    fi
+  done
+  # (0x1f-separated, so the Rust flags themselves never depend on word splitting.)
+  CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$srcdir=/build"$'\x1f'"--remap-path-prefix=$cargo_home=/cargo"
+  export CARGO_ENCODED_RUSTFLAGS
+  # The same two remaps for C/C++ __FILE__ (cxx.cc comes from the cargo registry).
+  export CXXFLAGS="${CXXFLAGS:-} -ffile-prefix-map=$srcdir=/build -ffile-prefix-map=$cargo_home=/cargo"
+  export CFLAGS="${CFLAGS:-} -ffile-prefix-map=$srcdir=/build -ffile-prefix-map=$cargo_home=/cargo"
 }
 
-# Assert on a built binary: exact version, and NO test features (red team #6).
+# Assert on a built binary: exact version, the expected git sha, NO test features (red team #6).
 _assert_clean_build() {
   local bin="$1" info
   [[ "$("$bin" --version)" == "fsync-linux $pkgver" ]] || { echo "version mismatch: want $pkgver" >&2; return 1; }
   info=$("$bin" --build-info)
   echo "build-info: $info"
   [[ "$info" == *'"features":[]'* ]] || { echo "test features in build: $info" >&2; return 1; }
+  [[ "$info" == *"\"git_sha\":\"$_gitsha\""* ]] || { echo "git_sha is not $_gitsha: $info" >&2; return 1; }
 }
 
 prepare() {
@@ -103,15 +139,12 @@ package() {
   # Here, not in check(): `makepkg --nocheck` must not be able to skip the test-feature assertion.
   _assert_clean_build "$srcdir/target/release/fsync-linux"
   install -Dm755 "$srcdir/target/release/fsync-linux" "$pkgdir/usr/bin/fsync-linux"
-  install -Dm644 resources/app.fsync.Fsync.desktop \
-    "$pkgdir/usr/share/applications/app.fsync.Fsync.desktop"
-  local icons=resources/icons/hicolor
-  install -Dm644 $icons/48x48/apps/app.fsync.Fsync.png \
-    "$pkgdir/usr/share/icons/hicolor/48x48/apps/app.fsync.Fsync.png"
-  install -Dm644 $icons/256x256/apps/app.fsync.Fsync.png \
-    "$pkgdir/usr/share/icons/hicolor/256x256/apps/app.fsync.Fsync.png"
-  install -Dm644 $icons/scalable/apps/app.fsync.Fsync.svg \
-    "$pkgdir/usr/share/icons/hicolor/scalable/apps/app.fsync.Fsync.svg"
+  # Desktop file, icons, LICENSE-MIT/-APACHE: the one list shared with the deb, rpm and smoke.
+  local mode src dest
+  while read -r mode src dest; do
+    [[ -z $mode || $mode == \#* ]] && continue
+    install -Dm"$mode" "$src" "$pkgdir$dest"
+  done <scripts/lib/assets.list
   install -Dm644 "$srcdir/THIRD-PARTY-LICENSES.txt" \
     "$pkgdir/usr/share/licenses/$pkgname/THIRD-PARTY-LICENSES.txt"
 }
