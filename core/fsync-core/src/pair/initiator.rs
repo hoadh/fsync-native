@@ -29,28 +29,30 @@ pub async fn run_initiator<B: ListBackend>(
     trust: &TrustManager,
     events: &EventSink,
     backend: &B,
-    hooks: InitiatorHooks,
+    #[cfg_attr(not(feature = "test-hooks"), allow(unused_variables))] hooks: InitiatorHooks,
 ) -> Result<u64> {
     let (mut tx, mut rx) = conn.open_bi().await.map_err(CoreError::net_chain)?;
     let res = session(conn, me, secret, trust, events, backend, &mut tx, &mut rx).await;
     match &res {
         Ok(seq) => {
+            #[cfg(feature = "test-hooks")]
             if !hooks.after_done.is_zero() {
                 tokio::time::sleep(hooks.after_done).await;
             }
             let peer = node_id_of(conn);
             events.pairing(PairingEvent::Completed { peer, seq: *seq });
             let _ = tx.finish();
+            #[cfg(feature = "test-hooks")]
             if hooks.keep_open {
                 let c = conn.clone();
                 tokio::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_secs(10)).await;
                     drop(c);
                 });
-            } else {
-                // Closing is the new device's signal that `Done` arrived (it ends its drain).
-                conn.close(0u32.into(), b"done");
+                return res;
             }
+            // Closing is the new device's signal that `Done` arrived (it ends its drain).
+            conn.close(0u32.into(), b"done");
         }
         Err(e) => {
             let reason = match e {

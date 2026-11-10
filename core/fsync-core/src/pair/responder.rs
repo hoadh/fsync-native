@@ -31,8 +31,9 @@ const ACCEPT_TIMEOUT: Duration = Duration::from_secs(10);
 /// Bound on waiting for the existing device to close after the last frame.
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Emits `Completed` once the list is pinned, even if the handler future is dropped during the
-/// drain (router shutdown): the device is paired then, whatever happens to the connection.
+/// Emits `Completed` once the list is pinned, even if the handler future is dropped later
+/// (router shutdown during the drain): the device is paired then, whatever happens to the
+/// connection. `session` sets `pinned` together with `PairTicket::set_pinned`.
 struct CompletedOnDrop<'a> {
     events: &'a EventSink,
     peer: NodeId,
@@ -72,10 +73,20 @@ pub async fn run_responder(
             .await
             .map_err(|_| CoreError::Pair(PairError::Timeout))?
             .map_err(CoreError::net_chain)?;
-        let r = session(&conn, &mut ticket, me, trust, events, &mut tx, &mut rx).await;
-        if let Ok(seq) = &r {
-            completed.pinned = Some(*seq);
-        }
+        let r = session(
+            &conn,
+            &mut ticket,
+            &mut completed.pinned,
+            me,
+            trust,
+            events,
+            &mut tx,
+            &mut rx,
+        )
+        .await;
+        // Pinned means paired, even if sending `Done` failed afterwards: one outcome everywhere
+        // (event, window, return value), and no `Abort` after the pin.
+        let r = completed.pinned.map_or(r, Ok);
         if let Err(e) = &r {
             let reason = match e {
                 CoreError::Pair(PairError::BadMac) => AbortReason::BadMac,
@@ -107,9 +118,11 @@ pub async fn run_responder(
     res.map(|_| ())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn session(
     conn: &Connection,
     ticket: &mut PairTicket,
+    pinned: &mut Option<u64>,
     me: &Identity,
     trust: &TrustManager,
     events: &EventSink,
@@ -213,8 +226,9 @@ async fn session(
         [head] => trust.pin_paired_head(head, &n_id, &e_id, info.account_id)?,
         _ => trust.pin_paired_chain(&chain, &n_id, &e_id)?,
     };
-    // Paired from here on: a dropped session still reports this seq, not `Closed`.
+    // Paired from here on: a dropped session still reports this seq (window and `Completed`).
     ticket.set_pinned(seq);
+    *pinned = Some(seq);
     wire::send(tx, &PairFrame::Done).await?;
     // `Completed` is emitted by `run_responder` after the drain.
     Ok(seq)

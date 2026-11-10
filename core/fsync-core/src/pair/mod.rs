@@ -77,7 +77,9 @@ pub trait ListBackend: Send + Sync {
 }
 
 /// Test hooks for the existing-device side (set only through the `test-hooks` feature,
-/// `NodeBuilder::pair_hooks`); the default changes nothing.
+/// `NodeBuilder::pair_hooks`). Without that feature they are never read: the code that uses
+/// them is not compiled in.
+#[doc(hidden)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct InitiatorHooks {
     /// Wait this long after reading `Done`, before reporting `Completed` and closing.
