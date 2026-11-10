@@ -40,3 +40,15 @@ Note: the attached `docker run` client of arch run 1 exited after about 30 min (
 2. DEP-5 uses the short name `MIT` (Debian's preferred name for this text is `Expat`). Switch if lintian is ever run?
 3. With whitespace in BUILDDIR the C/C++ `__FILE__` of files under `$srcdir` keeps the build path (cc-rs limit). Accept, or refuse such a BUILDDIR?
 4. cargo-about logs `ERROR failed to parse license 'GPL-1.0'` (deprecated id in some crate's metadata) but `--fail` does not stop; pre-existing, not investigated.
+
+## Fix round (review 8.5, code-reviewer-261111-0427-phase-04.md)
+Commits 3f2c74e (code), 0c59985 (docs + review report).
+- H1: `about.toml` clarify `libsqlite3-sys` = `MIT AND BSD-3-Clause` (LICENSE + sqlcipher/LICENSE, sha256-pinned). The generated report (release image, cargo-about 0.9.3) has the Zetetic LLC text (BSD-3 now 6 crates). macOS/Windows ship no third-party report at all: noted as MVP phase 16 item 8 (not built).
+- M1: about.hbs triple-stash; the report has 0 HTML escapes. M2: `accepted` pruned to the 10 ids the graph uses. Negative check: dropping Zlib makes `cargo about generate --fail` exit 1. M3: MPL-2.0 crates.io source note (attohttpc 0.30.1).
+- L1: check-assets compares the whole deb/rpm blocks (built files are exact expected lines). Mutation tests in a copy: an extra stage asset, a wrong copyright dest, a wrong binary mode and a relative dest all fail. L5: list lines are format-checked.
+- L2: the arch smoke greps the guard message (`expect_refused`). L4: `--source`/`--allsource` (SOURCEONLY) are refused too (host makepkg checked).
+- L3, decision: refuse whitespace in BUILDDIR/CARGO_HOME. Reason: cc-rs cannot remap C/C++ there, so "no build paths in the binary" could only be kept by refusing. The smoke checks the refusal (`--nobuild` with a space), builds in `/build/work` and greps the whole build dir and `/home/builder`.
+- L6: the README recipe uses `fsync_git_sha` (keeps `-dirty`). L7: documented in the PKGBUILD header and README. L8: DEP-5 uses `Expat`; the smoke grep was updated. L10: ADR/changelog say "documented, deferred to phase 16". L9 accepted; rpm Packager empty + Vendor accepted. LGPL Qt source offer added to MVP phase 16.
+- Smoke checks now also need the SQLCipher notice and no HTML escapes in the report.
+- Verified: check-assets ok, shellcheck clean (scripts + PKGBUILD).
+- NOT yet rerun at hand-back: build-release.sh (running detached, log /home/alex/.cache/fsync-p04-logs/build-release2.log), then the deb/rpm/appimage smokes and the arch smoke.
