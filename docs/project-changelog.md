@@ -2,9 +2,25 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-11-11 - Pairing "connection lost" flake fixed
+
+Plan `plans/261110-2344-linux-app-follow-ups` phase 01, ADR [014](./adr/014-linux-desktop-app.md) "Known issues". PR #3 (`fix/pairing-flake`).
+
+### Added
+- `apps/linux/tests/e2e/pair-flake-loop.sh`: N fsync-cli offer/join pairings against one local Postgres, backend and relay, fresh account and data dirs per run, per-run debug logs. `FORCE_RELAY=1`, `JOIN_DELAY_S`, `STOP_ON_FAIL=1`.
+
+### Fixed
+- Core: when the new device was a fsync-cli `pair offer`, the joining device failed about 1 in 12 pairings with "Pairing failed: network: connection lost", although the list was published and the new device had pinned it. Severity: medium (the first pairing looks failed; a retry works). The new device emitted `Completed` before the final `Done` frame was delivered. The CLI exits on `Completed`, and the engine shutdown dropped the connection, discarding `Done`. The apps keep running after pairing, so they were not affected as offerers. `Completed` now comes after the existing device closed the session, or after at most 5 s. It is also emitted, with the pinned seq as the window outcome, when the node shuts down during that wait. Pair stream errors now include their cause, for example "connection lost: closed by peer: 0" (each cause cut to 64 chars). The `network:` error text is not a stable interface.
+
+### Changed
+- Core: a pairing offer published without a relay URL logs a warning (suspected cause of the Windows "No addressing information available" flake, still open).
+
+### Verification
+- `pair-flake-loop.sh`: before the fix 3 of 30 runs failed (3 in 40 with an earlier 10-run batch). After the fix: 30 of 30, then 20 of 20 on the round-1 tree, then 20 of 20 on the fix-round tree. `core/fsync-core/tests/pairing_done_delivery.rs`: a deterministic ordering test (test hook delays the joiner after `Done`), which fails 10 of 10 runs against the pre-fix responder; plus tests for the 5 s cap and for a shutdown during the drain. Cross-OS on waso-vm (3 runs): X1 and the Windows-offer pairing pass; X2 text app-to-win fails at about 6.2 s, the same on main 4e7b33b (pre-existing, plan 261110 phase 03).
+
 ## 2026-11-11 - License MIT OR Apache-2.0; Linux packaging hardening
 
-Plan `plans/261110-2344-linux-app-follow-ups` phase 04, ADR [014](./adr/014-linux-desktop-app.md). Branch `fix/packaging-hardening`.
+Plan `plans/261110-2344-linux-app-follow-ups` phase 04, ADR [014](./adr/014-linux-desktop-app.md). PR #2 (`fix/packaging-hardening`).
 
 ### Added
 - The repository is licensed `MIT OR Apache-2.0` (owner decision): `LICENSE-MIT`, `LICENSE-APACHE`, both Cargo workspaces (were `UNLICENSED`), a README License section.

@@ -1,7 +1,7 @@
 //! Existing-device side of pair/1.
 
 use super::{
-    ListBackend, PairSecret, STEP_TIMEOUT, USER_TIMEOUT,
+    InitiatorHooks, ListBackend, PairSecret, STEP_TIMEOUT, USER_TIMEOUT,
     initiator_steps::{listed_head, own_entry, publish_new_list, recv_step, zeroizing_vec},
     kdf::{PairKeys, Role, transcript},
     spake, wire,
@@ -21,6 +21,7 @@ use fsync_proto::{
 use iroh::endpoint::{Connection, RecvStream, SendStream};
 
 /// Run the handshake on `conn` (already dialed to the new device). Returns the published seq.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_initiator<B: ListBackend>(
     conn: &Connection,
     me: &Identity,
@@ -28,14 +29,29 @@ pub async fn run_initiator<B: ListBackend>(
     trust: &TrustManager,
     events: &EventSink,
     backend: &B,
+    #[cfg_attr(not(feature = "test-hooks"), allow(unused_variables))] hooks: InitiatorHooks,
 ) -> Result<u64> {
-    let (mut tx, mut rx) = conn.open_bi().await.map_err(CoreError::net)?;
+    let (mut tx, mut rx) = conn.open_bi().await.map_err(CoreError::net_chain)?;
     let res = session(conn, me, secret, trust, events, backend, &mut tx, &mut rx).await;
     match &res {
         Ok(seq) => {
+            #[cfg(feature = "test-hooks")]
+            if !hooks.after_done.is_zero() {
+                tokio::time::sleep(hooks.after_done).await;
+            }
             let peer = node_id_of(conn);
             events.pairing(PairingEvent::Completed { peer, seq: *seq });
             let _ = tx.finish();
+            #[cfg(feature = "test-hooks")]
+            if hooks.keep_open {
+                let c = conn.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                    drop(c);
+                });
+                return res;
+            }
+            // Closing is the new device's signal that `Done` arrived (it ends its drain).
             conn.close(0u32.into(), b"done");
         }
         Err(e) => {

@@ -31,7 +31,16 @@ impl Inner {
             return None;
         }
         engine.node().wait_online(RELAY_WAIT).await;
-        engine.node().local_addrs().relay_url
+        let url = engine.node().local_addrs().relay_url;
+        if url.is_none() {
+            // A joiner without LAN discovery then has no address at all (iroh: "No addressing
+            // information available"). See ADR 014 "Known issues".
+            tracing::warn!(
+                "pairing offer without a relay URL: no home relay after {}s",
+                RELAY_WAIT.as_secs()
+            );
+        }
+        url
     }
 
     pub(super) async fn pairing_offer(

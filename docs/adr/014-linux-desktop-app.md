@@ -592,14 +592,65 @@ Windows product bug found by X3 and fixed: Windows synthesizes CF_DIBV5 from a B
 - Windows clocks run about 8 s ahead of this host (8051 ms in 1241, streamed probe; the one-shot probe measured
   about 8.4 s in 1217). The error is in each leg's `skew_err_ms` (+-8 ms in 1241).
 
-### Known issues (pairing flakes, not yet root-caused)
-Both happen on a just-started endpoint that the relay has not yet made addressable over the TCP-only tunnel.
-Both passed on rerun. Not confirmed as a product bug or a harness artefact.
+### Known issues (pairing flakes)
 
-| Flake | Seen | Symptom |
-|---|---|---|
-| Local L1 <-> devB pairing (no Windows involved) | about 1 in 12 full runs | "Pairing failed: network: connection lost" right after the joiner signs in |
-| Windows offer / Linux join | 2 of 5 attempts, once each | one run hung 120 s with no progress (an orphan Windows `pair offer` was left); another failed with "Can't reach the fsync server (No addressing information available)" |
+| Flake | Seen | Symptom | Status |
+|---|---|---|---|
+| Local L1 <-> devB pairing (no Windows involved) | about 1 in 12 full runs | "Pairing failed: network: connection lost" on the joiner | Fixed 2026-11-11 (below) |
+| Windows offer / Linux join | 2 of 5 attempts, once each | one run hung 120 s with no progress (an orphan Windows `pair offer` was left); another failed with "Can't reach the fsync server (No addressing information available)" | Open, likely cause below |
+
+**Fixed: "connection lost" (2026-11-11, plan 261110 phase 01).** Not a relay or tunnel problem. The new
+device (the side that offers) emitted `PairingEvent::Completed` right after writing the last frame (`Done`),
+before the existing device had it. The CLI `pair offer` exits on `Completed`, and its engine shutdown cancels
+the pair/1 handler, which drops the connection (implicit close, code 0, no reason). QUIC discards stream data
+not yet sent, so the joiner, still waiting for `Done`, read "connection lost" (noq `ReadError::ConnectionLost`;
+its source, "closed by peer: 0", was not shown). The list was already published and the new device had pinned
+it: only the joiner reported a failure. This needs an offerer that tears its node down on `Completed`, which
+the CLI does (the apps keep running).
+- Reproduced with `apps/linux/tests/e2e/pair-flake-loop.sh` (fsync-cli <-> fsync-cli, fresh account per run):
+  3 of 30 runs failed, plus 10 of 10 earlier passes (3 in 40). Each failure: joiner `pairing failed: network:
+  connection lost` after `list_advanced seq 1` (list published), offerer `paired`, joiner log
+  `conn::closed reason=ApplicationClosed { error_code: 0, reason: b"" }`, offerer `LocallyClosed` at the moment
+  its router shutdown began (iroh "Shutting down remaining tasks" 0.6-0.7 s later, after `Endpoint::close`).
+  Passing runs: the joiner closed first (`b"done"`).
+- In-process, first test (round 1, 6184390): timing-dependent, not a reliable regression test. Against the
+  pre-fix responder its existing-device assert failed 7 of 40 rounds once on this host while it was loaded,
+  then 0 of 40 here and 0 of 192 in review. Its window-outcome assert also depended on timing and setup: it
+  failed 3 of 3 runs here (the scratch copy kept the newer `ticket.rs`), but passed 16 of 16 pre-fix in review.
+- Deterministic test since the fix round (`core/fsync-core/tests/pairing_done_delivery.rs`). Test hook
+  `InitiatorHooks` (feature `test-hooks`) makes the existing device wait 300 ms after reading `Done` before it
+  reports and closes. The test asserts that the existing device's `Completed` comes before the new device's.
+  With the pre-fix responder in a scratch copy it failed 10 of 10 runs; with the fix it passes.
+- Fix (`pair/responder.rs`): `Completed` is emitted after the drain, bounded by 5 s. The drain ends when the
+  existing device closed the connection, which it does once it has read `Done` (log: `pair/1 responder drained
+  closed=...b"done"`). A joiner that never closes gets `Completed` after 5 s instead (test: about 5 s).
+  `Done` can then still be lost, but only if the joiner neither read it nor closed within 5 s.
+- A node shutdown during the drain still emits `Completed`, and the window reports the pinned seq instead of
+  `shut down` (drop guard and `PairTicket::set_pinned`, both set at the pin). Once pinned the new device
+  reports success everywhere, even if sending `Done` then fails. The test failed in about 5 of 6 runs without the guard:
+  iroh cancels the handler, unless the endpoint close ends the drain first.
+- Pair stream errors now carry their source chain (`CoreError::net_chain`, each source cut to 64 chars because
+  the peer chooses its close reason). No retry added.
+- Verified: the core tests (ordering, 5 s cap, shutdown during the drain); the loop 30 of 30 and 20 of 20 in round 1, 20 of 20 again on the fix-round tree, and 20 of 20 after fix round 2 (gate 20). Cross-OS X1+X2+X5: not run yet.
+
+**Known, not changed: the two sides can disagree.** The existing device publishes the list and ingests it
+before it sends `SignedList`. If that frame or `Done` is lost afterwards (network loss, a joiner-side timeout of
+15 s, or a new device that is killed), the existing device reports `Failed` while both sides already trust each
+other (if the new device pinned). Nothing is left half-written. The device list is correct, and pairing again is
+harmless: the existing device sees the node in its list and hands over the head without publishing. Possible
+mitigation: on a loss after `SignedList`, re-check the backend's list and report success when the new device
+is in it. Not done: it cannot tell whether the new device pinned, and a false "paired" is worse than a false
+"failed". With the fix above, this needs a real network failure; teardown on `Completed` no longer causes it.
+
+**Open: Windows "No addressing information available".** Not the same cause. The offer publishes the relay
+URL it has after waiting at most 3 s for the home relay (`service/pairing.rs` `RELAY_WAIT`). iroh picks the
+home relay only when its first net report ends, and over the TCP-only tunnel (and with the local test relay)
+the QUIC address discovery probes get no answer, so that takes exactly iroh's `PROBES_TIMEOUT` of 3 s (measured
+locally: bind to "home is now relay" 3.002-3.003 s in every run). An offer that loses this race carries no
+relay URL; a joiner without mDNS (the tunnel) then has no address, which is iroh's `NoAddress` error, the
+message seen. Not reproduced locally (the CLI starts the 3 s wait after the account check, so it wins here).
+The offer now logs a warning when it has no relay URL. Candidate fix if X2 confirms it: wait longer than iroh's
+5 s report timeout for the home relay. The 120 s hang is not explained.
 
 An orphan Windows `pair offer` can linger up to 200 s after a failed pair run.
 
@@ -616,6 +667,7 @@ Nothing below blocks acceptance (the acceptance condition is X3 and X4, met abov
 - **Codec gaps.** 32-bpp images with non-standard masks are refused with a log line, not converted. Alpha is not tested.
   16-bpp masks other than 565/555 reach WIC unchecked.
 - LIVE items carried from phases 02-05 and the Hyprland check (KeePassXC / Bitwarden not sent): tables above.
-- Pairing flakes: root cause, and whether the TCP-only relay path is the trigger.
+- Pairing flake on the Windows tunnel ("No addressing information available"): confirm the relay URL race
+  (see "Known issues"). The local "connection lost" flake is fixed.
 - Platform emit gate: the backend deploy and the Mac/Windows releases with the tolerant decoder.
 - Confirm no tunnel process or portproxy rule remains on waso-vm and this host (phase 06 step 8). Not recorded yet.

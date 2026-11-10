@@ -68,6 +68,7 @@ pub enum CoreError {
     Io(#[from] std::io::Error),
     #[error("codec: {0}")]
     Codec(#[from] postcard::Error),
+    /// Transport failure. The text is for people (logs, UI) and not stable: never match on it.
     #[error("network: {0}")]
     Net(String),
     #[error("http transport: {0}")]
@@ -100,8 +101,59 @@ pub enum CoreError {
 
 pub type Result<T, E = CoreError> = std::result::Result<T, E>;
 
+/// Longest source text [`CoreError::net_chain`] keeps per source (chars).
+pub const NET_SOURCE_MAX: usize = 64;
+
 impl CoreError {
     pub fn net(e: impl std::fmt::Display) -> Self {
         Self::Net(e.to_string())
+    }
+
+    /// Like [`Self::net`], plus the error's source chain. A QUIC stream error only says
+    /// "connection lost"; why (closed by peer with a code, timed out, reset) is in its source.
+    /// Each source is cut to [`NET_SOURCE_MAX`] chars: a peer chooses its close reason (up to
+    /// about 1 KB), and this text reaches events and the UI.
+    pub fn net_chain(e: impl std::error::Error) -> Self {
+        let mut msg = e.to_string();
+        let mut src = e.source();
+        while let Some(s) = src {
+            msg.push_str(": ");
+            let text = s.to_string();
+            match text.char_indices().nth(NET_SOURCE_MAX) {
+                Some((cut, _)) => {
+                    msg.push_str(&text[..cut]);
+                    msg.push_str("...");
+                }
+                None => msg.push_str(&text),
+            }
+            src = s.source();
+        }
+        Self::Net(msg)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("connection lost")]
+    struct Outer(#[source] Inner);
+    #[derive(Debug, thiserror::Error)]
+    #[error("closed by peer: {0}")]
+    struct Inner(String);
+
+    #[test]
+    fn net_chain_shows_the_source_and_cuts_a_long_peer_reason() {
+        let short = CoreError::net_chain(Outer(Inner("0".into())));
+        assert_eq!(
+            short.to_string(),
+            "network: connection lost: closed by peer: 0"
+        );
+        let long = CoreError::net_chain(Outer(Inner("é".repeat(1000))));
+        let CoreError::Net(m) = long else { panic!() };
+        let tail = m.strip_prefix("connection lost: ").unwrap();
+        assert_eq!(tail.chars().count(), NET_SOURCE_MAX + 3);
+        assert!(tail.ends_with("..."));
     }
 }

@@ -40,6 +40,7 @@ pub struct NodeBuilder {
     #[cfg(feature = "test-relay-ca")]
     pub(super) relay_ca_pem: Option<Vec<u8>>,
     pub(super) extra: Vec<Extra>,
+    pub(super) pair_hooks: crate::pair::InitiatorHooks,
 }
 
 impl NodeBuilder {
@@ -61,6 +62,12 @@ impl NodeBuilder {
     #[cfg(feature = "test-relay-ca")]
     pub fn extra_relay_ca_pem(mut self, pem: Vec<u8>) -> Self {
         self.relay_ca_pem = Some(pem);
+        self
+    }
+    /// Test hook (feature `test-hooks`): fault injection on this node's existing-device side.
+    #[cfg(feature = "test-hooks")]
+    pub fn pair_hooks(mut self, hooks: crate::pair::InitiatorHooks) -> Self {
+        self.pair_hooks = hooks;
         self
     }
     /// Register a protocol (clip/file in phase 07); it is wrapped by the accept gate.
@@ -149,6 +156,7 @@ impl NodeBuilder {
             enforcer,
             feed,
             feeder,
+            pair_hooks: self.pair_hooks,
         })
     }
 }

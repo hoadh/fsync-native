@@ -56,7 +56,11 @@ pub enum PairingEvent {
         sas: String,
         decision: PairDecision,
     },
-    /// New list pinned (new device) or published (existing device).
+    /// New list pinned (new device) or published (existing device). On the new device it comes
+    /// after the existing device closed the session (it does so once it has read the final `Done`
+    /// frame) or after at most 5 s if it never closes, and also when the node shuts down during
+    /// that wait. A listener may then shut the node down; only a joiner that neither closes nor
+    /// reads within 5 s can still miss `Done`.
     Completed {
         peer: NodeId,
         seq: u64,

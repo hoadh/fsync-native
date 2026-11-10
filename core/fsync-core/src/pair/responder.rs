@@ -19,7 +19,7 @@ use crate::{
     trust::TrustManager,
 };
 use fsync_proto::{
-    PairFrame,
+    NodeId, PairFrame,
     names::validate_device_name,
     pairing::{AbortReason, PAIR_VERSION},
 };
@@ -28,8 +28,34 @@ use std::time::Duration;
 
 /// First bi stream must open quickly: a silent connector must not hold a pairing slot.
 const ACCEPT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Bound on waiting for the existing device to close after the last frame.
+const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Emits `Completed` once the list is pinned, even if the handler future is dropped later
+/// (router shutdown during the drain): the device is paired then, whatever happens to the
+/// connection. `session` sets `pinned` together with `PairTicket::set_pinned`.
+struct CompletedOnDrop<'a> {
+    events: &'a EventSink,
+    peer: NodeId,
+    pinned: Option<u64>,
+}
+
+impl Drop for CompletedOnDrop<'_> {
+    fn drop(&mut self) {
+        if let Some(seq) = self.pinned.take() {
+            self.events.pairing(PairingEvent::Completed {
+                peer: self.peer,
+                seq,
+            });
+        }
+    }
+}
 
 /// Serve one session; reports the outcome through the window ticket.
+///
+/// `Completed` comes after the drain: after the existing device closed the connection (it does
+/// so once it has read `Done`), or after `DRAIN_TIMEOUT` if it never closes. A listener may then
+/// shut the node down (the CLI exits) without cutting `Done` off in the normal case.
 pub async fn run_responder(
     conn: Connection,
     mut ticket: PairTicket,
@@ -37,12 +63,30 @@ pub async fn run_responder(
     trust: &TrustManager,
     events: &EventSink,
 ) -> Result<()> {
+    let mut completed = CompletedOnDrop {
+        events,
+        peer: node_id_of(&conn),
+        pinned: None,
+    };
     let res = async {
         let (mut tx, mut rx) = tokio::time::timeout(ACCEPT_TIMEOUT, conn.accept_bi())
             .await
             .map_err(|_| CoreError::Pair(PairError::Timeout))?
-            .map_err(CoreError::net)?;
-        let r = session(&conn, &mut ticket, me, trust, events, &mut tx, &mut rx).await;
+            .map_err(CoreError::net_chain)?;
+        let r = session(
+            &conn,
+            &mut ticket,
+            &mut completed.pinned,
+            me,
+            trust,
+            events,
+            &mut tx,
+            &mut rx,
+        )
+        .await;
+        // Pinned means paired, even if sending `Done` failed afterwards: one outcome everywhere
+        // (event, window, return value), and no `Abort` after the pin.
+        let r = completed.pinned.map_or(r, Ok);
         if let Err(e) = &r {
             let reason = match e {
                 CoreError::Pair(PairError::BadMac) => AbortReason::BadMac,
@@ -53,8 +97,9 @@ pub async fn run_responder(
             let _ = wire::send(&mut tx, &PairFrame::Abort { reason }).await;
         }
         let _ = tx.finish();
-        // Let the final frame drain before the connection goes away.
-        let _ = tokio::time::timeout(Duration::from_secs(5), conn.closed()).await;
+        // Let the final frame drain before the connection goes away (bounded).
+        let drained = tokio::time::timeout(DRAIN_TIMEOUT, conn.closed()).await;
+        tracing::debug!(closed = ?drained.as_ref().ok(), ok = r.is_ok(), "pair/1 responder drained");
         r
     }
     .await;
@@ -69,12 +114,15 @@ pub async fn run_responder(
         Err(e) => Err(CoreError::Net(e.to_string())),
     };
     ticket.finish(reply);
+    drop(completed); // emits `Completed` when pinned
     res.map(|_| ())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn session(
     conn: &Connection,
     ticket: &mut PairTicket,
+    pinned: &mut Option<u64>,
     me: &Identity,
     trust: &TrustManager,
     events: &EventSink,
@@ -178,7 +226,10 @@ async fn session(
         [head] => trust.pin_paired_head(head, &n_id, &e_id, info.account_id)?,
         _ => trust.pin_paired_chain(&chain, &n_id, &e_id)?,
     };
+    // Paired from here on: a dropped session still reports this seq (window and `Completed`).
+    ticket.set_pinned(seq);
+    *pinned = Some(seq);
     wire::send(tx, &PairFrame::Done).await?;
-    events.pairing(PairingEvent::Completed { peer: e_id, seq });
+    // `Completed` is emitted by `run_responder` after the drain.
     Ok(seq)
 }

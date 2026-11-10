@@ -76,6 +76,18 @@ pub trait ListBackend: Send + Sync {
     fn full_chain(&self) -> impl Future<Output = Result<Vec<SignedDeviceList>>> + Send;
 }
 
+/// Test hooks for the existing-device side (set only through the `test-hooks` feature,
+/// `NodeBuilder::pair_hooks`). Without that feature they are never read: the code that uses
+/// them is not compiled in.
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct InitiatorHooks {
+    /// Wait this long after reading `Done`, before reporting `Completed` and closing.
+    pub after_done: Duration,
+    /// Do not close the connection after `Done` (keep it open 10 s): a joiner that never closes.
+    pub keep_open: bool,
+}
+
 pub(crate) const STEP_TIMEOUT: Duration = Duration::from_secs(15);
 pub(crate) const USER_TIMEOUT: Duration = Duration::from_secs(120);
 
