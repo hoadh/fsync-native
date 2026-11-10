@@ -75,6 +75,18 @@ public sealed class ClipboardMappingTests : IDisposable
     }
 
     [Fact]
+    public async Task UndecodableDibDropsOnlyTheImageNotTheText()
+    {
+        var dib = new byte[40 + 64];
+        BitConverter.GetBytes(40u).CopyTo(dib, 0);
+        BitConverter.GetBytes(int.MinValue).CopyTo(dib, 4); // hostile width
+        BitConverter.GetBytes(8).CopyTo(dib, 8);
+        BitConverter.GetBytes((ushort)32).CopyTo(dib, 14);
+        var clip = await RepresentationMapper.ToLocalClipAsync(new ClipboardSnapshot { Formats = [], Text = "kept", Dib = dib });
+        Assert.Equal("text/plain", Assert.Single(clip!.reps).mime);
+    }
+
+    [Fact]
     public async Task PlainTextRoundTrips()
     {
         Win32Clipboard.Write([(ClipboardFormats.CF_UNICODETEXT, Encoding.Unicode.GetBytes("plain ✓ text\0"))]);

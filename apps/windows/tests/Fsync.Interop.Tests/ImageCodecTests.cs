@@ -66,6 +66,8 @@ public sealed class ImageCodecTests
     {
         var dib = new byte[40 + 12 + 16];
         BitConverter.GetBytes(40u).CopyTo(dib, 0);
+        BitConverter.GetBytes(2).CopyTo(dib, 4);
+        BitConverter.GetBytes(2).CopyTo(dib, 8);
         BitConverter.GetBytes((ushort)32).CopyTo(dib, 14);
         BitConverter.GetBytes(3u).CopyTo(dib, 16); // BI_BITFIELDS
         BitConverter.GetBytes(0x00FF0000u).CopyTo(dib, 40);
@@ -75,6 +77,8 @@ public sealed class ImageCodecTests
 
         var pal = new byte[40 + 4 * 256 + 64];
         BitConverter.GetBytes(40u).CopyTo(pal, 0);
+        BitConverter.GetBytes(8).CopyTo(pal, 4);
+        BitConverter.GetBytes(8).CopyTo(pal, 8);
         BitConverter.GetBytes((ushort)8).CopyTo(pal, 14);
         Assert.Equal(14u + 40 + 1024, BitConverter.ToUInt32(ImageCodec.DibToBmpFile(pal), 10));
         Assert.Throws<InvalidDataException>(() => ImageCodec.DibToBmpFile([1, 2, 3]));
@@ -193,5 +197,55 @@ public sealed class ImageCodecTests
             for (var x = 0; x < 40; x++)
                 for (var c = 0; c < 3; c++) // B, G, R (the alpha byte is unused)
                     Assert.Equal(pixels[(y * 40 + x) * 4 + c], dib[offset + ((39 - y) * 40 + x) * 4 + c]);
+    }
+
+    // Spare bytes after the pixels (HGLOBAL rounding, an ICC profile) must not be mistaken for repeated masks.
+    [Fact]
+    public async Task DibV5WithoutTrailingMasksButWithSlackKeepsEveryPixel()
+    {
+        var px = DistinctPixels(40, 40);
+        var masks = new uint[] { 0x00FF0000u, 0x0000FF00u, 0x000000FFu };
+        var withCopy = BuildDib(px, 40, 40, 32, 3, masks, headerSize: 124);
+        // Same DIB, masks only in the header: drop the 12 repeated bytes, then add 16 bytes of slack.
+        var dib = withCopy.Take(124).Concat(withCopy.Skip(124 + 12)).Concat(new byte[16]).ToArray();
+        await AssertDibPixelsAsync(dib, px, 40, 40);
+    }
+
+    [Fact]
+    public void V2HeaderHasNoAlphaMaskAndNoTrailingMasks()
+    {
+        var dib = new byte[52 + 16];
+        BitConverter.GetBytes(52u).CopyTo(dib, 0);
+        BitConverter.GetBytes(2).CopyTo(dib, 4);
+        BitConverter.GetBytes(2).CopyTo(dib, 8);
+        BitConverter.GetBytes((ushort)32).CopyTo(dib, 14);
+        BitConverter.GetBytes(3u).CopyTo(dib, 16);
+        BitConverter.GetBytes(0x00FF0000u).CopyTo(dib, 40);
+        BitConverter.GetBytes(0x0000FF00u).CopyTo(dib, 44);
+        BitConverter.GetBytes(0x000000FFu).CopyTo(dib, 48);
+        Assert.Equal(14u + 52, BitConverter.ToUInt32(ImageCodec.DibToBmpFile(dib), 10));
+    }
+
+    [Theory]
+    [InlineData(int.MinValue, 8, 32)]   // Math.Abs overflow
+    [InlineData(8, int.MinValue, 32)]
+    [InlineData(8, 8, 99)]              // bit count
+    [InlineData(20000, 8, 32)]          // too wide
+    [InlineData(0, 8, 32)]
+    public void HostileDibHeadersAreRejectedAsInvalidData(int w, int h, int bpp)
+    {
+        var dib = new byte[40 + 64];
+        BitConverter.GetBytes(40u).CopyTo(dib, 0);
+        BitConverter.GetBytes(w).CopyTo(dib, 4);
+        BitConverter.GetBytes(h).CopyTo(dib, 8);
+        BitConverter.GetBytes((ushort)bpp).CopyTo(dib, 14);
+        Assert.Throws<InvalidDataException>(() => ImageCodec.DibToBmpFile(dib));
+    }
+
+    [Fact]
+    public void TruncatedPixelDataIsRejected()
+    {
+        var dib = BuildDib(DistinctPixels(8, 8), 8, 8, 32, 0).Take(40 + 100).ToArray();
+        Assert.Throws<InvalidDataException>(() => ImageCodec.DibToBmpFile(dib));
     }
 }

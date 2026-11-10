@@ -58,35 +58,48 @@ public static class ImageCodec
         if (dib.Length < 40) throw new InvalidDataException("DIB too short");
         var headerSize = BitConverter.ToUInt32(dib, 0);
         if (headerSize is < 12 or > 1024 || headerSize >= dib.Length) throw new InvalidDataException("bad DIB header");
-        uint offset = headerSize;
-        if (headerSize >= 40)
+        long offset = headerSize;
+        if (headerSize == 12)
         {
+            // BITMAPCOREHEADER: 16-bit sizes, 3-byte palette entries.
+            var coreBits = BitConverter.ToUInt16(dib, 10);
+            if (coreBits is not (1 or 4 or 8 or 24)) throw new InvalidDataException("bad DIB bit count");
+            if (coreBits <= 8) offset += 3L << coreBits;
+        }
+        else if (headerSize >= 40)
+        {
+            var width = Math.Abs((long)BitConverter.ToInt32(dib, 4));
+            var height = Math.Abs((long)BitConverter.ToInt32(dib, 8));
             var bitCount = BitConverter.ToUInt16(dib, 14);
             var compression = BitConverter.ToUInt32(dib, 16);
             var clrUsed = BitConverter.ToUInt32(dib, 32);
-            if (headerSize == 40 && compression == BI_BITFIELDS) offset += 12; // three DWORD masks follow
-            if (headerSize == 40 && compression == BI_ALPHABITFIELDS) offset += 16; // four masks
+            if (bitCount is not (1 or 4 or 8 or 16 or 24 or 32)) throw new InvalidDataException("bad DIB bit count");
+            if (width == 0 || height == 0 || width > MaxSide || height > MaxSide) throw new InvalidDataException("bad DIB size");
+            var bitfields = compression is BI_BITFIELDS or BI_ALPHABITFIELDS;
+            var maskBytes = compression == BI_BITFIELDS ? 12 : 16;
+            if (headerSize == 40 && bitfields) offset += maskBytes; // masks follow the BITMAPINFOHEADER
+            else if (headerSize >= 56 && bitfields && dib.Length >= headerSize + maskBytes
+                && dib.AsSpan(40, maskBytes).SequenceEqual(dib.AsSpan((int)headerSize, maskBytes)))
+            {
+                // V3/V4/V5 headers carry the masks, but the CF_DIBV5 Windows synthesizes from a BITFIELDS CF_DIB
+                // repeats them right after the header, before any colour table. Skip them only when they really
+                // are that copy; spare bytes after the pixels (HGLOBAL rounding, ICC profile) must not count.
+                offset += maskBytes;
+            }
             var colors = clrUsed != 0 ? clrUsed : bitCount <= 8 ? 1u << bitCount : 0;
             if (colors > 256 && bitCount <= 8 || colors > dib.Length / 4) throw new InvalidDataException("bad DIB colour table");
-            offset += colors * 4;
-            if (headerSize > 40 && compression is BI_BITFIELDS or BI_ALPHABITFIELDS)
-            {
-                // V4/V5 headers hold the masks themselves, but the CF_DIBV5 Windows synthesizes from a BITFIELDS
-                // CF_DIB repeats them right after the header. Tell the two apart by the room left for the pixels.
-                var width = BitConverter.ToInt32(dib, 4);
-                var height = Math.Abs((long)BitConverter.ToInt32(dib, 8));
-                var stride = ((long)Math.Abs(width) * bitCount + 31) / 32 * 4;
-                var maskBytes = compression == BI_BITFIELDS ? 12u : 16u;
-                if (dib.Length - (long)offset >= stride * height + maskBytes) offset += maskBytes;
-            }
-            if (bitCount == 32 && compression is BI_BITFIELDS or BI_ALPHABITFIELDS) CheckStandardMasks(dib, headerSize);
-            if (offset >= dib.Length) throw new InvalidDataException("DIB has no pixels");
+            offset += colors * 4L;
+            if (bitCount == 32 && bitfields) CheckStandardMasks(dib, headerSize);
+            var stride = (width * bitCount + 31) / 32 * 4; // width <= MaxSide: no overflow
+            if (compression is 0 or BI_BITFIELDS or BI_ALPHABITFIELDS && dib.Length - offset < stride * height)
+                throw new InvalidDataException("DIB pixel data truncated");
         }
+        if (offset >= dib.Length) throw new InvalidDataException("DIB has no pixels");
         var file = new byte[FileHeaderSize + dib.Length];
         file[0] = (byte)'B';
         file[1] = (byte)'M';
         BitConverter.GetBytes((uint)file.Length).CopyTo(file, 2);
-        BitConverter.GetBytes(FileHeaderSize + offset).CopyTo(file, 10);
+        BitConverter.GetBytes((uint)(FileHeaderSize + offset)).CopyTo(file, 10);
         dib.CopyTo(file, FileHeaderSize);
         return file;
     }
@@ -101,8 +114,10 @@ public static class ImageCodec
         var (r, g, b) = (BitConverter.ToUInt32(dib, 40), BitConverter.ToUInt32(dib, 44), BitConverter.ToUInt32(dib, 48));
         if (r != 0x00FF0000 || g != 0x0000FF00 || b != 0x000000FF)
             throw new InvalidDataException($"unsupported DIB channel masks {r:X8}/{g:X8}/{b:X8}");
-        // The alpha mask sits right after the three colour masks (offset 52). A mask in that slot (BI_ALPHABITFIELDS, or a V4/V5 header's alpha mask) must be the top byte, or none.
-        if (dib.Length >= 56 && (headerSize > 40 || BitConverter.ToUInt32(dib, 16) == BI_ALPHABITFIELDS))
+        // The alpha mask follows the three colour masks (offset 52): in a V3+ header, or as the 4th mask of
+        // BI_ALPHABITFIELDS. A V2 header (52 bytes) has none. It must be the top byte, or absent.
+        var hasAlphaMask = headerSize >= 56 || headerSize == 40 && BitConverter.ToUInt32(dib, 16) == BI_ALPHABITFIELDS;
+        if (hasAlphaMask && dib.Length >= 56)
         {
             var a = BitConverter.ToUInt32(dib, 52);
             if (a is not (0 or 0xFF000000)) throw new InvalidDataException($"unsupported DIB alpha mask {a:X8}");
