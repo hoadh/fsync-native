@@ -10,13 +10,13 @@ Plan `plans/261110-2344-linux-app-follow-ups` phase 01, ADR [014](./adr/014-linu
 - `apps/linux/tests/e2e/pair-flake-loop.sh`: N fsync-cli offer/join pairings against one local Postgres, backend and relay, fresh account and data dirs per run, per-run debug logs. `FORCE_RELAY=1`, `JOIN_DELAY_S`, `STOP_ON_FAIL=1`.
 
 ### Fixed
-- Core: the joining device failed about 1 in 12 pairings with "Pairing failed: network: connection lost", although the list was published and the new device had pinned it. Severity: medium (first pairing looks failed; a retry works). The new device emitted `Completed` before the final `Done` frame was delivered; the CLI `pair offer` exits on `Completed`, and the engine shutdown dropped the connection, discarding `Done`. `Completed` now comes after the existing device closed the session (bounded 5 s). Pair stream errors now include their cause, for example "connection lost: closed by peer: 0".
+- Core: when the new device was a fsync-cli `pair offer`, the joining device failed about 1 in 12 pairings with "Pairing failed: network: connection lost", although the list was published and the new device had pinned it. Severity: medium (the first pairing looks failed; a retry works). The new device emitted `Completed` before the final `Done` frame was delivered. The CLI exits on `Completed`, and the engine shutdown dropped the connection, discarding `Done`. The apps keep running after pairing, so they were not affected as offerers. `Completed` now comes after the existing device closed the session, or after at most 5 s. It is also emitted, with the pinned seq as the window outcome, when the node shuts down during that wait. Pair stream errors now include their cause, for example "connection lost: closed by peer: 0" (each cause cut to 64 chars). The `network:` error text is not a stable interface.
 
 ### Changed
 - Core: a pairing offer published without a relay URL logs a warning (suspected cause of the Windows "No addressing information available" flake, still open).
 
 ### Verification
-- `pair-flake-loop.sh`: before 3 of 30 runs failed (3 in 40 with an earlier 10-run batch); after 30 of 30 passed, then 20 of 20 on the final tree. New test `core/fsync-core/tests/pairing_done_delivery.rs`: before 7 of 40 rounds failed on the existing device, after 60 of 60 passed. Cross-OS X1+X2+X5: not run yet.
+- `pair-flake-loop.sh`: before the fix 3 of 30 runs failed (3 in 40 with an earlier 10-run batch). After the fix: 30 of 30, then 20 of 20 on the round-1 tree, then 20 of 20 on the fix-round tree. `core/fsync-core/tests/pairing_done_delivery.rs`: a deterministic ordering test (test hook delays the joiner after `Done`), which fails 10 of 10 runs against the pre-fix responder; plus tests for the 5 s cap and for a shutdown during the drain. Cross-OS X1+X2+X5: not run yet.
 
 ## 2026-11-10 - Linux cross-OS X3/X4 pass; Windows image decoding fixes
 

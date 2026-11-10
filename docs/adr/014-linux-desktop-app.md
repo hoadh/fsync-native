@@ -580,21 +580,41 @@ before the existing device had it. The CLI `pair offer` exits on `Completed`, an
 the pair/1 handler, which drops the connection (implicit close, code 0, no reason). QUIC discards stream data
 not yet sent, so the joiner, still waiting for `Done`, read "connection lost" (noq `ReadError::ConnectionLost`;
 its source, "closed by peer: 0", was not shown). The list was already published and the new device had pinned
-it: only the joiner reported a failure. Any app that tears the node down on `Completed` hits the same race.
+it: only the joiner reported a failure. This needs an offerer that tears its node down on `Completed`, which
+the CLI does (the apps keep running).
 - Reproduced with `apps/linux/tests/e2e/pair-flake-loop.sh` (fsync-cli <-> fsync-cli, fresh account per run):
   3 of 30 runs failed, plus 10 of 10 earlier passes (3 in 40). Each failure: joiner `pairing failed: network:
   connection lost` after `list_advanced seq 1` (list published), offerer `paired`, joiner log
   `conn::closed reason=ApplicationClosed { error_code: 0, reason: b"" }`, offerer `LocallyClosed` at the moment
   its router shutdown began (iroh "Shutting down remaining tasks" 0.6-0.7 s later, after `Endpoint::close`).
   Passing runs: the joiner closed first (`b"done"`).
-- In-process (`core/fsync-core/tests/pairing_done_delivery.rs`, new device closes its node on `Completed`):
-  before the fix 7 of 40 rounds failed on the existing device with "network: connection lost: closed by peer:
-  0", and 38 of 40 rounds lost the new device's own outcome (`shut down`).
-- Fix (`pair/responder.rs`): `Completed` is emitted after the drain, that is after the existing device closed
-  the connection, which it does once it has read `Done` (log: `pair/1 responder drained closed=...b"done"`),
-  bounded by 5 s. Pair stream errors now carry their source chain (`CoreError::net_chain`). No retry added.
-- Verified: the core test 60 of 60 rounds; the loop 30 of 30 runs, then 20 of 20 on the final tree (gate 20).
-  Cross-OS X1+X2+X5: not run yet.
+- In-process, first test (round 1, 6184390): only partly a regression test. Its existing-device assert depends
+  on timing: with the pre-fix responder it failed 7 of 40 rounds once on this host while it was loaded, then 0
+  of 40 here and 0 of 192 in review. It did fail pre-fix every time, through its window-outcome assert (the
+  dropped handler reported `shut down` in 38 to 40 of 40 rounds).
+- Deterministic test since the fix round (`core/fsync-core/tests/pairing_done_delivery.rs`). Test hook
+  `InitiatorHooks` (feature `test-hooks`) makes the existing device wait 300 ms after reading `Done` before it
+  reports and closes. The test asserts that the existing device's `Completed` comes before the new device's.
+  With the pre-fix responder in a scratch copy it failed 10 of 10 runs; with the fix it passes.
+- Fix (`pair/responder.rs`): `Completed` is emitted after the drain, bounded by 5 s. The drain ends when the
+  existing device closed the connection, which it does once it has read `Done` (log: `pair/1 responder drained
+  closed=...b"done"`). A joiner that never closes gets `Completed` after 5 s instead (test: about 5 s).
+  `Done` can then still be lost, but only if the joiner neither read it nor closed within 5 s.
+- A node shutdown during the drain still emits `Completed`, and the window reports the pinned seq instead of
+  `shut down` (drop guard and `PairTicket::set_pinned`). The test failed in about 5 of 6 runs without the guard:
+  iroh cancels the handler, unless the endpoint close ends the drain first.
+- Pair stream errors now carry their source chain (`CoreError::net_chain`, each source cut to 64 chars because
+  the peer chooses its close reason). No retry added.
+- Verified: the core tests (ordering, 5 s cap, shutdown during the drain); the loop 30 of 30 and 20 of 20 in round 1, and 20 of 20 again on the fix-round tree (gate 20). Cross-OS X1+X2+X5: not run yet.
+
+**Known, not changed: the two sides can disagree.** The existing device publishes the list and ingests it
+before it sends `SignedList`. If that frame or `Done` is lost afterwards (network loss, a joiner-side timeout of
+15 s, or a new device that is killed), the existing device reports `Failed` while both sides already trust each
+other (if the new device pinned). Nothing is left half-written. The device list is correct, and pairing again is
+harmless: the existing device sees the node in its list and hands over the head without publishing. Possible
+mitigation: on a loss after `SignedList`, re-check the backend's list and report success when the new device
+is in it. Not done: it cannot tell whether the new device pinned, and a false "paired" is worse than a false
+"failed". With the fix above, this needs a real network failure; teardown on `Completed` no longer causes it.
 
 **Open: Windows "No addressing information available".** Not the same cause. The offer publishes the relay
 URL it has after waiting at most 3 s for the home relay (`service/pairing.rs` `RELAY_WAIT`). iroh picks the
