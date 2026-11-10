@@ -68,6 +68,9 @@ public sealed class ImageCodecTests
         BitConverter.GetBytes(40u).CopyTo(dib, 0);
         BitConverter.GetBytes((ushort)32).CopyTo(dib, 14);
         BitConverter.GetBytes(3u).CopyTo(dib, 16); // BI_BITFIELDS
+        BitConverter.GetBytes(0x00FF0000u).CopyTo(dib, 40);
+        BitConverter.GetBytes(0x0000FF00u).CopyTo(dib, 44);
+        BitConverter.GetBytes(0x000000FFu).CopyTo(dib, 48);
         Assert.Equal(14u + 40 + 12, BitConverter.ToUInt32(ImageCodec.DibToBmpFile(dib), 10));
 
         var pal = new byte[40 + 4 * 256 + 64];
@@ -165,5 +168,30 @@ public sealed class ImageCodecTests
         var px = DistinctPixels(8, 8);
         var dib = BuildDib(px, 8, 8, 32, 3, [0x000000FFu, 0x0000FF00u, 0x00FF0000u]); // RGB order
         await Assert.ThrowsAsync<InvalidDataException>(() => ImageCodec.DibToPngAsync(dib));
+    }
+
+    // Consumers (GetImage, Paint, ...) read the DIB by its header alone, so check the bytes without our own decoder.
+    [Fact]
+    public async Task PngToDibIsPlainBottomUp32BppWithTheExactPixels()
+    {
+        var (png, pixels) = await MakePngAsync(40, 40);
+        var dib = await ImageCodec.PngToDibAsync(png);
+        Assert.Equal(40u, BitConverter.ToUInt32(dib, 0));
+        Assert.Equal(32, BitConverter.ToUInt16(dib, 14));
+        Assert.True(BitConverter.ToInt32(dib, 8) > 0, "bottom-up");
+        var compression = BitConverter.ToUInt32(dib, 16);
+        Assert.True(compression is 0 or 3, $"compression {compression}");
+        var offset = 40 + (compression == 3 ? 12 : 0);
+        if (compression == 3)
+        {
+            Assert.Equal(0x00FF0000u, BitConverter.ToUInt32(dib, 40));
+            Assert.Equal(0x0000FF00u, BitConverter.ToUInt32(dib, 44));
+            Assert.Equal(0x000000FFu, BitConverter.ToUInt32(dib, 48));
+        }
+        Assert.Equal(offset + 40 * 40 * 4, dib.Length);
+        for (var y = 0; y < 40; y++)
+            for (var x = 0; x < 40; x++)
+                for (var c = 0; c < 3; c++) // B, G, R (the alpha byte is unused)
+                    Assert.Equal(pixels[(y * 40 + x) * 4 + c], dib[offset + ((39 - y) * 40 + x) * 4 + c]);
     }
 }
