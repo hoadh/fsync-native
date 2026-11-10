@@ -34,3 +34,40 @@ Linux app (feat/linux-app) calls `FsyncService::publish_clip` -> `Engine::publis
 **Status:** DONE_WITH_CONCERNS
 **Summary:** Core fix covers Windows, macOS, Linux, CLI; test fails before / passes after, workspace tests and clippy pass.
 **Concerns:** see Unresolved; Linux workspace and C# not run.
+
+## Rework (after review 7.5/10)
+
+Skip map (`unreachable_peers.rs`, `Shared.unreachable`, `receive.rs` clear) removed entirely (reverted in the fix commit). Reviewer's design implemented instead.
+
+### Design
+- `Shared::publish` (core/fsync-core/src/clip/send.rs): every peer send runs as an engine-owned task (`clip/background_sends.rs`, `JoinSet` in `Shared.background`). `publish` collects answers until all peers answered or `EngineConfig::publish_wait` (default `PUBLISH_WAIT` 1.5 s) passes; unanswered = `Published.pending`. Task does its own unoffer + debug log, so outcome is handled with nobody waiting.
+- Shutdown: `Engine::close` calls `background.close()` (abort_all + join) before `node.close()`. After close, spawn refused -> peer reported `failed` (Closed). No task outlives close.
+- Per-peer ordering (`clip/peer_send_lanes.rs`): before, ordering came from apps serializing publishes and publish awaiting acks. With background sends, clip N to a slow peer could land after N+1; receiver (`receive.rs`) has no ordering check and apps apply every RemoteClip -> stale clipboard. So: one lane per peer (async mutex held for the whole attempt) + sequence number taken in publish order; a send that gets its turn after a newer clip was queued for that peer is skipped (latest wins, unoffered). Ordering now same as before; at most one attempt per peer on the wire, so dead peer never piles up dials (dialer single-flight only dedups concurrent connects, the lane covers the rest; no extra state).
+- Busy lane: a peer whose lane is still held by an older attempt (with serialized apps = an attempt that outlived its publish) is `pending` at once, not waited for. So in a burst of copies only the first pays up to 1.5 s, the next return as soon as live peers ack. Sparse copies (> ~7 s apart) with a dead peer each pay 1.5 s.
+- Returning peer: nothing is marked; the next clip (or the queued latest) is tried for real -> gets it.
+- Push (`opts.push`, send_files): no deadline, bypasses lanes (not superseded, does not supersede), waits for real result -> `PeerOffline` verdict unchanged.
+- `PublishOpts.wait_all` (new) + `FsyncService::publish_clip_and_wait` (new, Rust only): `fsync-cli clip put` uses it (one-shot process stops the engine right after; would abort pending sends and retry-duplicate otherwise). CLI output/semantics unchanged (n7/n8 e2e expectations hold).
+
+### API / consumers
+- core `clip::Published` and `service::Published`: new `pending` field. FFI `Published` record unchanged (pending dropped; only plain comments added so Swift/C# bindings stay identical): pending peers are in neither `delivered` nor `failed`.
+- Windows `ClipboardService.Outgoing.cs`: "N device(s) did not get it" uses `failed` only -> pending never shown as failure. Not changed. Caveat: if ALL peers are pending, `delivered=0` -> LastActivity "Copied, but no other device is connected" (status, not error).
+- macOS `ClipboardSync.swift`: message only when `failed` non-empty -> fine, not changed.
+- Linux `platform/src/sync/outbound.rs::describe`: new "Sending to N device(s)..." when nothing delivered yet but some pending (unit test added); fakes updated.
+- fsync-cli: `publish_clip_and_wait`.
+- Docs: ffi-contract.md, protocol-spec.md, system-architecture.md, project-changelog.md.
+
+### Tests
+- `tests/clip_offline_peer_publish.rs` (4 tests): every publish incl. first < 2 s with one dead peer, later ones < 1 s, dead peer `pending`, live peers get all 4 in order; returning peer (same identity, new engine) gets the next clip and never an older one after it; push to dead peer: `pending` empty, `failed=[peer]`, took > 1 s (full attempt, publish_wait 200 ms); close with pending send returns < 3 s (attempt had ~5 s left), publish after close does not panic.
+- Unit: `background_sends` (close aborts + refuses), `peer_send_lanes` (supersede, one-at-a-time, busy, per-peer independence), Linux `describe`.
+- Changed existing test `clip_refusal_feedback::rate_limited_offers_are_failed_not_refused`: it fired 60 publishes to ONE peer concurrently; with latest-wins lanes most became `pending`/superseded (1 delivered, 0 failed). Now back to back (as apps publish); still hits the rate limit (20 burst + 20/s) and asserts `pending` empty.
+- Results: root `cargo test --workspace --locked` 375 passed / 0 failed / 3 ignored; clippy fsync-core 0 warnings; clippy workspace `-D warnings` clean; `cargo fmt --all --check` clean. apps/linux: `cargo build --locked --all-targets` OK (only the existing gold-linker warning); platform lib 125 pass, adversarial sync 7 + rules 7 pass. Real Wayland/X11 backend tests not run (no desktop touching). New offline test file stable over 6+ runs (~4.7 s).
+- C#/Swift not changed, so nothing unverified there; bindings byte-identical (FFI record unchanged).
+
+### Rework concerns / unresolved
+- With a dead peer, a publish whose lane is free (first clip, or copies > ~7 s apart) still returns after 1.5 s; apps serialize, so the NEXT clip can start up to 1.5 s late. Bursts are not affected (busy lane -> no wait). Lower `PUBLISH_WAIT` would trade against slow-but-live relay peers being reported pending.
+- Windows: when every peer is pending, status line says "Copied, but no other device is connected" (not an error). Fix needs `pending` in the FFI record (binding regen on Windows/macOS) or a C# heuristic; left alone.
+- Engine close with a send to a dead peer still in flight: sends abort at once, but iroh `Endpoint::close` then waits ~3 s for the half-open connection (measured 3.0 s). Not a hang; service stop already bounds teardown.
+- A pending peer's late outcome is only logged (debug); apps never learn it was delivered later. Same as before for failures (no retries).
+- Concurrent publishes (not done by apps) report a superseded older clip as `failed` for that peer.
+
+**Rework status:** DONE_WITH_CONCERNS (concerns above are observational).
