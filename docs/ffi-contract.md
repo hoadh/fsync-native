@@ -141,7 +141,13 @@ FsyncError { NotPaired, PeerOffline, Network{msg}, Integrity, TooLarge, Auth, Re
   (removed or reset us) ends up in `Published.refused`, not `delivered` and not `failed`; it is
   not retried; a timed-out or failed attempt is retried once on a fresh
   connection. Each attempt has one deadline covering connect and send (first attempt 2 s, retry
-  `send_timeout`, 5 s default), so `publish` returns within about 7 s even if a peer is dead.
+  `send_timeout`, 5 s default). `publish_clip` waits for the peers at most about 1.5 s
+  (`EngineConfig::publish_wait` in core), and at once for a peer whose previous clip attempt is
+  still running. A peer that has not answered by then is in neither `delivered` nor `failed`: it is
+  still being tried in the background (core `Published.pending`, not in the FFI record so the
+  Swift/C# bindings are unchanged) and must not be shown as a failure. Sends to one peer stay in
+  order; a queued older clip is dropped when a newer one is published (latest wins). `send_files`
+  is not cut short: it waits for the target's real result.
 
 - Trust reset. `AccountEvent::TrustReset` fires once per offered list, with the device names it
   would trust; it fires again with a new `reset_id` if the offer grows before the user answers. Show the warning, then call `confirm_trust_reset` or

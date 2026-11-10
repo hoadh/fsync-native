@@ -49,6 +49,7 @@ fn outcome(o: PublishOutcome) -> Published {
             echo: true,
             delivered: vec![],
             failed: vec![],
+            pending: vec![],
             refused: vec![],
         },
         PublishOutcome::Sent(p) => Published {
@@ -56,6 +57,7 @@ fn outcome(o: PublishOutcome) -> Published {
             echo: false,
             delivered: p.delivered.iter().map(|n| n.to_string()).collect(),
             failed: p.failed.iter().map(|n| n.to_string()).collect(),
+            pending: p.pending.iter().map(|n| n.to_string()).collect(),
             refused: p.refused.iter().map(|n| n.to_string()).collect(),
         },
     }
@@ -74,7 +76,7 @@ fn push_verdict(node: &NodeId, p: &crate::clip::Published) -> SvcResult<()> {
 }
 
 impl Inner {
-    async fn publish(self: &Arc<Self>, c: LocalClip) -> SvcResult<Published> {
+    async fn publish(self: &Arc<Self>, c: LocalClip, wait_all: bool) -> SvcResult<Published> {
         let kind = kind_of(&c)?;
         let files = if c.files.is_empty() {
             vec![]
@@ -101,7 +103,13 @@ impl Inner {
         };
         let o = self
             .engine()?
-            .publish_clip(input, PublishOpts::default())
+            .publish_clip(
+                input,
+                PublishOpts {
+                    wait_all,
+                    ..PublishOpts::default()
+                },
+            )
             .await?;
         Ok(outcome(o))
     }
@@ -122,6 +130,7 @@ impl Inner {
         let opts = PublishOpts {
             targets: Some(vec![node]),
             push: true,
+            ..PublishOpts::default()
         };
         let sent = self
             .engine()?
@@ -141,8 +150,17 @@ impl Inner {
 }
 
 impl FsyncService {
+    /// Offers a local clip to every paired device. Returns after a short wait
+    /// (`EngineConfig::publish_wait`); devices that have not answered by then are listed in
+    /// `pending` and keep being tried in the background while the engine runs.
     pub fn publish_clip(&self, clip: LocalClip) -> SvcResult<Published> {
-        self.run(self.inner.publish(clip))
+        self.run(self.inner.publish(clip, false))
+    }
+
+    /// `publish_clip` that waits for every device's real result (`pending` stays empty), for
+    /// one-shot callers such as the CLI that stop the engine right after publishing.
+    pub fn publish_clip_and_wait(&self, clip: LocalClip) -> SvcResult<Published> {
+        self.run(self.inner.publish(clip, true))
     }
 
     /// Sends files/folders to one paired device ("Send to..."); progress and completion arrive

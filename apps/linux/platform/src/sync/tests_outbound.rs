@@ -249,3 +249,25 @@ fn a_repeated_identical_received_message_still_counts_as_newer_than_a_slow_publi
     );
     r.engine.shutdown(Duration::from_secs(1));
 }
+
+#[test]
+fn status_line_does_not_call_a_pending_device_a_failure() {
+    use super::outbound::describe;
+    use fsync_core::service::Published;
+    let p = |delivered: &[&str], failed: &[&str], pending: &[&str]| Published {
+        item_id: "i".into(),
+        echo: false,
+        delivered: delivered.iter().map(|s| s.to_string()).collect(),
+        failed: failed.iter().map(|s| s.to_string()).collect(),
+        pending: pending.iter().map(|s| s.to_string()).collect(),
+        refused: vec![],
+    };
+    let text = |x: Published| describe(&x).expect("not an echo");
+    assert_eq!(text(p(&["a"], &[], &["b"])), "Sent to 1 device.");
+    assert_eq!(text(p(&[], &[], &["a", "b"])), "Sending to 2 devices...");
+    assert_eq!(text(p(&[], &["a"], &["b"])), "Sending to 1 device...");
+    assert_eq!(
+        text(p(&[], &["a"], &[])),
+        "Not sent: no other device is reachable."
+    );
+}

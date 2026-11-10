@@ -73,16 +73,26 @@ impl ClipInput {
 pub struct PublishOpts {
     /// Only these paired devices (default: all). "Send to..." uses this.
     pub targets: Option<Vec<NodeId>>,
-    /// "Send to..." intent: receivers surface `IncomingFiles`.
+    /// "Send to..." intent: receivers surface `IncomingFiles`. A push always waits for every
+    /// target's real result (never reported `pending`) and does not supersede clipboard sends.
     pub push: bool,
+    /// Wait for every peer's real result instead of returning after
+    /// `EngineConfig::publish_wait` (one-shot callers that exit right after publishing).
+    pub wait_all: bool,
 }
 
 #[derive(Clone, Debug)]
 pub struct Published {
     pub item_id: Uuid,
+    /// Accepted the offer before `publish` returned.
     pub delivered: Vec<NodeId>,
     /// Offline, unreachable within the send timeout, or it dropped the offer (rate limit, invalid).
+    /// Also a peer for which a concurrent, newer publish replaced this clip before it was sent.
     pub failed: Vec<NodeId>,
+    /// Not answered yet when `publish` returned (slow or offline): the attempt goes on in the
+    /// background and its outcome is only logged. Not a failure; never set for a push or a
+    /// `wait_all` publish.
+    pub pending: Vec<NodeId>,
     /// The peer no longer trusts us (closed the connection with 403): re-pairing is needed.
     pub refused: Vec<NodeId>,
 }

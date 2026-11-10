@@ -84,8 +84,11 @@ fn peer_refusal_is_distinct_and_published_keeps_refused_apart() {
         echo: false,
         delivered: vec!["a".into()],
         failed: vec!["b".into()],
+        pending: vec!["d".into()],
         refused: vec!["c".into()],
     }
     .into();
+    // `pending` is not in the FFI record: a still-pending peer is neither delivered nor failed.
     assert_eq!((p.failed, p.refused), (vec!["b".into()], vec!["c".into()]));
+    assert_eq!(p.delivered, vec!["a".to_string()]);
 }

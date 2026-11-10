@@ -133,7 +133,7 @@ async fn peer_not_offered_the_item_is_denied() {
                 input,
                 PublishOpts {
                     targets: Some(vec![b]),
-                    push: false,
+                    ..PublishOpts::default()
                 },
             )
             .await

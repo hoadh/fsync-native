@@ -57,7 +57,12 @@ pub struct LocalClip {
 pub struct Published {
     pub item_id: String,
     pub echo: bool,
+    // Plain comments, not docs, so the generated Swift/C# bindings stay byte-identical.
+    // Peers that accepted the offer before `publish_clip` returned (it waits about 1.5 s).
     pub delivered: Vec<String>,
+    // Peers known not to have it (offline after the full attempt, rate limit, rejected). Peers
+    // still being tried when the call returned are in neither list (the core's `pending`, left
+    // out of this record so the bindings do not change): that is not a failure.
     pub failed: Vec<String>,
     /// Peers that no longer trust this device (it was removed or reset there).
     pub refused: Vec<String>,
@@ -127,6 +132,7 @@ impl From<LocalClip> for svc::LocalClip {
 
 impl From<svc::Published> for Published {
     fn from(p: svc::Published) -> Self {
+        // `p.pending` is dropped on purpose (see the record).
         Self {
             item_id: p.item_id,
             echo: p.echo,

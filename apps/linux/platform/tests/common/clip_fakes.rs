@@ -58,6 +58,7 @@ impl ClipService for Svc {
             echo: false,
             delivered: vec!["n".into()],
             failed: vec![],
+            pending: vec![],
             refused: vec![],
         })
     }

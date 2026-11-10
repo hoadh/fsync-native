@@ -60,6 +60,7 @@ impl ClipService for FakeService {
             echo: false,
             delivered: vec!["n".into()],
             failed: vec![],
+            pending: vec![],
             refused: vec![],
         })
     }

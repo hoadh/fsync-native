@@ -51,6 +51,7 @@ fn published(
         item_id: uuid::Uuid::nil(),
         delivered: delivered.to_vec(),
         failed: failed.to_vec(),
+        pending: vec![],
         refused: refused.to_vec(),
     }
 }

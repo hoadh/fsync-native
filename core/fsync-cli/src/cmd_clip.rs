@@ -36,7 +36,7 @@ pub fn put(c: &Ctx, text: &str, wait: u64) -> Result<()> {
             preview: None,
             sensitive: false,
         };
-        let p = c.svc.publish_clip(clip)?;
+        let p = c.svc.publish_clip_and_wait(clip)?;
         if !p.delivered.is_empty() {
             emit(
                 json!({"event": "published", "item_id": p.item_id, "delivered": p.delivered, "refused": p.refused,

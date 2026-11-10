@@ -117,14 +117,18 @@ pub fn collect(change: &ClipChange, ctx: &OutCtx) -> Result<LocalClip, Skip> {
     })
 }
 
-/// One sentence for the status page.
+/// One sentence for the status page. A `pending` device (not answered yet, still being tried in
+/// the background) is not a failure.
 pub fn describe(p: &Published) -> Option<String> {
     if p.echo {
         return None;
     }
     let n = p.delivered.len();
+    let k = p.pending.len();
     Some(if n > 0 {
         format!("Sent to {n} device{}.", if n == 1 { "" } else { "s" })
+    } else if k > 0 {
+        format!("Sending to {k} device{}...", if k == 1 { "" } else { "s" })
     } else if !p.refused.is_empty() && p.failed.is_empty() {
         "Not sent: the other devices no longer trust this one.".to_owned()
     } else {

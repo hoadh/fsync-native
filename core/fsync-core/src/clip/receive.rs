@@ -95,8 +95,6 @@ impl ProtocolHandler for ClipHandler {
                 conn.close(CLOSE_UNTRUSTED.into(), b"removed");
                 break;
             }
-            // It is talking to us, so it is online.
-            self.0.unreachable.clear(&from);
             if !self.0.offer_rate.allow(from) {
                 tracing::debug!("offer from {from} dropped: rate limit");
                 let _ = rx.stop(0u32.into());

@@ -5,6 +5,7 @@ use super::{
     echo_guard::set_hash,
     input::{ClipInput, PublishOpts, PublishOutcome, Published},
     offer::build_entry,
+    peer_send_lanes::LaneTicket,
 };
 use crate::net::Dialer;
 use crate::net::gate::CLOSE_UNTRUSTED;
@@ -15,8 +16,14 @@ use crate::{
 use fsync_proto::{
     ALPN_CLIP, CLIP_ACK_ACCEPTED, CLIP_ACK_RATE_LIMITED, NodeId, frame::encode_frame,
 };
+use futures_util::stream::{FuturesUnordered, StreamExt};
 use iroh::endpoint::{Connection, ConnectionError, WriteError};
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use tokio::sync::oneshot;
+use uuid::Uuid;
 
 impl Shared {
     /// Paired devices other than us, narrowed to `targets` (which must all be paired).
@@ -42,8 +49,12 @@ impl Shared {
         }
     }
 
+    /// Offers a clip to `opts.targets` (default: all paired peers) and waits for their acks, at
+    /// most `cfg.publish_wait` unless it is a push or `wait_all`: peers that have not answered
+    /// by then are reported `pending` and keep being tried in the background. A peer still busy
+    /// with an older clip's attempt is `pending` at once (no wait at all).
     pub(crate) async fn publish(
-        &self,
+        self: &Arc<Self>,
         input: ClipInput,
         opts: PublishOpts,
     ) -> Result<PublishOutcome> {
@@ -80,62 +91,110 @@ impl Shared {
             self.record_sent(&offer, (peers.len() == 1).then(|| peers[0]))
                 .await;
         }
-        let frame = encode_frame(&*offer)?;
-        let results =
-            futures_util::future::join_all(peers.iter().map(|p| self.send_one(p, &frame))).await;
-        let (mut delivered, mut failed, mut refused) = (vec![], vec![], vec![]);
-        for (peer, r) in peers.into_iter().zip(results) {
-            if let Err(e) = &r {
-                tracing::debug!("clip offer not delivered: {e}");
-                if let Ok(mut o) = self.outbox.lock() {
-                    o.unoffer(&item_id, &peer);
-                }
+        let frame: Arc<[u8]> = encode_frame(&*offer)?.into();
+        // Explicit pushes and one-shot callers wait for every peer's real result.
+        let deadline = (!opts.push && !opts.wait_all)
+            .then(|| tokio::time::Instant::now() + self.cfg.publish_wait);
+        let mut answers = FuturesUnordered::new();
+        for &peer in &peers {
+            let (rx, busy) = self.start_send(peer, item_id, frame.clone(), opts.push);
+            // Still busy with an older clip's attempt: slow or offline, so not worth the wait.
+            if !(busy && deadline.is_some()) {
+                answers.push(async move { (peer, rx.await) });
             }
-            match r {
+        }
+        let mut pending = peers;
+        let (mut delivered, mut failed, mut refused) = (vec![], vec![], vec![]);
+        loop {
+            let next = match deadline {
+                Some(d) => match tokio::time::timeout_at(d, answers.next()).await {
+                    Ok(next) => next,
+                    Err(_) => break,
+                },
+                None => answers.next().await,
+            };
+            let Some((peer, r)) = next else { break };
+            if let Some(i) = pending.iter().position(|p| *p == peer) {
+                pending.swap_remove(i);
+            }
+            // No answer at all: the send never ran or was aborted (engine closing).
+            match r.unwrap_or(Err(CoreError::Closed)) {
                 Ok(()) => delivered.push(peer),
                 Err(CoreError::PeerRefused) => refused.push(peer),
                 Err(_) => failed.push(peer),
             }
         }
+        if !pending.is_empty() {
+            tracing::debug!(
+                "clip {item_id}: {} peer(s) still being tried in the background",
+                pending.len()
+            );
+        }
         Ok(PublishOutcome::Sent(Published {
             item_id,
             delivered,
             failed,
+            pending,
             refused,
         }))
+    }
+
+    /// Sends `frame` to `peer` in an engine-owned task (`Engine::close` aborts it) so a slow peer
+    /// can finish after `publish` returned. The result arrives on the returned channel; when the
+    /// send fails the task itself logs it and withdraws the offer, whether anyone still waits or
+    /// not. Clipboard sends go through the peer's lane (in order, latest wins: an older clip is
+    /// never delivered after a newer one). A push bypasses the lane: it is the user's own action,
+    /// so it neither waits behind nor supersedes clipboard sends. `busy`: the clip has to wait
+    /// for an older attempt to this peer to end first.
+    fn start_send(
+        self: &Arc<Self>,
+        peer: NodeId,
+        item_id: Uuid,
+        frame: Arc<[u8]>,
+        push: bool,
+    ) -> (oneshot::Receiver<Result<()>>, bool) {
+        let (tx, rx) = oneshot::channel();
+        let ticket = (!push).then(|| self.send_lanes.ticket(peer));
+        let busy = ticket.as_ref().is_some_and(LaneTicket::busy);
+        let sh = self.clone();
+        // After close the task is dropped unrun: `rx` then reports no answer.
+        self.background.spawn(async move {
+            let r = match &ticket {
+                None => sh.send_one(&peer, &frame).await,
+                Some(t) => match t.turn().await {
+                    Some(_turn) => sh.send_one(&peer, &frame).await,
+                    None => Err(CoreError::Net("superseded by a newer clip".into())),
+                },
+            };
+            match &r {
+                Ok(()) => tracing::debug!("clip {item_id} delivered to {peer}"),
+                Err(e) => {
+                    tracing::debug!("clip {item_id} not delivered to {peer}: {e}");
+                    if let Ok(mut o) = sh.outbox.lock() {
+                        o.unoffer(&item_id, &peer);
+                    }
+                }
+            }
+            let _ = tx.send(r);
+        });
+        (rx, busy)
     }
 
     /// One attempt on the cached connection (short limit: a dead path must not hold up
     /// `publish`), then one on a fresh connection. Each attempt has a single deadline covering
     /// connect, send and ack, so one peer costs at most `FIRST_ATTEMPT + send_timeout` (7 s by
-    /// default), which also bounds `publish` because peers are sent to concurrently. "Delivered"
+    /// default); `publish` stops waiting for it after `publish_wait` (except push / `wait_all`). "Delivered"
     /// means the peer accepted the offer (`CLIP_ACK_ACCEPTED`). A refusal (`PeerRefused`) on the
     /// cached connection is retried once too: that connection may predate a re-pairing.
-    ///
-    /// A peer that timed out recently is skipped (see `UnreachablePeers`): `publish` waits for all
-    /// peers and the apps publish one clip at a time, so one offline device would otherwise delay
-    /// every clip by the full cost above.
     async fn send_one(&self, peer: &NodeId, frame: &[u8]) -> Result<()> {
-        if self.unreachable.is_skipped(peer, Instant::now()) {
-            return Err(CoreError::Net("peer recently unreachable".into()));
-        }
         let dialer = self.dialer()?;
         let first = self.cfg.send_timeout.min(FIRST_ATTEMPT);
-        let r = match attempt(dialer, peer, frame, first).await {
+        match attempt(dialer, peer, frame, first).await {
             Err(CoreError::Net(_) | CoreError::PeerRefused) => {
                 attempt(dialer, peer, frame, self.cfg.send_timeout).await
             }
             r => r,
-        };
-        match &r {
-            // The peer answered (even with a refusal): it is online.
-            Ok(()) | Err(CoreError::PeerRefused | CoreError::Invalid(_)) => {
-                self.unreachable.clear(peer)
-            }
-            Err(CoreError::Net(_)) => self.unreachable.mark(*peer, Instant::now()),
-            Err(_) => {}
         }
-        r
     }
 }
 

@@ -55,7 +55,8 @@ impl Engine {
             history: history.clone(),
             log: Mutex::default(),
             echo: EchoGuard::default(),
-            unreachable: Default::default(),
+            send_lanes: Default::default(),
+            background: Default::default(),
             fetch_locks: Default::default(),
             offer_rate: Default::default(),
             readers: Mutex::default(),
@@ -96,6 +97,8 @@ impl Engine {
         if let Some(r) = &self._retention {
             r.abort();
         }
+        // Clip sends that outlived their `publish` stop before the endpoint they use does.
+        self.sh.background.close().await;
         self.node.close().await;
     }
 }
