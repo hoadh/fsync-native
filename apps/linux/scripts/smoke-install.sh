@@ -25,6 +25,9 @@ repo="$(cd "$here/../../.." && pwd)"
 artifact="$(realpath "$artifact")"
 name="$(basename "$artifact")"
 checks="$here/container/smoke-checks.sh"
+assets="$here/lib/assets.list"
+# shellcheck source=lib/common.sh
+source "$here/lib/common.sh"
 
 # Unprivileged runner shared by every target: root installs, uid 1000 runs the checks.
 as_user='setpriv --reuid=1000 --regid=1000 --clear-groups'
@@ -33,6 +36,7 @@ run_container() { # <image> <script> [docker args...]
   local image="$1" script="$2"; shift 2
   docker run --rm -e HOME=/root "$@" \
     --mount "type=bind,src=$checks,dst=/smoke/smoke-checks.sh,readonly" \
+    --mount "type=bind,src=$assets,dst=/smoke/assets.list,readonly" \
     --mount "type=bind,src=$artifact,dst=/pkg/artifact,readonly" \
     "$image" bash -euc "$script"
 }
@@ -100,28 +104,53 @@ case "$target" in
     # --ignore-failed-read: tracked files deleted in the working tree are skipped.
     (cd "$repo" && git ls-files -z --cached --others --exclude-standard \
       | tar --null -T - --ignore-failed-read --transform 's,^,fsync/,' -czf "$work/fsync-src.tar.gz" 2>/dev/null)
+    # The tarball has no .git: the host sha goes in FSYNC_GIT_SHA (--build-info must show it).
+    sha=$(fsync_git_sha "$repo")
+    [[ $sha =~ ^[0-9a-f]{7,40}(-dirty)?$ ]] || { echo "unexpected git sha '$sha'" >&2; exit 2; }
+    # Build in a non-default, space-free BUILDDIR and assert that neither it nor the builder's home
+    # is left in the binary (Rust and C/C++ remaps). A BUILDDIR with whitespace must be refused.
     run_container archlinux:latest "
       pacman -Syu --noconfirm --needed base-devel git cargo lld openssl qt6-base qt6-declarative qt6-tools \
         qt6-wayland perl cargo-about namcap desktop-file-utils ttf-dejavu hicolor-icon-theme >/dev/null
       useradd -m builder && install -d -o builder -g builder /build
       cp /pkg/artifact /build/PKGBUILD && cp /in/fsync-src.tar.gz /build/ && chown builder: /build/*
       cd /build
-      su builder -c 'FSYNC_LOCAL_SRC=/build/fsync-src.tar.gz makepkg --printsrcinfo >/build/.SRCINFO'
-      echo \".SRCINFO generated: \$(grep -c . /build/.SRCINFO) lines\"
-      su builder -c 'FSYNC_LOCAL_SRC=/build/fsync-src.tar.gz makepkg -f --noconfirm'
+      # expect_refused <message> <command>: the command must fail AND print the guard's message.
+      expect_refused() {
+        local msg=\"\$1\" out
+        if out=\$(su builder -c \"FSYNC_LOCAL_SRC=/build/fsync-src.tar.gz \$2\" 2>&1); then
+          echo \"FAIL  accepted: \$2\"; exit 1
+        fi
+        grep -q \"\$msg\" <<<\"\$out\" || { echo \"FAIL  \$2 failed without the guard message:\"; head -5 <<<\"\$out\"; exit 1; }
+        echo \"PASS  refused: \$2\"
+      }
+      expect_refused 'unset FSYNC_LOCAL_SRC' 'makepkg --printsrcinfo'
+      expect_refused 'unset FSYNC_LOCAL_SRC' 'makepkg --source'
+      expect_refused 'contains whitespace' \"BUILDDIR='/build/b d' makepkg --nobuild --noconfirm\"
+      # Release mode (placeholder commit replaced by a well-formed dummy) for .SRCINFO and namcap.
+      install -d -o builder /tmp/nc
+      sed 's/^_commit=.*/_commit=0123456789abcdef0123456789abcdef01234567/' /build/PKGBUILD >/tmp/nc/PKGBUILD
+      (cd /tmp/nc && su builder -c 'makepkg --printsrcinfo' >/tmp/nc/.SRCINFO)
+      if grep -q 'file://' /tmp/nc/.SRCINFO; then echo 'FAIL  .SRCINFO has a file:// source'; exit 1; fi
+      echo \"PASS  release .SRCINFO: \$(grep -c . /tmp/nc/.SRCINFO) lines, \$(grep -m1 'source = ' /tmp/nc/.SRCINFO)\"
+      su builder -c \"BUILDDIR=/build/work FSYNC_GIT_SHA=$sha FSYNC_LOCAL_SRC=/build/fsync-src.tar.gz makepkg -f --noconfirm\"
       pkg=\$(ls /build/fsync-linux-*.pkg.tar.zst)
       echo \"package: \$pkg (\$(du -h \$pkg | cut -f1))\"
       pacman -U --noconfirm \"\$pkg\" >/dev/null
       echo \"Qt: \$(pacman -Q qt6-base)  OpenSSL: \$(pacman -Q openssl)\"
-      echo '--- namcap PKGBUILD (placeholder commit replaced by a well-formed dummy)'
-      mkdir /tmp/nc; sed 's/^_commit=.*/_commit=0123456789abcdef0123456789abcdef01234567/' /build/PKGBUILD >/tmp/nc/PKGBUILD
+      # Remapped: no path under the build dir (Rust or C/C++), nothing from the builder's home.
+      if strings /usr/bin/fsync-linux | grep -E '/build/work|/home/builder' | head -3 | grep .; then
+        echo 'FAIL  build paths left in the binary'; exit 1
+      fi
+      echo 'PASS  no build dir or builder home paths in the binary'
+      echo '--- namcap PKGBUILD'
       namcap /tmp/nc/PKGBUILD | tee /tmp/namcap.out || true
       echo '--- namcap package'; namcap \"\$pkg\" | tee -a /tmp/namcap.out || true
       # Warnings are accepted (ADR 014); an error (E:) or an unparsable PKGBUILD fails the run.
       if grep -E ' E: |^Error' /tmp/namcap.out; then echo 'FAIL  namcap reported errors'; exit 1; fi
       echo 'PASS  namcap: no errors'
       $as_user /smoke/smoke-checks.sh installed" \
-      --mount "type=bind,src=$work,dst=/in,readonly" ;;
+      -e FSYNC_EXPECT_GIT_SHA="$sha" --mount "type=bind,src=$work,dst=/in,readonly" ;;
 
   *) echo "unknown target $target" >&2; exit 2 ;;
 esac

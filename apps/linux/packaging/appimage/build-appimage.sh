@@ -5,6 +5,8 @@
 set -euo pipefail
 stage="${1:?stage dir}"; out="${2:?output dir}"; version="${3:?version}"
 res=/src/apps/linux/resources
+# shellcheck source=../../scripts/lib/common.sh
+source /src/apps/linux/scripts/lib/common.sh
 work=$(mktemp -d)   # AppDir and linuxdeploy scratch live here, never in the source tree
 trap 'rm -rf "$work"' EXIT
 
@@ -42,6 +44,10 @@ done
 # The license report of the bundled crates travels with the AppImage too.
 install -Dm644 "$stage/THIRD-PARTY-LICENSES.txt" \
   AppDir/usr/share/doc/fsync-linux/THIRD-PARTY-LICENSES.txt
+# So do our own license texts (the /usr/share/licenses lines of the shared asset list).
+while read -r mode src dest; do
+  if [[ $dest == /usr/share/licenses/* ]]; then install -Dm"$mode" "/src/apps/linux/$src" "AppDir$dest"; fi
+done < <(fsync_assets /src/apps/linux/scripts/lib/assets.list)
 
 linuxdeploy --appdir AppDir --output appimage
 

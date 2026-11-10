@@ -21,3 +21,8 @@ fsync_git_sha() {
   sha=$(git -C "$1" rev-parse --short HEAD 2>/dev/null) || { echo unknown; return; }
   if [[ -n "$(git -C "$1" status --porcelain 2>/dev/null)" ]]; then echo "$sha-dirty"; else echo "$sha"; fi
 }
+
+# fsync_assets <assets.list>: the "<mode> <source> <dest>" lines (comments and blank lines dropped).
+fsync_assets() {
+  grep -Ev '^[[:space:]]*(#|$)' "$1"
+}

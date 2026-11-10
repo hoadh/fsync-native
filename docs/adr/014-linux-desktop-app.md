@@ -376,9 +376,30 @@ Parity with ADR 013 d6/d10/d13/d14, minus virtual files (Linux has none, ADR 009
     `FSYNC_LOCAL_SRC` tarball of the working tree (used by `smoke-install.sh arch`, nothing is
     committed yet). Rebuild on every Arch Qt 6 minor bump (`pkgrel`). `$srcdir` is remapped out of
     the binary (`--remap-path-prefix`, `-ffile-prefix-map`).
+    Update 2026-11-11 (plan 261110 phase 04): the remap goes through `CARGO_ENCODED_RUSTFLAGS`
+    (`$srcdir` -> `/build`, `$CARGO_HOME` -> `/cargo`). The same two go into `-ffile-prefix-map`
+    for C/C++ (`cxx.cc` from the registry leaked the builder's home). A BUILDDIR or CARGO_HOME with
+    whitespace is refused: cc-rs splits `CFLAGS` on whitespace, so the C/C++ remap could not work
+    and a build path would ship silently. `FSYNC_GIT_SHA` is the pinned commit (release) or the
+    host sha passed in the env (tarball; else `local`), and `package()` asserts it.
+    `--printsrcinfo`, `--source` and `--allsource` refuse `FSYNC_LOCAL_SRC`. The git checksum is
+    documented, not done: `updpkgsums` replaces `SKIP` once `_commit` is real (deferred to the
+    release step, MVP phase 16). A user `~/.cargo/config.toml` still applies to a makepkg build
+    (documented in the PKGBUILD and README).
 18. **Licenses:** `cargo about` report (`THIRD-PARTY-LICENSES.txt`, ~650 KB) in
-    `/usr/share/doc/fsync-linux/` (deb, rpm, AppImage) or `/usr/share/licenses/fsync-linux/` (Arch); the install smoke checks it in all four. fsync's own
-    license is `UNLICENSED` in Cargo metadata; the deb `copyright` file says "all rights reserved".
+    `/usr/share/doc/fsync-linux/` (deb, rpm, AppImage) or `/usr/share/licenses/fsync-linux/` (Arch); the install smoke checks it in all four.
+    Update 2026-11-11: the repo is licensed `MIT OR Apache-2.0` (owner decision; `LICENSE-MIT`,
+    `LICENSE-APACHE` at the root, both Cargo workspaces). Every package installs both texts to
+    `/usr/share/licenses/fsync-linux/` (the AppImage too); PKGBUILD `license`, rpm `License` and a
+    DEP-5 deb `copyright` (`packaging/deb/copyright`, `Expat or Apache-2.0`, one stanza each) name
+    it. THIRD-PARTY-LICENSES carries SQLCipher's BSD-3 notice (Zetetic LLC) through an
+    `about.toml` clarify of `libsqlite3-sys` (`MIT AND BSD-3-Clause`, checksummed files); the
+    `accepted` list is only what the graph needs, so a new license fails `cargo about --fail`
+    (checked); the MPL-2.0 crates get a crates.io source note. Maintainer
+    `alex <danghuyhoa@gmail.com>`: PKGBUILD, deb `Maintainer`, rpm `Vendor` (cargo-generate-rpm
+    0.21.1 has no `packager` key, so the rpm `Packager` tag stays empty). Installed checked-in
+    files come from one list, `scripts/lib/assets.list` (PKGBUILD, AppImage licenses, smoke checks
+    read it; `check-assets.sh` holds the deb/rpm blocks of `app/Cargo.toml` to it).
 
 ### Runtime dependencies (derived by `scripts/derive-runtime-deps.sh`, not from memory)
 Direct NEEDED libraries (readelf): `libQt6Core`, `libQt6Gui`, `libQt6Qml`, libstdc++, libgcc_s,
@@ -491,6 +512,10 @@ Docker starts; `smoke-install.sh fedora <release binary with e2e-control>` exits
   digests and rustup-init pinning, linuxdeploy trust-on-first-use (no upstream signature), SHA-1-only
   git pin / pacman git checksum, asset list still repeated per format (deb, rpm, PKGBUILD, smoke),
   rpm `license` (placeholder question), SHA256SUMS unsigned (phase 16).
+  Update 2026-11-11: the single asset list and the rpm license are done; the git checksum is
+  documented as a release step and deferred to MVP phase 16 (decision 17/18 updates). L5 (base image digests, rustup-init pinning, `--proto-redir`,
+  linuxdeploy trust-on-first-use) and the SHA256SUMS signature are deferred to MVP phase 16
+  (release/signing), owner decision 2026-11-11.
 - **Results:** ubuntu-2204, debian-12, ubuntu-2404 deb, fedora rpm, appimage (ubuntu:22.04,
   fedora, arch): all exit 0 after the round; arch PKGBUILD (local source, system OpenSSL 3.6.5, Qt 6.12.0): pass 12/12 + `PASS namcap: no errors`, package 13 MB, build 20 min + check 8 min; the makepkg `$srcdir` warning is gone. namcap warnings now also list `gcc-libs` "may not be needed" (kept: provides libgcc/libstdc++).
 

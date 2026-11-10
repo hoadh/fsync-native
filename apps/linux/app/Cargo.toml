@@ -39,15 +39,17 @@ cxx-qt-build.workspace = true
 # every dependency list below was derived with scripts/derive-runtime-deps.sh (ldd +
 # qmlimportscanner mapped through dpkg -S / rpm -qf), see ADR 014.
 # Asset sources under ../dist/stage are produced by build-release.sh (stripped binary and the
-# cargo-about license report); the rest are checked-in resources.
+# cargo-about license report). The checked-in files come from scripts/lib/assets.list (the one
+# list; scripts/check-assets.sh fails the release build when these blocks drift from it).
 
 # One .deb for Ubuntu 22.04+, Debian 12+: Ubuntu 24.04 renamed the Qt libraries with a t64
 # suffix, hence the alternatives. Qt QML modules are loaded as plugins at run time (invisible to
 # ldd), so they are listed explicitly; qt6-wayland carries the Wayland platform plugin.
 [package.metadata.deb]
 name = "fsync-linux"
-maintainer = "fsync <noreply@fsync.invalid>"
-copyright = "fsync, all rights reserved"
+maintainer = "alex <danghuyhoa@gmail.com>"
+# The copyright file is packaging/deb/copyright (DEP-5, one License stanza per license), shipped
+# as an asset below; cargo-deb then generates none.
 section = "utils"
 priority = "optional"
 extended-description = "Syncs the clipboard and files between your devices (Qt6/QML desktop app)."
@@ -66,6 +68,9 @@ assets = [
   ["../resources/icons/hicolor/48x48/apps/app.fsync.Fsync.png", "usr/share/icons/hicolor/48x48/apps/app.fsync.Fsync.png", "644"],
   ["../resources/icons/hicolor/256x256/apps/app.fsync.Fsync.png", "usr/share/icons/hicolor/256x256/apps/app.fsync.Fsync.png", "644"],
   ["../resources/icons/hicolor/scalable/apps/app.fsync.Fsync.svg", "usr/share/icons/hicolor/scalable/apps/app.fsync.Fsync.svg", "644"],
+  ["../../../LICENSE-MIT", "usr/share/licenses/fsync-linux/LICENSE-MIT", "644"],
+  ["../../../LICENSE-APACHE", "usr/share/licenses/fsync-linux/LICENSE-APACHE", "644"],
+  ["../packaging/deb/copyright", "usr/share/doc/fsync-linux/copyright", "644"],
   ["../dist/stage/THIRD-PARTY-LICENSES.txt", "usr/share/doc/fsync-linux/THIRD-PARTY-LICENSES.txt", "644"],
 ]
 
@@ -74,12 +79,17 @@ assets = [
 name = "fsync-linux"
 summary = "Sync clipboard and files between your devices"
 url = "https://github.com/hoadh/fsync-native"
+# License comes from the workspace (MIT OR Apache-2.0). cargo-generate-rpm 0.21.1 has no
+# `packager` key, so the maintainer goes into Vendor (the rpm Packager tag stays unset).
+vendor = "alex <danghuyhoa@gmail.com>"
 assets = [
   { source = "../dist/stage/fsync-linux", dest = "/usr/bin/fsync-linux", mode = "755" },
   { source = "../resources/app.fsync.Fsync.desktop", dest = "/usr/share/applications/app.fsync.Fsync.desktop", mode = "644" },
   { source = "../resources/icons/hicolor/48x48/apps/app.fsync.Fsync.png", dest = "/usr/share/icons/hicolor/48x48/apps/app.fsync.Fsync.png", mode = "644" },
   { source = "../resources/icons/hicolor/256x256/apps/app.fsync.Fsync.png", dest = "/usr/share/icons/hicolor/256x256/apps/app.fsync.Fsync.png", mode = "644" },
   { source = "../resources/icons/hicolor/scalable/apps/app.fsync.Fsync.svg", dest = "/usr/share/icons/hicolor/scalable/apps/app.fsync.Fsync.svg", mode = "644" },
+  { source = "../../../LICENSE-MIT", dest = "/usr/share/licenses/fsync-linux/LICENSE-MIT", mode = "644" },
+  { source = "../../../LICENSE-APACHE", dest = "/usr/share/licenses/fsync-linux/LICENSE-APACHE", mode = "644" },
   { source = "../dist/stage/THIRD-PARTY-LICENSES.txt", dest = "/usr/share/doc/fsync-linux/THIRD-PARTY-LICENSES.txt", mode = "644", doc = true },
 ]
 auto-req = "disabled"

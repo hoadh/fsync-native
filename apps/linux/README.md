@@ -7,8 +7,8 @@ Own Cargo workspace: the root `cargo test --workspace` never needs Qt.
 |---|---|
 | `platform/` | `fsync-linux-platform`: OS integration and sync logic, no Qt (unit-testable) |
 | `app/` | `fsync-linux` binary: CXX-Qt bridges (`src/bridge/`, all in one directory), QML (`qml/`) |
-| `scripts/` | container build and run scripts, release guard, `build-release.sh`, `smoke-install.sh`, lock drift check, Dockerfiles in `container/` |
-| `packaging/` | `arch/PKGBUILD`, `appimage/build-appimage.sh`, `about.hbs` (third-party license report) |
+| `scripts/` | container build and run scripts, release guard, `build-release.sh`, `smoke-install.sh`, lock drift and asset checks, `lib/assets.list`, Dockerfiles in `container/` |
+| `packaging/` | `arch/PKGBUILD`, `appimage/build-appimage.sh`, `deb/copyright`, `about.hbs` (third-party license report) |
 
 ## Prerequisites (host build)
 Rust from `rust-toolchain.toml` (via rustup), Qt 6 dev packages with `qmake6`, `qmlcachegen`
@@ -58,11 +58,29 @@ a dirty tree is then refused. Packaging tools are pinned in
 | Arch / Omarchy | `makepkg -si` with the PKGBUILD copied to `~/.cache/fsync-pkg` (see below; never build inside the repo) | builds from source against the system Qt |
 
 **Arch PKGBUILD.** It links the system OpenSSL (`OPENSSL_NO_VENDOR=1`, `depends=openssl`); the deb/rpm keep a vendored copy (below). `source` is a git URL pinned to one commit: before a release set `_commit` to the
-40-hex release sha and regenerate `.SRCINFO` (`makepkg --printsrcinfo > .SRCINFO`); a placeholder or
-branch is refused. Until a commit exists, build the working tree instead: make a tarball whose top
-directory is `fsync/` and run `FSYNC_LOCAL_SRC=/abs/fsync-src.tar.gz makepkg -si`
-(`scripts/smoke-install.sh arch packaging/arch/PKGBUILD` does exactly this in an Arch container).
-`check()` runs the platform tests and both `--smoke` modes; `package()` asserts `--build-info` lists no test features, so `--nocheck` cannot skip it.
+40-hex release sha, run `updpkgsums` (pacman >= 6.1 checksums the git source instead of `SKIP`)
+and regenerate `.SRCINFO` (`makepkg --printsrcinfo > .SRCINFO`); a placeholder or branch is refused,
+and so are `--printsrcinfo` / `--source` / `--allsource` while `FSYNC_LOCAL_SRC` is set. Until a
+commit exists, build the working tree instead: make a tarball whose top directory is `fsync/` and
+run (from the repo root; the helper adds `-dirty` for uncommitted changes)
+`FSYNC_GIT_SHA=$(source apps/linux/scripts/lib/common.sh && fsync_git_sha .) FSYNC_LOCAL_SRC=/abs/fsync-src.tar.gz makepkg -si`
+(`scripts/smoke-install.sh arch packaging/arch/PKGBUILD` does exactly this in an Arch container,
+in a non-default build dir). `check()` runs the platform tests and both `--smoke` modes;
+`package()` asserts that `--build-info` lists no test features and shows the expected `git_sha`
+(the pinned commit, or `FSYNC_GIT_SHA` / `local` for a tarball), so `--nocheck` cannot skip it.
+Build paths are remapped (`$srcdir` -> `/build`, `$CARGO_HOME` -> `/cargo`; Rust through
+`CARGO_ENCODED_RUSTFLAGS`, C/C++ through `-ffile-prefix-map`). A `BUILDDIR` or `CARGO_HOME` with
+whitespace is refused (cc-rs splits `CFLAGS` on whitespace, the C/C++ remap could not work).
+makepkg runs as you, so your `~/.cargo/config.toml` (`[build] rustc-wrapper`, `[env]`, `[profile]`)
+applies; build release packages without one, or with `CARGO_HOME` pointing at a clean directory.
+
+**Installed files and licenses.** `scripts/lib/assets.list` is the one list of checked-in files a
+package installs (desktop file, three icons, `LICENSE-MIT`, `LICENSE-APACHE` in
+`/usr/share/licenses/fsync-linux/`). The PKGBUILD and the smoke checks read it; cargo-deb only reads
+`app/Cargo.toml`, so `scripts/check-assets.sh` fails the release build when the deb/rpm blocks drift
+from it. License `MIT OR Apache-2.0` (PKGBUILD `license`, rpm `License`, the DEP-5 deb `copyright`
+in `packaging/deb/`). Maintainer `alex <danghuyhoa@gmail.com>` (PKGBUILD, deb `Maintainer`; rpm
+`Vendor`, because cargo-generate-rpm has no `Packager` key).
 **On every Qt 6 minor update in Arch (6.12 -> 6.13, ...) bump `pkgrel` and rebuild** the package:
 it compiles QML (qmlcachegen) against the installed Qt, and the supported state is "built against
 the Qt that is installed".
