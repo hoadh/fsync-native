@@ -76,4 +76,78 @@ public sealed class ImageCodecTests
         Assert.Equal(14u + 40 + 1024, BitConverter.ToUInt32(ImageCodec.DibToBmpFile(pal), 10));
         Assert.Throws<InvalidDataException>(() => ImageCodec.DibToBmpFile([1, 2, 3]));
     }
+
+    /// <summary>Distinct opaque pixels, B,G,R,A per pixel, row 0 first (top).</summary>
+    private static byte[] DistinctPixels(int w, int h)
+    {
+        var px = new byte[w * h * 4];
+        for (var i = 0; i < w * h; i++)
+        {
+            px[i * 4] = (byte)(i * 7);
+            px[i * 4 + 1] = (byte)(i * 3 + 1);
+            px[i * 4 + 2] = (byte)(255 - i);
+            px[i * 4 + 3] = 255;
+        }
+        return px;
+    }
+
+    /// <summary>A packed bottom-up DIB: 40-byte BITMAPINFOHEADER, optional mask bytes, then the pixels of <paramref name="px"/> (BGRA, top-down) as 24 or 32 bpp.</summary>
+    private static byte[] BuildDib(byte[] px, int w, int h, int bpp, uint compression, uint[]? masks = null)
+    {
+        var bytesPP = bpp / 8;
+        var stride = (w * bytesPP + 3) & ~3;
+        var maskBytes = masks is null ? 0 : masks.Length * 4;
+        var dib = new byte[40 + maskBytes + stride * h];
+        BitConverter.GetBytes(40u).CopyTo(dib, 0);
+        BitConverter.GetBytes(w).CopyTo(dib, 4);
+        BitConverter.GetBytes(h).CopyTo(dib, 8); // positive: bottom-up
+        BitConverter.GetBytes((ushort)1).CopyTo(dib, 12);
+        BitConverter.GetBytes((ushort)bpp).CopyTo(dib, 14);
+        BitConverter.GetBytes(compression).CopyTo(dib, 16);
+        BitConverter.GetBytes((uint)(stride * h)).CopyTo(dib, 20);
+        for (var m = 0; masks is not null && m < masks.Length; m++) BitConverter.GetBytes(masks[m]).CopyTo(dib, 40 + m * 4);
+        for (var y = 0; y < h; y++)
+            for (var x = 0; x < w; x++)
+                for (var c = 0; c < bytesPP; c++)
+                    dib[40 + maskBytes + (h - 1 - y) * stride + x * bytesPP + c] = px[(y * w + x) * 4 + c];
+        return dib;
+    }
+
+    private static async Task AssertDibPixelsAsync(byte[] dib, byte[] expected, int w, int h)
+    {
+        var png = await ImageCodec.DibToPngAsync(dib);
+        Assert.Equal(((uint)w, (uint)h), await ImageCodec.SizeAsync(png));
+        Assert.Equal(expected, await PixelsAsync(png));
+    }
+
+    // 40x40 like the real clipboard: Clipboard.SetImage writes a BI_BITFIELDS 32-bpp DIB with a 40-byte header.
+    [Fact]
+    public async Task BitfieldsDibWithStandardMasksKeepsEveryPixel()
+    {
+        var px = DistinctPixels(40, 40);
+        var dib = BuildDib(px, 40, 40, 32, 3, [0x00FF0000u, 0x0000FF00u, 0x000000FFu]);
+        await AssertDibPixelsAsync(dib, px, 40, 40);
+    }
+
+    [Fact]
+    public async Task RgbDib32KeepsEveryPixel()
+    {
+        var px = DistinctPixels(37, 23);
+        await AssertDibPixelsAsync(BuildDib(px, 37, 23, 32, 0), px, 37, 23);
+    }
+
+    [Fact]
+    public async Task RgbDib24KeepsEveryPixel()
+    {
+        var px = DistinctPixels(37, 23);
+        await AssertDibPixelsAsync(BuildDib(px, 37, 23, 24, 0), px, 37, 23);
+    }
+
+    [Fact]
+    public async Task BitfieldsDibWithNonStandardMasksIsRejected()
+    {
+        var px = DistinctPixels(8, 8);
+        var dib = BuildDib(px, 8, 8, 32, 3, [0x000000FFu, 0x0000FF00u, 0x00FF0000u]); // RGB order
+        await Assert.ThrowsAsync<InvalidDataException>(() => ImageCodec.DibToPngAsync(dib));
+    }
 }
