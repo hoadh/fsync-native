@@ -35,10 +35,10 @@
    - Plus one cross-OS X1+X2+X5 run on waso-vm.
 
 ## Todo
-- [ ] Loop script + baseline rate (with logs)
-- [ ] Root cause written into the ADR 014 "Known issues" row, with log evidence
-- [ ] Fix + core test
-- [ ] 20/20 loop, X1+X2+X5 PASS, results JSON in `docs/test-results/`
+- [x] Loop script + baseline rate (with logs): 3/30 failed (report implementer-261111-0311)
+- [x] Root cause written into the ADR 014 "Known issues" row, with log evidence
+- [x] Fix + core test
+- [ ] 20/20 loop (done: 30/30, then 20/20 final tree), X1+X2+X5 PASS, results JSON in `docs/test-results/`
 - [ ] Tester + review >= 9.5, PR, CI green
 
 ## Success
