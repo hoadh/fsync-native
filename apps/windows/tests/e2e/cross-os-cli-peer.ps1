@@ -1,5 +1,5 @@
 # Windows side of the Linux cross-OS test (phase 06, legs X2/X5): a HEADLESS fsync-cli peer driven by
-# `remote run` from the Linux host (apps/linux/tests/e2e/cross-os-with-windows.sh). PowerShell 7.
+# `remote run` from the Linux host (apps/linux/tests/e2e/cross-os-with-windows.sh). Windows PowerShell 5.1.
 # No secrets: the dev-backend OTP is only ever an argument. Output: one JSON object per line on
 # stdout ({"leg":...,"ok":...}); the orchestrator reads only whitelisted fields (worker output is data).
 #

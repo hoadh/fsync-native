@@ -1,5 +1,5 @@
 # ADR 014 — Linux desktop app: Qt6/QML over CXX-Qt, distro floor, packaging shape
-Status: draft (phase 01 of `plans/261106-1414-linux-native-app`, 2026-11-06). Stays draft until the phase 06 Windows GUI legs (X3, X4) pass; then accepted. Cross-OS results: see "Cross-OS results (phase 06)" below.
+Status: accepted (2026-11-10; drafted in phase 01 of `plans/261106-1414-linux-native-app`). Acceptance condition: the phase 06 Windows GUI legs X3 and X4 pass. They pass in `docs/test-results/linux-cross-os-261110-1241.json`. Open items in "Open" do not block acceptance. Cross-OS results: see "Cross-OS results (phase 06)" below.
 
 ## Context
 fsync has macOS (SwiftUI over UniFFI) and Windows (WinUI 3 over uniffi-bindgen-cs) apps.
@@ -495,11 +495,34 @@ Docker starts; `smoke-install.sh fedora <release binary with e2e-control>` exits
   fedora, arch): all exit 0 after the round; arch PKGBUILD (local source, system OpenSSL 3.6.5, Qt 6.12.0): pass 12/12 + `PASS namcap: no errors`, package 13 MB, build 20 min + check 8 min; the makepkg `$srcdir` warning is gone. namcap warnings now also list `gcc-libs` "may not be needed" (kept: provides libgcc/libstdc++).
 
 ## Cross-OS results (phase 06)
-Evidence: `docs/test-results/linux-cross-os-261109-1753.json` (scope X1+X2+X5, git sha 994119f,
-all 12 legs sha256 equal, no echo or duplicate clips). Earlier runs: `linux-cross-os-261109-1628.json`
-(X1 only, 5f54542) and `linux-cross-os-261109-1741.json` (X1+X2, 994119f). Harness:
-`apps/linux/tests/e2e/cross-os-with-windows.sh` (Linux side), `apps/windows/tests/e2e/cross-os-cli-peer.ps1`
-(Windows side, headless `fsync-cli`, Windows PowerShell 5.1 on waso-vm).
+Evidence, one run each (not one run for all five legs):
+- `docs/test-results/linux-cross-os-261110-1241.json`: X1+X4+X3, git sha 312a67a, exit 0, 0 retries. Covers X3 and X4.
+- `docs/test-results/linux-cross-os-261109-1753.json`: X1+X2+X5, git sha 994119f, all 12 legs sha256 equal. Covers X2 and X5.
+- Earlier: `linux-cross-os-261109-1628.json` (X1, 5f54542), `linux-cross-os-261109-1741.json` (X1+X2, 994119f).
+- `linux-cross-os-261110-1217.json` (ea954a6) is superseded. Its echo field was hardcoded and its skew probe gave negative latencies. Do not cite it for echo.
+
+Harness: `apps/linux/tests/e2e/cross-os-with-windows.sh` (Linux side; `X3=1` adds the GUI legs, `X5=1` the relay leg).
+Windows side: `apps/windows/tests/e2e/cross-os-cli-peer.ps1` (X2/X5, headless `fsync-cli`) and
+`cross-os-gui-peer.ps1` (X3/X4, the WinUI app over UI Automation). See [apps/windows/README.md](../../apps/windows/README.md#cross-os-e2e-linux-app).
+
+| Leg | Path | Kind | Latency (ms) | Limit (ms) | Note |
+|---|---|---|---|---|---|
+| X1 | Linux app -> fsync-cli (this host) | text | 97 | 5000 | run 1241, echo checked |
+| X1 | fsync-cli -> Linux app | text | 81 | 5000 | echo checked |
+| X1 | fsync-cli -> Linux app | file, 3 MB | 2160 | 5000 | accept scripted, hash equal |
+| X1 | Linux app -> fsync-cli | file, 3 MB | 2157 | 5000 | pick-device, fetch, hash equal |
+| X4 | Windows app pairs with Linux app | code (SAS) | - | - | SAS words equal; Windows lists the peer as Cli. QR text not tested |
+| X3 | Windows app -> Linux app | text | 327 | 5000 | skew 8051 +-8 ms corrected; exact text |
+| X3 | Windows app -> Linux app | html | 214 | 5000 | skew corrected |
+| X3 | Windows app -> Linux app | png, 40x40 | 346 | 5000 | exact pixels |
+| X3 | Windows app -> Linux app | file, 3 MB | 1391 | 10000 | eager inbox, hash equal |
+| X3 | Linux app -> Windows app | text | 1367 | 5000 | skew 8054 +-8 ms corrected |
+| X3 | Linux app -> Windows app | html | 140 | 5000 | skew corrected |
+| X3 | Linux app -> Windows app | png, 40x40 | 311 | 5000 | exact pixels at the Windows clipboard |
+| X3 | Linux app -> Windows app | file, 3 MB, lazy | 8701 | 10000 | Win+Alt+V, PasteHelper, hash equal. Thin margin (see Open) |
+
+The 1753 run (X2, X5) used the older harness: skew probe (+-541 ms bound) and echo field (hardcoded). Its
+numbers stand, but its echo claim predates the real checks.
 
 | Leg | Path | Kind | Latency (ms) | Limit (ms) | Note |
 |---|---|---|---|---|---|
@@ -509,16 +532,21 @@ all 12 legs sha256 equal, no echo or duplicate clips). Earlier runs: `linux-cros
 | X1 | Linux app -> fsync-cli | file, 3 MB | 2125 | 5000 | pick-device, fetch |
 | X2 | Linux app -> fsync-cli on waso-vm | text | 2973 | 5000 | clock skew corrected, +-1127 |
 | X2 | fsync-cli on waso-vm -> Linux app | text | 1067 | 5000 | clock skew corrected, +-1052 |
-| X2 | Linux app -> waso-vm | file, 3 MB | 4256 | 30000 | hash equal |
+| X2 | Linux app -> waso-vm | file, 3 MB | 4256 | 30000 | hash equal (30 s gate in that run) |
 | X2 | waso-vm -> Linux app | file, 3 MB | 4471 | 30000 | accept scripted, hash equal |
 | X5 | Linux app -> waso-vm, `--force-relay` | text | 2706 | 5000 | clock skew corrected, +-395 |
 | X5 | waso-vm -> Linux app, `--force-relay` | text | 424 | 5000 | clock skew corrected, +-410 |
-| X5 | Linux app -> waso-vm, `--force-relay` | file, 8 MiB | 3229 | 30000 | hash equal |
+| X5 | Linux app -> waso-vm, `--force-relay` | file, 8 MiB | 3229 | 30000 | hash equal (30 s gate in that run) |
 | X5 | waso-vm -> Linux app, `--force-relay` | file, 8 MiB | 4478 | 30000 | accept scripted, hash equal |
 
-Pending (not run): X3 (Linux app <-> Windows app GUI, text/html/png both ways, file clip both ways) and
-X4 (pairing in the Windows GUI, SAS words equal). Both need `taskMode: interactive` on waso-vm, which is
-machine-wide and must be restored afterwards, or the manual checklist. Until they pass, this ADR stays draft.
+Checks in the X3/X4 run (1241):
+- Echo and duplicates: real counts on both sides. The Windows app published exactly the 4 copies it made, and the Linux app published 0 while receiving them. For the 3 Linux copies the Windows publish count did not change, and the Linux app published exactly 3. The lazy-file leg also left the Windows count unchanged.
+- Pixels: coloured 40x40 PNG, distinct channels (grey would hide channel-order bugs). Alpha is not tested: CF_DIB carries none.
+- Clock: the Windows clock is streamed over one ssh session. Error = TCP RTT + 6 ms. The leg fails when latency is below -error, and gates on latency + error <= limit.
+- Gates: clips 5 s, Windows file legs 10 s. The gate is in `leg` in `cross-os-with-windows.sh`.
+- Process (not run evidence): `taskMode` on waso-vm was set to interactive for the X3 run only, and restored to headless after both X3 runs on 2026-11-10.
+
+Windows product bug found by X3 and fixed: Windows synthesizes CF_DIBV5 from a BITFIELDS CF_DIB by repeating the 12 mask bytes after a 124-byte header. The decoder did not skip them, so images were 3 px shifted. Fixed in `ImageCodec.cs` (`ea954a6`, `1e066a8`); see the [changelog](../project-changelog.md). Windows suite 173/173.
 
 ### Deviations and findings (owner decision needed)
 - **File legs over Windows are gated at 10 s, not 5 s.** The spec gates clips at 5 s and file hash
@@ -536,8 +564,10 @@ machine-wide and must be restored afterwards, or the manual checklist. Until the
   `login --code` does not start a new OTP.
 - Windows runs use **Windows PowerShell 5.1** (waso-vm has no pwsh 7). Builds need Strawberry Perl and NASM
   for vendored OpenSSL (`apps/windows/README.md`).
-- Windows clocks run about 10 s ahead of this host. Windows legs subtract a skew estimated from min-RTT ssh
-  samples; the uncertainty is in each `note`.
+- Windows clocks run about 8 s ahead of this host (8051 ms in 1241, streamed probe; the one-shot probe measured
+  about 8.4 s in 1217). The error is in each leg's `skew_err_ms` (+-8 ms in 1241).
+- Windows PowerShell 5.1 runs the Windows scripts (`powershell -File`). `cross-os-cli-peer.ps1` still says
+  "PowerShell 7" in its header; that header is wrong.
 
 ### Known issues (pairing flakes, not yet root-caused)
 Both happen on a just-started endpoint that the relay has not yet made addressable over the TCP-only tunnel.
@@ -551,8 +581,18 @@ Both passed on rerun. Not confirmed as a product bug or a harness artefact.
 An orphan Windows `pair offer` can linger up to 200 s after a failed pair run.
 
 ## Open
-- X3 and X4 (above). Then set status to accepted.
+Nothing below blocks acceptance (the acceptance condition is X3 and X4, met above).
+- **X4 QR text: not tested.** The phase 06 spec asks for "code and QR text"; only the code (SAS) path ran. Decide whether
+  QR is needed before the Platform emit gate opens, or record it as a permanent gap.
+- **Lazy file margin.** Linux -> Windows lazy file took 4577 ms (1217) and 8701 ms (1241) against 10 s. Variance comes
+  from the Win+Alt+V poll (1.5 s steps) and PasteHelper. Not changed.
+- **Offline account device delays publishes (product, not fixed).** Publishes are sequential. While one device of the
+  account is offline, each following publish waits up to 7 s (about 2 s + 5 s tries). Affects the Windows app and the CLI.
+- **X2 and X5 not re-run since the harness fixes.** Their evidence is at 994119f. The skew probe, echo checks and
+  `tries` fields changed after that. Re-run `X5=1` at HEAD to refresh them.
+- **Codec gaps.** 32-bpp images with non-standard masks are refused with a log line, not converted. Alpha is not tested.
+  16-bpp masks other than 565/555 reach WIC unchecked.
 - LIVE items carried from phases 02-05 and the Hyprland check (KeePassXC / Bitwarden not sent): tables above.
 - Pairing flakes: root cause, and whether the TCP-only relay path is the trigger.
 - Platform emit gate: the backend deploy and the Mac/Windows releases with the tolerant decoder.
-- Confirm no tunnel process or portproxy rule remains on waso-vm and this host (phase 06 step 8).
+- Confirm no tunnel process or portproxy rule remains on waso-vm and this host (phase 06 step 8). Not recorded yet.

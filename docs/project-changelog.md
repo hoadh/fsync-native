@@ -2,6 +2,26 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-11-10 - Linux cross-OS X3/X4 pass; Windows image decoding fixes
+
+Plan `plans/261106-1414-linux-native-app`, ADR [014](./adr/014-linux-desktop-app.md) (accepted). Branch `feat/linux-app`, not yet merged.
+
+### Added
+- Cross-OS GUI harness: `apps/windows/tests/e2e/cross-os-gui-peer.ps1` (the WinUI app over UI Automation, in the logged-on session) with `X3=1` in `apps/linux/tests/e2e/cross-os-with-windows.sh`. Covers text, html, png and file clips both ways, echo and duplicate counts, and SAS pairing.
+
+### Changed
+- Cross-OS harness: clock skew is streamed from the Windows host (error +-8 ms, down from +-541 ms). Result JSON records `tries`, `skew_ms`, `skew_err_ms` and real echo checks. Legs fail on impossible (negative) latencies.
+- ADR 014 accepted. Its acceptance condition (X3 and X4 pass) is met. The Platform emit gate stays closed.
+
+### Fixed
+- Windows: images copied from an app whose clipboard holds a 32-bpp BITFIELDS DIB were synced 3 px off. Windows synthesizes CF_DIBV5 with the 12 mask bytes repeated after the 124-byte header, and the decoder did not skip them. Severity: high (wrong pixels reach peers with no error). Impact: image clips only; text and html were not affected. Fixed in `ImageCodec.cs`: the repeated masks are skipped only when they equal the header masks.
+- Windows: non-standard 32-bpp masks (not BGR, alpha not 0 or 0xFF000000) are refused with a log line instead of decoded with swapped colours. Previously the image was decoded unchecked.
+- Windows: a malformed DIB (bad bit count, size or truncated pixels, `int.MinValue` width) raised an unhandled exception and dropped the whole clip, text and html included. Severity: medium. The header is now validated, and any codec failure drops only the image (logged as `image not synced`).
+
+### Verification
+- Cross-OS X1+X4+X3 PASS at `312a67a`: `docs/test-results/linux-cross-os-261110-1241.json`, exit 0, 0 retries. Windows suite 173/173 (CoreBindings 9, Interop 61, App 103).
+- Open: X4 QR-text path not tested (SAS path only); X2 and X5 not re-run since the harness fixes (last pass 994119f); lazy file Linux -> Windows took 8701 ms against a 10 s gate; an offline account device delays each following Windows publish by up to 7 s (product, not fixed); LIVE items on Hyprland and GNOME; two pairing flakes (see ADR 014 "Known issues").
+
 ## 2026-11-09 - Linux desktop app, packaging and tolerant Platform codec
 
 Plan `plans/261106-1414-linux-native-app`, ADR [014](./adr/014-linux-desktop-app.md). Branch `feat/linux-app`, not yet merged.

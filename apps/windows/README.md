@@ -16,6 +16,30 @@ tray shell, email sign-in, pairing, device list, start with Windows. Phase 14: c
 | `tests/e2e/E2eHost.psm1`, `ClipTools.psm1`, `Uia.psm1` | shared e2e harness: Postgres (docker or `FSYNC_E2E_PG_BIN`), local relay, backend, CLI devices, app instances |
 | `tests/e2e/pair-with-cli.ps1` | UI Automation: app signs in and pairs with `fsync-cli` on a local backend |
 | `tests/e2e/clipboard-with-cli.ps1` | clipboard both ways, sensitive skip, history, files both ways, Send to, virtual-file paste between two app instances |
+| `tests/e2e/cross-os-cli-peer.ps1` | headless `fsync-cli` peer for the Linux cross-OS legs X2/X5 (`-Step build \| pair \| leg`); JSON lines out |
+| `tests/e2e/cross-os-gui-peer.ps1` | the WinUI app for the Linux cross-OS legs X3/X4 (`-Step build-app \| pair \| legs -Run out \| in-auto \| in-lazy`), UI Automation, sync files |
+| `tests/e2e/cross-os-port-forward.ps1` | verify-only check of the reverse SSH tunnel (`-ApiPort`, `-RelayPort`): `/health` 200 and relay TCP connect. Changes nothing |
+
+## Cross-OS e2e (Linux app)
+The Linux host drives everything: `apps/linux/tests/e2e/cross-os-with-windows.sh`. Commands run on the Rig worker
+(`waso-vm`, `WIN_MACHINE`) with `remote run --ref <pushed sha>`; the Windows scripts run through
+**Windows PowerShell 5.1** (`powershell -File`), not pwsh.
+
+```
+X3=1 REF=<pushed sha> apps/linux/tests/e2e/cross-os-with-windows.sh   # X1 + X4 + X3 (GUI app)
+X5=1 REF=<pushed sha> apps/linux/tests/e2e/cross-os-with-windows.sh   # X1 + X2 + X5 (headless CLI)
+```
+
+- **Transport:** the Linux host opens `ssh -R` for the run, so waso-vm's `127.0.0.1:<api>` and `<relay>` reach
+  the dev backend and relay. Both apps use the same plain `http://127.0.0.1` URLs; no http override is added.
+- **Desktop:** `remote run` executes in session 0, where the WinUI app crashes. `cross-os-gui-peer.ps1 -Step pair|legs`
+  therefore re-runs itself as a one-shot scheduled task (`schtasks /it`) in the logged-on user's session. An RDP
+  or console session must be open. `taskMode: interactive` is machine-wide on the worker: set it only for the X3 run and restore it afterwards.
+- **Ordering:** no barrier. The Linux side reads and writes sync files under `%TEMP%\fsync-cross-os\gui\sync`
+  over ssh; each leg has its own deadline.
+- **Output:** JSON lines on stdout. The Linux harness reads only whitelisted fields; the output is untrusted data.
+- **Fixture:** a 40x40 coloured PNG with distinct channel formulas (same on both sides); files are 3 MB random.
+- Results: `docs/test-results/linux-cross-os-*.json`; see [test results](../../docs/test-results/README.md).
 
 ## Build
 Needs rustup, VS 2022 Build Tools (C++ x64 + ARM64), Strawberry Perl + NASM (vendored OpenSSL),

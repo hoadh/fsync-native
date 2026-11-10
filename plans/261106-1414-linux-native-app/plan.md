@@ -24,7 +24,7 @@ Inputs: [brainstorm](../reports/brainstorm-261106-1354-linux-native-app.md), [re
 | [04a](phase-04a-files-and-history.md) | Eager file inbox, retention, offers, history copy-back (3 d) | In Progress (code done, review 9.5; LIVE checks open) |
 | [04b](phase-04b-settings-drag-drop-cli-hotkeys.md) | Settings, drag-drop send, CLI hotkey binds (2 d, below MVP cut line) | In Progress (code done, review 9.5; manual Omarchy checks open) |
 | [05](phase-05-packaging-and-distro-smoke.md) | PKGBUILD, .deb, .rpm, AppImage; release guard; install smoke (4 d) | Completed (review 9.5; container smoke, GNOME AppImage xcb LIVE, Omarchy makepkg + autostart pass) |
-| [06](phase-06-cross-os-test-and-docs.md) | Cross-OS (fsync-cli, Windows app on waso-vm via port-forward) + docs, ADR 014 final (4 d) | In Progress (X1, X2, X5 PASS; X3/X4 pending; docs updated, ADR draft until X3/X4) |
+| [06](phase-06-cross-os-test-and-docs.md) | Cross-OS (fsync-cli, Windows app on waso-vm via port-forward) + docs, ADR 014 final (4 d) | In Progress (X1-X5 PASS: X1/X3/X4 at 312a67a on 2026-11-10, X2/X5 at 994119f; ADR 014 accepted 2026-11-10. Open: X4 QR text, X2/X5 re-run at HEAD, LIVE GNOME/Hyprland, tunnel check, review) |
 
 Progress: 1/7 (01 completed). Estimate ~29 working days (single dev).
 
@@ -38,7 +38,7 @@ Progress: 1/7 (01 completed). Estimate ~29 working days (single dev).
 - **Qt floor go/no-go** (phase 01): CXX-Qt builds on Qt 6.2 (ubuntu:22.04); the 6.2 binary runs `--smoke` in `fedora:latest` + `archlinux:latest` containers (qmlcachegen/Qt version coupling); decide one binary vs per-distro builds; decide AppImage Qt (6.2 apt vs pinned 6.8 LTS via aqtinstall). No-go on 6.2 -> 6.4 floor; no-go on both -> bundle pinned Qt 6.8 LTS (aqtinstall) in AppImage and in .deb/.rpm under `/opt` (decided, validation 2).
 - **GNOME VM provisioned** (phase 01): user's existing Ubuntu Desktop (GNOME Wayland) machine reachable over ssh before phase 03 starts.
 - **Platform emit gate** (future release, out of scope): Linux app may emit `Platform::Linux` only after prod backend + Mac/Windows app releases with the tolerant decoder are deployed and adopted. Recorded in ADR 014.
-- **Cross-OS transport** (phase 06): waso-vm reaches backend + relay via port-forward to its own `127.0.0.1` (`ssh -L` or `netsh portproxy`); `doctor` green.
+- **Cross-OS transport** (phase 06): waso-vm reaches backend + relay via port-forward to its own `127.0.0.1`. As built: reverse `ssh -R` opened per run by the Linux host (not `ssh -L` or `netsh portproxy`); `doctor` green.
 - **Test-feature release guard** (phases 02 + 05): `e2e-control` in a release build is a compile error; packaged binaries checked via `--build-info`.
 
 # Cross-cutting rules

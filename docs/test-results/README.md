@@ -110,7 +110,31 @@ Control traffic is about 30 KB, so the thresholds are meaningful from 1 MiB up (
 
 ## Linux app cross-OS (phase 06)
 
-`apps/linux/tests/e2e/cross-os-with-windows.sh` writes `linux-cross-os-<YYMMDD-HHMM>.json`: `scope` (X1, X2, X5),
-`git_sha`, per-leg `latency_ms`, `limit_ms`, `sha_ok` and a `note` (clock-skew correction for Windows legs). Gates: text
-clips <= 5 s, file hash equal; Windows file legs are gated at 30 s (owner decision pending, ADR 014).
-Latest full pass: `linux-cross-os-261109-1753.json` (X1, X2, X5 at 994119f). Results table: [ADR 014](../adr/014-linux-desktop-app.md#cross-os-results-phase-06).
+`apps/linux/tests/e2e/cross-os-with-windows.sh` writes `linux-cross-os-<YYMMDD-HHMM>.json`. Produce:
+
+```
+apps/linux/tests/e2e/cross-os-with-windows.sh --local-only   # X1 only
+REF=<pushed sha> apps/linux/tests/e2e/cross-os-with-windows.sh                # X1 + X2 (waso-vm, headless CLI)
+X5=1 REF=<pushed sha> apps/linux/tests/e2e/cross-os-with-windows.sh           # + X5 (--force-relay)
+X3=1 REF=<pushed sha> apps/linux/tests/e2e/cross-os-with-windows.sh           # X1 + X4 + X3 (Windows GUI app)
+```
+
+No single run covers X1-X5. Runs, newest first:
+
+| file | git_sha | scope | status |
+| --- | --- | --- | --- |
+| `linux-cross-os-261110-1241.json` | `312a67a` | X1+X4+X3 | latest X3/X4 pass; 0 retries; real echo checks |
+| `linux-cross-os-261110-1217.json` | `ea954a6` | X1+X4+X3 | superseded: echo field hardcoded, negative latencies from the old skew probe |
+| `linux-cross-os-261109-1753.json` | `994119f` | X1+X2+X5 | latest X2/X5 pass; file legs gated at 30 s (before the 10 s decision); pre-review harness |
+| `linux-cross-os-261109-1741.json` | `994119f` | X1+X2 | earlier |
+| `linux-cross-os-261109-1628.json` | `5f54542` | X1 | earlier |
+
+Gates: text clips <= 5 s; Windows file legs (X2, X3, X5) <= 10 s (`LEG_MAX_MS=10000`; the earlier "30 s" in this
+file was wrong). The gate is on latency + clock error. Files: sha256 equal. PNG: exact pixels from a coloured
+40x40 image. Echo and duplicate checks are real for X1 and X3; X2 and X5 record `echo_not_checked`.
+
+JSON fields: `checks` (`echo_checked_scopes`, `echo_checks`, `echo_not_checked`, `retries`,
+`latency_within_threshold`); per leg `latency_ms`, `limit_ms`, `sha_ok`, `note`, and for Windows legs `tries`,
+`skew_ms`, `skew_err_ms`.
+
+Results table and open items: [ADR 014](../adr/014-linux-desktop-app.md#cross-os-results-phase-06).

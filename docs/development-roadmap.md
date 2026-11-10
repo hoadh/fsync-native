@@ -1,6 +1,6 @@
 # Development Roadmap
 
-Last updated: 2026-11-09. Plan of record: [plans/261013-2029-fsync-native-mvp](../plans/261013-2029-fsync-native-mvp/plan.md). Its phase files still show "pending"; this page is the current status. The Linux desktop app has its own plan: [plans/261106-1414-linux-native-app](../plans/261106-1414-linux-native-app/plan.md) (table below).
+Last updated: 2026-11-10. Plan of record: [plans/261013-2029-fsync-native-mvp](../plans/261013-2029-fsync-native-mvp/plan.md). Its phase files still show "pending"; this page is the current status. The Linux desktop app has its own plan: [plans/261106-1414-linux-native-app](../plans/261106-1414-linux-native-app/plan.md) (table below).
 
 ## Phase Status
 
@@ -27,7 +27,7 @@ Phase names and dependencies follow the MVP plan. Its own status column still re
 
 ## Linux Desktop App
 
-Plan `261106-1414-linux-native-app`, ADR [014](./adr/014-linux-desktop-app.md). Status as of 2026-11-09: 1 of 7 phases closed (01); phases 02-06 open with LIVE checks.
+Plan `261106-1414-linux-native-app`, ADR [014](./adr/014-linux-desktop-app.md). Status as of 2026-11-10: 1 of 7 phases closed (01); phases 02-06 open with LIVE checks.
 
 | Phase | Scope | Status | Notes |
 |-------|-------|--------|-------|
@@ -37,11 +37,11 @@ Plan `261106-1414-linux-native-app`, ADR [014](./adr/014-linux-desktop-app.md). 
 | 04a | Eager file inbox, retention, offers, history copy-back | In progress | Code done. Open LIVE: Omarchy file-manager paste, GNOME Nautilus paste of received files. |
 | 04b | Settings, drag-drop send, CLI hotkey binds | In progress | Code done. Open LIVE: Omarchy `SUPER ALT, C` bind and settings after restart; drop from a file manager untested. |
 | 05 | Packaging: PKGBUILD, `.deb`, `.rpm`, AppImage; release guard; install smoke | Done | Container smoke passes for every format (2026-11-07). AppImage on GNOME 50 (xcb) pass. Omarchy `makepkg -si` + autostart pass (2026-11-09). |
-| 06 | Cross-OS test (fsync-cli here and on waso-vm; Windows app GUI) + docs, ADR 014 final | In progress | X1, X2, X5 PASS (2026-11-09, sha 994119f). X3 and X4 (Windows GUI, interactive task) pending. Docs updated 2026-11-09; ADR stays draft until X3/X4. |
+| 06 | Cross-OS test (fsync-cli here and on waso-vm; Windows app GUI) + docs, ADR 014 final | In progress | X1, X3, X4 PASS (2026-11-10, sha 312a67a). X2, X5 PASS (2026-11-09, sha 994119f; re-run pending). ADR 014 accepted 2026-11-10. Open: X4 QR text, LIVE on Hyprland and GNOME, tunnel check, review and merge. |
 
 Phase 05 is marked "Completed" in the plan's overview table; its phase file says In Progress, and this page follows the phase file.
 
-Linux open items: the Platform emit gate (the app sends `Cli` until the backend and Mac/Windows releases decode `Linux`), the pairing flakes in ADR 014, and the untested desktops (KDE, Sway live, other X11).
+Linux open items: the Platform emit gate (the app sends `Cli` until the backend and Mac/Windows releases decode `Linux`), the pairing flakes in ADR 014, the untested desktops (KDE, Sway live, other X11), the X4 QR-text pairing path (untested), and an offline account device that delays each following Windows publish by up to 7 s (product issue, open).
 
 ## Open Items (priority order)
 
@@ -74,5 +74,6 @@ Linux open items: the Platform emit gate (the app sends `Cli` until the backend 
 | 2026-10-17 | Netns N3 and N4 un-quarantined (test relay CA and QAD, `test-relay-ca` feature, release guards); `FsyncError::PeerRefused`; Windows OLE clipboard retries (local main `c429406`) |
 | 2026-11-07 | Linux app: GNOME VM manual clip send and paste pass; packaging smoke green on all formats |
 | 2026-11-09 | Linux app: cross-OS X1, X2 and X5 pass (fsync-cli here and on waso-vm, `--force-relay` leg); docs and ADR 014 updated |
+| 2026-11-10 | Linux app: cross-OS X3 and X4 pass against the Windows app on waso-vm (sha 312a67a); ADR 014 accepted. Windows CF_DIBV5 3 px shift fixed |
 
 See [project-changelog.md](./project-changelog.md) for details.
