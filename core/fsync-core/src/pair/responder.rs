@@ -19,7 +19,7 @@ use crate::{
     trust::TrustManager,
 };
 use fsync_proto::{
-    PairFrame,
+    NodeId, PairFrame,
     names::validate_device_name,
     pairing::{AbortReason, PAIR_VERSION},
 };
@@ -31,7 +31,30 @@ const ACCEPT_TIMEOUT: Duration = Duration::from_secs(10);
 /// Bound on waiting for the existing device to close after the last frame.
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Emits `Completed` once the list is pinned, even if the handler future is dropped during the
+/// drain (router shutdown): the device is paired then, whatever happens to the connection.
+struct CompletedOnDrop<'a> {
+    events: &'a EventSink,
+    peer: NodeId,
+    pinned: Option<u64>,
+}
+
+impl Drop for CompletedOnDrop<'_> {
+    fn drop(&mut self) {
+        if let Some(seq) = self.pinned.take() {
+            self.events.pairing(PairingEvent::Completed {
+                peer: self.peer,
+                seq,
+            });
+        }
+    }
+}
+
 /// Serve one session; reports the outcome through the window ticket.
+///
+/// `Completed` comes after the drain: after the existing device closed the connection (it does
+/// so once it has read `Done`), or after `DRAIN_TIMEOUT` if it never closes. A listener may then
+/// shut the node down (the CLI exits) without cutting `Done` off in the normal case.
 pub async fn run_responder(
     conn: Connection,
     mut ticket: PairTicket,
@@ -39,12 +62,20 @@ pub async fn run_responder(
     trust: &TrustManager,
     events: &EventSink,
 ) -> Result<()> {
+    let mut completed = CompletedOnDrop {
+        events,
+        peer: node_id_of(&conn),
+        pinned: None,
+    };
     let res = async {
         let (mut tx, mut rx) = tokio::time::timeout(ACCEPT_TIMEOUT, conn.accept_bi())
             .await
             .map_err(|_| CoreError::Pair(PairError::Timeout))?
             .map_err(CoreError::net_chain)?;
         let r = session(&conn, &mut ticket, me, trust, events, &mut tx, &mut rx).await;
+        if let Ok(seq) = &r {
+            completed.pinned = Some(*seq);
+        }
         if let Err(e) = &r {
             let reason = match e {
                 CoreError::Pair(PairError::BadMac) => AbortReason::BadMac,
@@ -55,8 +86,7 @@ pub async fn run_responder(
             let _ = wire::send(&mut tx, &PairFrame::Abort { reason }).await;
         }
         let _ = tx.finish();
-        // Let the final frame drain before the connection goes away. The existing device closes
-        // the connection once it has read `Done`, so this is also the delivery ack for `Done`.
+        // Let the final frame drain before the connection goes away (bounded).
         let drained = tokio::time::timeout(DRAIN_TIMEOUT, conn.closed()).await;
         tracing::debug!(closed = ?drained.as_ref().ok(), ok = r.is_ok(), "pair/1 responder drained");
         r
@@ -73,14 +103,7 @@ pub async fn run_responder(
         Err(e) => Err(CoreError::Net(e.to_string())),
     };
     ticket.finish(reply);
-    // Only now, with `Done` delivered: a listener may tear the node down on `Completed` (the
-    // CLI exits), and that drops this connection, discarding any frame not yet sent.
-    if let Ok(seq) = &res {
-        events.pairing(PairingEvent::Completed {
-            peer: node_id_of(&conn),
-            seq: *seq,
-        });
-    }
+    drop(completed); // emits `Completed` when pinned
     res.map(|_| ())
 }
 
@@ -190,7 +213,9 @@ async fn session(
         [head] => trust.pin_paired_head(head, &n_id, &e_id, info.account_id)?,
         _ => trust.pin_paired_chain(&chain, &n_id, &e_id)?,
     };
+    // Paired from here on: a dropped session still reports this seq, not `Closed`.
+    ticket.set_pinned(seq);
     wire::send(tx, &PairFrame::Done).await?;
-    // `Completed` is emitted by `run_responder` once `Done` has drained.
+    // `Completed` is emitted by `run_responder` after the drain.
     Ok(seq)
 }

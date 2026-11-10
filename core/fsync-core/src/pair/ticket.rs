@@ -12,6 +12,8 @@ pub struct PairTicket {
     source: NodeId,
     claimed: bool,
     ended: bool,
+    /// Seq of the list this device pinned in the session; a dropped ticket reports it.
+    pinned: Option<u64>,
     pub secret: PairSecret,
     pub info: DeviceInfo,
 }
@@ -30,6 +32,7 @@ impl PairTicket {
             source,
             claimed: false,
             ended: false,
+            pinned: None,
             secret,
             info,
         }
@@ -49,6 +52,12 @@ impl PairTicket {
         }
     }
 
+    /// The session pinned list `seq`: if the session is dropped from now on (shutdown during the
+    /// drain), the window still reports this success.
+    pub fn set_pinned(&mut self, seq: u64) {
+        self.pinned = Some(seq);
+    }
+
     /// Report the session outcome (a claimed session consumes the window).
     pub fn finish(mut self, res: Result<u64>) {
         self.ended = true;
@@ -59,7 +68,7 @@ impl PairTicket {
 impl Drop for PairTicket {
     fn drop(&mut self) {
         if !self.ended {
-            let res = Err(CoreError::Closed);
+            let res = self.pinned.ok_or(CoreError::Closed);
             self.windows.end(self.id, self.source, self.claimed, res);
         }
     }

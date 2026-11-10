@@ -14,7 +14,10 @@ use crate::{
     error::{CoreError, Result},
     events::{EventSink, PathState},
     identity::Identity,
-    pair::{DeviceInfo, ListBackend, OpenPairing, PairSecret, PairingWindows, run_initiator},
+    pair::{
+        DeviceInfo, InitiatorHooks, ListBackend, OpenPairing, PairSecret, PairingWindows,
+        run_initiator,
+    },
     trust::TrustManager,
 };
 use fsync_proto::{ALPN_PAIR, NodeId, presence::Addrs};
@@ -35,6 +38,7 @@ pub struct Node {
     pub(super) enforcer: tokio::task::JoinHandle<()>,
     pub(super) feed: AddrFeed,
     pub(super) feeder: tokio::task::JoinHandle<()>,
+    pub(super) pair_hooks: InitiatorHooks,
 }
 
 impl Node {
@@ -49,6 +53,7 @@ impl Node {
             #[cfg(feature = "test-relay-ca")]
             relay_ca_pem: None,
             extra: vec![],
+            pair_hooks: InitiatorHooks::default(),
         }
     }
 
@@ -171,6 +176,7 @@ impl Node {
             &self.trust,
             &self.events,
             backend,
+            self.pair_hooks,
         )
         .await
     }
