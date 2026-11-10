@@ -157,7 +157,7 @@ PY
 gui_out_legs() { # windows app copies, the Linux app must receive
   win_measure_skew
   local nonce="$RANDOM$RANDOM" it t sent seen_ms rows setd
-  gui_run_start out -Step legs -Run out -Api "$API" -Relay "$RELAY" -Name "$WIN_GUI_NAME" -Nonce "$nonce" -Items "$GUI_ITEMS" -DeadlineSec 150
+  gui_run_start out -Step legs -Run out -Api "$API" -Relay "$RELAY" -Name "$WIN_GUI_NAME" -Nonce "$nonce" -ItemOrder "$GUI_ITEMS" -DeadlineSec 150
   gui_sync_wait ready 150 >/dev/null
   for it in ${GUI_ITEMS//-/ }; do
     gui_sync_put "go-$it"
