@@ -20,7 +20,8 @@
    - **harness:** poll at 250 ms instead of 1.5 s steps, and keep PasteHelper warm;
    - **product:** prefetch small files (≤ 1 MiB) when the clip arrives, or begin the fetch on the first `GetData` instead of on the copy-engine request.
    Product changes need their own Windows unit tests.
-4. Gate: 5 X3 runs, median ≤ 5 s and max < 10 s. Record the results JSON.
+4. **X2/X5 text app→win:** this leg can fail on Windows peer start-up, not on transfer. It measured 6256 ms on 2026-11-11 and 4132 ms in run 1511. Copy #1 is made as soon as the Windows `remote run` is launched. If the CLI peer is not online yet, the first send fails, and the retry (about 2 s + 5 s) ends up in the measured latency. Fix the harness so the first copy waits for a ready signal from the peer, for example the app's device-online status for the Windows device, and record which copy index arrived. 2026-11-11: main (4e7b33b) shows the same delay, 6238 ms (skew 6157 +-72 ms, checked over ssh), so it was not caused by phase 01. Two candidates: harness start-up, or the offline-peer publish change from PR #1 (publish wait 1.5 s, first dial 2 s + 5 s retry). Find out which before changing anything.
+5. Gate: 5 X3 runs, median ≤ 5 s and max < 10 s. Record the results JSON.
 
 ## Todo
 - [ ] Stage timestamps in the leg
