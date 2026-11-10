@@ -15,6 +15,7 @@
 WIN_GUI="apps/windows/tests/e2e/cross-os-gui-peer.ps1"
 WIN_GUI_NAME="devWG"
 GUI_OFFERS=()
+GUI_ITEMS="${GUI_ITEMS:-text-html-png-file}"   # order of the win -> app items (diagnostics may reorder)
 
 # --- ssh access to the sync dir (names are [a-z0-9-] only) ---
 gui_sync_expr() { echo "(Join-Path \$env:TEMP 'fsync-cross-os\\gui\\sync\\$1')"; }
@@ -156,9 +157,9 @@ PY
 gui_out_legs() { # windows app copies, the Linux app must receive
   win_measure_skew
   local nonce="$RANDOM$RANDOM" it t sent seen_ms rows setd
-  gui_run_start out -Step legs -Run out -Api "$API" -Relay "$RELAY" -Name "$WIN_GUI_NAME" -Nonce "$nonce" -DeadlineSec 150
+  gui_run_start out -Step legs -Run out -Api "$API" -Relay "$RELAY" -Name "$WIN_GUI_NAME" -Nonce "$nonce" -Items "$GUI_ITEMS" -DeadlineSec 150
   gui_sync_wait ready 150 >/dev/null
-  for it in text html png file; do
+  for it in ${GUI_ITEMS//-/ }; do
     gui_sync_put "go-$it"
     local ok=0 i types_ms=""
     for i in $(seq 1 400); do   # 40 s

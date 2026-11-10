@@ -23,6 +23,7 @@ param(
     [string]$Name = 'devWG',
     [string]$Peer = 'devL1',
     [string]$Nonce = '0',
+    [string]$Items = 'text-html-png-file',   # -Run out only: order of the items, '-' separated
     [int]$DeadlineSec = 120
 )
 $ErrorActionPreference = 'Stop'
@@ -210,7 +211,8 @@ try {
             $res = @{ leg = $Run; ok = $true; items = @{} }
             switch ($Run) {
                 'out' {
-                    $items = @('text', 'html', 'png', 'file')
+                    $items = $Items -split '-'
+                    foreach ($i in $items) { if ($i -notin 'text', 'html', 'png', 'file') { throw "bad item $i" } }
                     $fileSha = ''
                     Sync-Put 'ready'
                     foreach ($it in $items) {
