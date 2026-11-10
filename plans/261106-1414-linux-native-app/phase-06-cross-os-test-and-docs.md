@@ -87,7 +87,7 @@ Modify:
 - Harness: `apps/linux/tests/e2e/cross-os-with-windows.sh`. `X3=1` runs the GUI legs (`cross-os-gui-peer.ps1`); otherwise the headless CLI legs (`cross-os-cli-peer.ps1`). Windows scripts run through `powershell -File` (5.1), not pwsh.
 - Gates: clips 5 s; Windows file legs 10 s; latency + clock error must be <= limit and >= -error. Skew from a streamed VM clock (about 8 s ahead; error +-8 ms).
 - Found by X3 and fixed: Windows CF_DIBV5 synthesized from a BITFIELDS CF_DIB has the 12 mask bytes repeated after a 124-byte header; the decoder shifted pixels by 3 px. Fix in `ImageCodec.cs` (`ea954a6`, `1e066a8`). Windows suite 173/173.
-- Review round (score 7.5, H1-H4, M1-M4) fixed in `312a67a`; H4 (docs and evidence) is this pass. Result JSON 1241 has real echo checks, `tries`, skew fields.
+- Review round (score 7.5, H1-H4, M1-M4) fixed in `1e066a8` (codec) through `312a67a` (harness); H4 (docs and evidence) is this pass. Result JSON 1241 has real echo checks, `tries`, skew fields.
 - Process: X3 needed the interactive task; `taskMode` was changed for that run only and restored. Not run evidence.
 - Gaps: X4 QR text; lazy file app->win 8701 ms against 10 s; offline account device delays publishes up to 7 s (product, open); alpha not tested; X2/X5 evidence predates the current harness.
 

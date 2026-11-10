@@ -566,8 +566,6 @@ Windows product bug found by X3 and fixed: Windows synthesizes CF_DIBV5 from a B
   for vendored OpenSSL (`apps/windows/README.md`).
 - Windows clocks run about 8 s ahead of this host (8051 ms in 1241, streamed probe; the one-shot probe measured
   about 8.4 s in 1217). The error is in each leg's `skew_err_ms` (+-8 ms in 1241).
-- Windows PowerShell 5.1 runs the Windows scripts (`powershell -File`). `cross-os-cli-peer.ps1` still says
-  "PowerShell 7" in its header; that header is wrong.
 
 ### Known issues (pairing flakes, not yet root-caused)
 Both happen on a just-started endpoint that the relay has not yet made addressable over the TCP-only tunnel.
