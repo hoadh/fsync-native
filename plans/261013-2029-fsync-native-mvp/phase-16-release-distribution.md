@@ -49,6 +49,14 @@ deploy/updates/       # static hosting (object storage + CDN) layout: /mac/{beta
      re-verify on each tag bump, or build them from a pinned source commit.
    - Sign `SHA256SUMS` of the Linux artifacts (review L7), and run `updpkgsums` on the PKGBUILD once
      `_commit` is a real release commit (pacman >= 6.1 git checksum instead of `SKIP`).
+   - LGPL-3 Qt in the AppImage (bundled as replaceable `.so` files): add the written source offer, or
+     ship/link the exact Qt 6.2.4 sources used by the `ubuntu:22.04` build image, with each release.
+8. Third-party license notices for macOS and Windows (found in the Linux phase 04 review fix
+   round, 2026-11-11): neither app ships a license report today, yet both link `fsync-ffi`, which
+   statically compiles SQLCipher (BSD-3, Zetetic LLC, notice required in binary distributions) and
+   vendored OpenSSL (Apache-2.0). Generate a `cargo about` report for `fsync-ffi` (reuse
+   `apps/linux/about.toml`: the libsqlite3-sys clarify and the pruned `accepted` list) and ship it
+   in the app bundle / installer (About or Acknowledgements).
 
 ## Todo List
 - [ ] Mac signing + notarization CI
@@ -58,7 +66,8 @@ deploy/updates/       # static hosting (object storage + CDN) layout: /mac/{beta
 - [ ] Update hosting + channels
 - [ ] Runbook
 - [ ] Beta dry-run with update
-- [ ] Linux supply chain (L5): base image digests, pinned rustup-init, `--proto-redir`, linuxdeploy trust, signed SHA256SUMS, PKGBUILD git checksum
+- [ ] Linux supply chain (L5): base image digests, pinned rustup-init, `--proto-redir`, linuxdeploy trust, signed SHA256SUMS, PKGBUILD git checksum, AppImage Qt LGPL source offer
+- [ ] macOS / Windows third-party license report (SQLCipher BSD-3, OpenSSL)
 
 ## Success Criteria
 - Fresh install on clean macOS & Windows with no Gatekeeper/SmartScreen block (SmartScreen reputation may need time — document); beta N → N+1 auto-update works on both OS; release from tag < 60 min unattended.
