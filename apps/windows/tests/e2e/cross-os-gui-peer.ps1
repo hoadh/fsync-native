@@ -218,6 +218,7 @@ try {
                             if ($it -eq 'html') { Set-ClipRetry @{ Value = "<b>fsync-gui-$Nonce-html</b>"; AsHtml = $true } }
                             if ($it -eq 'png') { Set-ClipImage (New-TestBitmap 40) }
                             if ($it -eq 'file') { Set-ClipRetry @{ Path = $file } }
+                            Sync-Put "set-$it" (Now-Ms)   # clipboard write returned (diagnostic: separates the write time from the sync time)
                             # rdpclip can re-post the clipboard with the no-history flag right after our write: copy again.
                             try { Sync-Wait "got-$it" 15 | Out-Null; break } catch { if ($try -eq 4) { $res.ok = $false; $res.items[$it] = 'not received' } }
                         }

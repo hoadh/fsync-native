@@ -148,7 +148,7 @@ PY
 # --- X3 legs ---
 gui_out_legs() { # windows app copies, the Linux app must receive
   win_measure_skew
-  local nonce="$RANDOM$RANDOM" it t sent seen_ms rows
+  local nonce="$RANDOM$RANDOM" it t sent seen_ms rows setd
   gui_run_start out -Step legs -Run out -Api "$API" -Relay "$RELAY" -Name "$WIN_GUI_NAME" -Nonce "$nonce" -DeadlineSec 150
   gui_sync_wait ready 150 >/dev/null
   for it in text html png file; do
@@ -168,12 +168,13 @@ gui_out_legs() { # windows app copies, the Linux app must receive
     [[ $ok -eq 1 ]] || fail "linux app never received the windows $it clip"
     gui_sync_put "got-$it"
     sent="$(gui_sync_get "sent-$it")"; [[ "$sent" =~ ^[0-9]{13}$ ]] || fail "no send timestamp for $it"
+    setd="$(gui_sync_get "set-$it")"; [[ "$setd" =~ ^[0-9]{13}$ ]] && setd="clipboard write took $((setd - sent)) ms; " || setd=""
     if [[ "$it" == file ]]; then
       local want; want="$(gui_sync_get file-sha)"; [[ "$want" =~ ^[0-9a-f]{64}$ ]] || fail "no file sha from windows"
       [[ "$(sha <"$t")" == "$want" ]] || fail "file clip from windows differs (sha256)"
-      LEG_MAX_MS=10000 leg "x3-$it-win-to-app" win-to-app "$it" "$((seen_ms - (sent - WIN_SKEW_MS)))" true "eager inbox; skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms)"
+      LEG_MAX_MS=10000 leg "x3-$it-win-to-app" win-to-app "$it" "$((seen_ms - (sent - WIN_SKEW_MS)))" true "${setd}eager inbox; skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms)"
     else
-      leg "x3-$it-win-to-app" win-to-app "$it" "$((seen_ms - (sent - WIN_SKEW_MS)))" true "skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms)"
+      leg "x3-$it-win-to-app" win-to-app "$it" "$((seen_ms - (sent - WIN_SKEW_MS)))" true "${setd}skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms)"
     fi
   done
   gui_run_end
