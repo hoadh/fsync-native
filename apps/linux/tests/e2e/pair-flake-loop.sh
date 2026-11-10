@@ -8,8 +8,11 @@
 #
 # Env: FORCE_RELAY=1 (relay-only on both CLIs), JOIN_DELAY_S (sleep between the offer code and
 # the join, default 0), RUST_LOG (default iroh=debug,fsync_core=debug), STOP_ON_FAIL=1,
-# CARGO_TARGET_DIR, NO_BUILD=1. Logs: one dir per run under $OUT (printed; always kept).
+# CARGO_TARGET_DIR, NO_BUILD=1, PAIR_LOOP_OUT (log dir, default a new /tmp dir), KEEP=1.
+# Logs: one dir per run under the log dir; kept when a run failed or KEEP=1, else removed.
 # Prints a summary line `runs=N pass=P fail=F` and exits 1 when any run failed.
+# Ports come from free_port (bind 0, then release): a race with another process is possible but
+# shows up loudly (backend not healthy / no RELAY line), not as a pairing failure.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,18 +24,20 @@ RUNS="${1:-30}"
 need() { command -v "$1" >/dev/null 2>&1 || { echo "[e2e] missing prerequisite: $1 ($2)" >&2; exit 2; }; }
 need docker "needed for Postgres"; need python3 ""; need curl ""; need cargo "rustup"
 
-OUT="${OUT:-$(mktemp -d /tmp/fsync-pair-loop.XXXXXX)}"
+OUT="${PAIR_LOOP_OUT:-$(mktemp -d /tmp/fsync-pair-loop.XXXXXX)}"
 mkdir -p "$OUT"
 PG_NAME="fsync-pair-loop-pg-$$"
 PIDS=()
 . "$ROOT/tests/e2e/lib/assert.sh"; . "$ROOT/tests/e2e/lib/cli-session.sh"; . "$HERE/lib-postgres-ready.sh"
 
+FAILN=0
 cleanup() {
   local rc=$?
+  trap - EXIT INT TERM   # once: Ctrl-C must not run it again on EXIT
   for p in ${PIDS[@]+"${PIDS[@]}"}; do kill "$p" 2>/dev/null || true; done
   for p in ${PIDS[@]+"${PIDS[@]}"}; do wait "$p" 2>/dev/null || true; done
   docker rm -f -v "$PG_NAME" >/dev/null 2>&1 || true
-  log "logs in $OUT"
+  if [[ $rc -ne 0 || $FAILN -ne 0 || -n "${KEEP:-}" ]]; then log "logs in $OUT"; else rm -rf "$OUT"; fi
   exit $rc
 }
 trap cleanup EXIT INT TERM
@@ -58,7 +63,13 @@ API_PORT="$(free_port)"; API="http://127.0.0.1:$API_PORT"
 # The backend allows 20 OTP starts per IP and hour (in memory): restart it every 9 runs (2 logins each).
 BACKEND_PID=""
 start_backend() {
-  [[ -n "$BACKEND_PID" ]] && { kill "$BACKEND_PID" 2>/dev/null || true; wait "$BACKEND_PID" 2>/dev/null || true; }
+  if [[ -n "$BACKEND_PID" ]]; then
+    kill "$BACKEND_PID" 2>/dev/null || true; wait "$BACKEND_PID" 2>/dev/null || true
+    # Forget the dead pid, so cleanup never signals a recycled one.
+    local keep=() p
+    for p in "${PIDS[@]}"; do [[ "$p" == "$BACKEND_PID" ]] || keep+=("$p"); done
+    PIDS=(${keep[@]+"${keep[@]}"})
+  fi
   DATABASE_URL="postgres://postgres:e2e@127.0.0.1:$PGPORT/fsync" BIND_ADDR="127.0.0.1:$API_PORT" \
     FSYNC_DEV_MODE=1 RUST_LOG="fsync_backend=debug,info" NO_COLOR=1 "$BACKEND" >>"$OUT/backend.log" 2>&1 &
   BACKEND_PID=$!; PIDS+=("$BACKEND_PID")
@@ -71,22 +82,28 @@ PIDS+=($!)
 wait_for '^RELAY http' "$OUT/relay.log" 20
 RELAY="$(sed -n 's/^RELAY //p' "$OUT/relay.log" | head -1)"
 log "api=$API relay=$RELAY force_relay=${FORCE_RELAY:-0} join_delay=${JOIN_DELAY_S:-0}"
-[[ -n "${FORCE_RELAY:-}" ]] && EXTRA=(--force-relay)
+if [[ "${FORCE_RELAY:-0}" == 1 ]]; then EXTRA=(--force-relay); fi
 export RUST_LOG="${RUST_LOG:-iroh=debug,fsync_core=debug}" NO_COLOR=1
 
-one_run() { # N: runs in a subshell; `fail` ends only this run
+# N: runs in a subshell; `fail` ends only this run. It is called from `if`, where errexit is off,
+# so every step checks its own result.
+one_run() {
   local n="$1"
-  WORK="$OUT/run-$n"; mkdir -p "$WORK"; ln -sf ../backend.log "$WORK/backend.log"
-  local email="loop-$$-$n@example.test"
-  login A "$email" >/dev/null 2>"$WORK/login-A.err"
-  login B "$email" >/dev/null 2>"$WORK/login-B.err"
+  WORK="$OUT/run-$n"
+  mkdir -p "$WORK" || fail "mkdir $WORK"
+  ln -sf ../backend.log "$WORK/backend.log" || fail "backend.log link"
+  local email="loop-$$-$n@example.test" d
+  for d in A B; do
+    login "$d" "$email" >/dev/null 2>"$WORK/login-$d.err" || fail "dev$d login failed: $(tail -1 "$WORK/login-$d.err")"
+    grep -q '"account"' "$WORK/login-$d.json" || fail "dev$d login wrote no account state"
+  done
   cli B pair offer --yes >"$WORK/pair-B.out" 2>"$WORK/pair-B.err" &
   OFFER_PID=$!
   trap 'kill "$OFFER_PID" 2>/dev/null || true' EXIT
   wait_for '"event":"offer"' "$WORK/pair-B.out" 30
   local code; code="$(jfield "$WORK/pair-B.out" offer code)"
   [[ -n "$code" ]] || fail "no pairing code"
-  [[ -n "${JOIN_DELAY_S:-}" ]] && sleep "$JOIN_DELAY_S"
+  if [[ -n "${JOIN_DELAY_S:-}" ]]; then sleep "$JOIN_DELAY_S" || fail "bad JOIN_DELAY_S"; fi
   local jrc=0 orc=0
   cli A pair join "$code" --yes >"$WORK/pair-A.out" 2>"$WORK/pair-A.err" || jrc=$?
   wait "$OFFER_PID" || orc=$?
@@ -97,7 +114,7 @@ one_run() { # N: runs in a subshell; `fail` ends only this run
   grep -q '"event":"paired"' "$WORK/pair-B.out" || fail "devB did not report paired"
 }
 
-PASS=0; FAILN=0
+PASS=0
 for n in $(seq 1 "$RUNS"); do
   [[ $n -gt 1 && $(( (n - 1) % 9 )) -eq 0 ]] && start_backend
   if (one_run "$n") >"$OUT/run-$n.result" 2>&1; then
