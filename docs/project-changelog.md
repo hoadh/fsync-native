@@ -2,6 +2,22 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-11-11 - Pairing "connection lost" flake fixed
+
+Plan `plans/261110-2344-linux-app-follow-ups` phase 01, ADR [014](./adr/014-linux-desktop-app.md) "Known issues". Branch `fix/pairing-flake`, not yet merged.
+
+### Added
+- `apps/linux/tests/e2e/pair-flake-loop.sh`: N fsync-cli offer/join pairings against one local Postgres, backend and relay, fresh account and data dirs per run, per-run debug logs. `FORCE_RELAY=1`, `JOIN_DELAY_S`, `STOP_ON_FAIL=1`.
+
+### Fixed
+- Core: the joining device failed about 1 in 12 pairings with "Pairing failed: network: connection lost", although the list was published and the new device had pinned it. Severity: medium (first pairing looks failed; a retry works). The new device emitted `Completed` before the final `Done` frame was delivered; the CLI `pair offer` exits on `Completed`, and the engine shutdown dropped the connection, discarding `Done`. `Completed` now comes after the existing device closed the session (bounded 5 s). Pair stream errors now include their cause, for example "connection lost: closed by peer: 0".
+
+### Changed
+- Core: a pairing offer published without a relay URL logs a warning (suspected cause of the Windows "No addressing information available" flake, still open).
+
+### Verification
+- `pair-flake-loop.sh`: before 3 of 30 runs failed (3 in 40 with an earlier 10-run batch); after 30 of 30 passed, then 20 of 20 on the final tree. New test `core/fsync-core/tests/pairing_done_delivery.rs`: before 7 of 40 rounds failed on the existing device, after 60 of 60 passed. Cross-OS X1+X2+X5: not run yet.
+
 ## 2026-11-10 - Linux cross-OS X3/X4 pass; Windows image decoding fixes
 
 Plan `plans/261106-1414-linux-native-app`, ADR [014](./adr/014-linux-desktop-app.md) (accepted). Branch `feat/linux-app`, not yet merged.
