@@ -111,15 +111,31 @@ impl Shared {
     /// default), which also bounds `publish` because peers are sent to concurrently. "Delivered"
     /// means the peer accepted the offer (`CLIP_ACK_ACCEPTED`). A refusal (`PeerRefused`) on the
     /// cached connection is retried once too: that connection may predate a re-pairing.
+    ///
+    /// A peer that timed out recently is skipped (see `UnreachablePeers`): `publish` waits for all
+    /// peers and the apps publish one clip at a time, so one offline device would otherwise delay
+    /// every clip by the full cost above.
     async fn send_one(&self, peer: &NodeId, frame: &[u8]) -> Result<()> {
+        if self.unreachable.is_skipped(peer, Instant::now()) {
+            return Err(CoreError::Net("peer recently unreachable".into()));
+        }
         let dialer = self.dialer()?;
         let first = self.cfg.send_timeout.min(FIRST_ATTEMPT);
-        match attempt(dialer, peer, frame, first).await {
+        let r = match attempt(dialer, peer, frame, first).await {
             Err(CoreError::Net(_) | CoreError::PeerRefused) => {
                 attempt(dialer, peer, frame, self.cfg.send_timeout).await
             }
             r => r,
+        };
+        match &r {
+            // The peer answered (even with a refusal): it is online.
+            Ok(()) | Err(CoreError::PeerRefused | CoreError::Invalid(_)) => {
+                self.unreachable.clear(peer)
+            }
+            Err(CoreError::Net(_)) => self.unreachable.mark(*peer, Instant::now()),
+            Err(_) => {}
         }
+        r
     }
 }
 

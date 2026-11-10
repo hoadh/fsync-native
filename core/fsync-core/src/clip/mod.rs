@@ -8,6 +8,7 @@ mod rate;
 mod receive;
 mod received_log;
 mod send;
+mod unreachable_peers;
 
 pub(crate) use echo_guard::EchoGuard;
 pub use echo_guard::set_hash;
@@ -16,3 +17,4 @@ pub use offer::now_ms;
 pub(crate) use rate::PeerRate;
 pub(crate) use receive::ClipHandler;
 pub use received_log::{KEEP_BYTES, ReceivedLog, ReceivedOffer, checked_total};
+pub use unreachable_peers::UnreachablePeers;

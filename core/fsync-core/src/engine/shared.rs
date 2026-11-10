@@ -2,7 +2,7 @@
 
 use crate::{
     blobs::BlobStore,
-    clip::{EchoGuard, PeerRate, ReceivedLog},
+    clip::{EchoGuard, PeerRate, ReceivedLog, UnreachablePeers},
     config::EngineConfig,
     error::{CoreError, Result},
     events::EventSink,
@@ -29,6 +29,8 @@ pub struct Shared {
     pub outbox: Mutex<Outbox>,
     pub log: Mutex<ReceivedLog>,
     pub echo: EchoGuard,
+    /// Peers skipped by `publish` for a while after a network failure.
+    pub unreachable: UnreachablePeers,
     pub fetch_locks: FetchLocks,
     pub offer_rate: PeerRate,
     pub readers: Mutex<ReaderCache>,

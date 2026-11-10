@@ -55,6 +55,7 @@ impl Engine {
             history: history.clone(),
             log: Mutex::default(),
             echo: EchoGuard::default(),
+            unreachable: Default::default(),
             fetch_locks: Default::default(),
             offer_rate: Default::default(),
             readers: Mutex::default(),
