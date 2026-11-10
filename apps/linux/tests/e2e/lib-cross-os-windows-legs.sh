@@ -34,23 +34,37 @@ win_health_gate() {
 }
 
 # win_measure_skew: WIN_SKEW_MS = (windows clock - this host's clock), WIN_SKEW_ERR_MS = +- uncertainty.
-# 5 ssh samples, the one with the smallest round trip wins; the windows timestamp lies between the
-# local before/after readings, so the midpoint is used and half the round trip is the error bound.
-# Cross-clock leg latencies are corrected with it (the VM clock was ~10 s ahead in the first run).
+# One ssh session streams the worker's clock every ~20 ms (no per-sample ssh handshake or PowerShell start-up:
+# those made the old one-shot probe overestimate the skew by 0.3-0.5 s, hence latencies below zero). Each
+# line is stamped on arrival here: t_win - t_arrival = skew - one_way_delay, so the MAXIMUM over ~130 samples
+# is the skew minus the smallest delay seen. That delay is bounded by the connection's own smoothed TCP round
+# trip (ss rtt, same path), which with a few ms of pipe jitter is the reported error.
+# Cross-clock leg latencies are corrected with it (the VM clock runs seconds ahead).
 WIN_SKEW_MS=0; WIN_SKEW_ERR_MS=0
 win_measure_skew() {
-  local best="" i a w b rtt
-  for i in 1 2 3 4 5; do
-    a="$(now_ms)"
-    w="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" 'powershell -NoProfile -Command "[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()"' 2>/dev/null | tr -d '\r' | tail -1)" || true
-    b="$(now_ms)"
+  local ip fd pid n=0 w t d best="" minrtt="" r
+  ip="$(getent ahostsv4 "$(ssh -G "$WIN_SSH" | awk '/^hostname /{print $2}')" | awk 'NR==1{print $1}')"
+  exec {fd}< <(ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" 'powershell -NoProfile -Command "1..150 | ForEach-Object { [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); Start-Sleep -Milliseconds 20 }"' 2>/dev/null)
+  pid=$!
+  while read -r -t 15 -u "$fd" w; do
+    t="${EPOCHREALTIME/./}"; t=$((t / 1000))
+    w="${w//$'\r'/}"
     [[ "$w" =~ ^[0-9]{13}$ ]] || continue
-    rtt=$((b - a))
-    if [[ -z "$best" || $rtt -lt ${best%% *} ]]; then best="$rtt $((w - (a + b) / 2))"; fi
+    n=$((n + 1)); [[ $n -gt 20 ]] || continue   # the first samples carry the start-up
+    d=$((w - t))
+    if [[ -z "$best" || $d -gt $best ]]; then best=$d; fi
+    if [[ $n -eq 100 && -n "$ip" ]]; then
+      for r in $(ss -tin dst "$ip" 2>/dev/null | grep -o ' rtt:[0-9.]*' | cut -d: -f2); do
+        r="${r%%.*}"; [[ -z "$minrtt" || $r -lt $minrtt ]] && minrtt="$r"
+      done
+    fi
   done
-  [[ -n "$best" ]] || fail "could not read the windows clock over ssh"
-  WIN_SKEW_ERR_MS=$(( ${best%% *} / 2 )); WIN_SKEW_MS="${best##* }"
-  log "windows clock skew: ${WIN_SKEW_MS} ms (+-${WIN_SKEW_ERR_MS} ms)"
+  exec {fd}<&-
+  kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
+  [[ -n "$best" && $n -gt 60 ]] || fail "could not read the windows clock stream over ssh ($n samples)"
+  [[ -n "$minrtt" ]] || { minrtt=100; log "windows clock skew: no ss rtt, assuming 100 ms"; }
+  WIN_SKEW_ERR_MS=$((minrtt + 6)); WIN_SKEW_MS="$best"
+  log "windows clock skew: ${WIN_SKEW_MS} ms (+-${WIN_SKEW_ERR_MS} ms; ${n} samples, tcp rtt ${minrtt} ms)"
 }
 
 # win_field OUTFILE LEG FIELD KIND(hex64|int|str): last JSON line {"leg":LEG,...} from the run output.
@@ -149,7 +163,7 @@ win_text_to_win() { # app copies text (repeated every 8 s until the run ends); w
   local txt rx; txt="$(win_field "$out" text-in text str)"; rx="$(win_field "$out" text-in recv_ts_ms int)"
   [[ "$txt" == "$prefix"-* && -n "$rx" ]] || fail "windows text-in: bad result '$txt' / '$rx'"
   local k="${txt##*-}"; [[ -n "${ts[$k]:-}" ]] || fail "windows received an unknown copy index '$k'"
-  leg "$tag-text-app-to-win" app-to-win text "$((rx - WIN_SKEW_MS - ts[$k]))" true "cross-clock, skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms)"
+  LEG_SKEW="$WIN_SKEW_MS" LEG_ERR_MS="$WIN_SKEW_ERR_MS" leg "$tag-text-app-to-win" app-to-win text "$((rx - WIN_SKEW_MS - ts[$k]))" true "cross-clock, skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms)"
 }
 
 win_text_from_win() {
@@ -162,7 +176,7 @@ win_text_from_win() {
   wait "$pid" || fail "windows text-out leg failed: $(tail -6 "$out")"
   local p0; p0="$(win_field "$out" text-out first_publish_ms int)"; [[ -n "$p0" ]] || fail "windows text-out: no first_publish_ms"
   [[ "$SEEN_TEXT" == "$prefix"* ]] || fail "unexpected text on L1: '$SEEN_TEXT'"
-  leg "$tag-text-win-to-app" win-to-app text "$((SEEN_MS - p0 + WIN_SKEW_MS))" true "cross-clock, skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms)"
+  LEG_SKEW="$WIN_SKEW_MS" LEG_ERR_MS="$WIN_SKEW_ERR_MS" leg "$tag-text-win-to-app" win-to-app text "$((SEEN_MS - p0 + WIN_SKEW_MS))" true "cross-clock, skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms)"
 }
 
 win_file_to_win() { # app --send + pick-device (re-staged every 15 s until delivered); windows fetches
@@ -182,7 +196,7 @@ win_file_to_win() { # app --send + pick-device (re-staged every 15 s until deliv
   wait "$pid" || fail "windows file-in leg failed: $(tail -6 "$out")"
   local got rx; got="$(win_field "$out" file-in sha256 hex64)"; rx="$(win_field "$out" file-in recv_ts_ms int)"
   [[ "$got" == "$want" && -n "$rx" ]] || fail "windows file-in: sha '$got' != '$want' (or no timestamp)"
-  LEG_MAX_MS=10000 leg "$tag-file-app-to-win" app-to-win file "$((rx - WIN_SKEW_MS - s0))" true "$size bytes; cross-clock, skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms)"
+  LEG_MAX_MS=10000 LEG_SKEW="$WIN_SKEW_MS" LEG_ERR_MS="$WIN_SKEW_ERR_MS" leg "$tag-file-app-to-win" app-to-win file "$((rx - WIN_SKEW_MS - s0))" true "$size bytes; cross-clock, skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms)"
 }
 
 win_file_from_win() { # windows pushes (send retries up to its deadline); app accepts over IPC
@@ -196,7 +210,7 @@ win_file_from_win() { # windows pushes (send retries up to its deadline); app ac
   name="$(win_field "$out" file-out file_name str)"
   [[ "$name" =~ ^[A-Za-z0-9._-]+$ && -n "$want" && -n "$s0" ]] || fail "windows file-out: bad result"
   [[ "$(sha <"$WORK/home-L1/Downloads/fsync/$name")" == "$want" ]] || fail "file from windows differs (sha256)"
-  LEG_MAX_MS=10000 leg "$tag-file-win-to-app" win-to-app file "$((DONE_MS - s0 + WIN_SKEW_MS))" true "$size bytes; accept step scripted; cross-clock, skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms)"
+  LEG_MAX_MS=10000 LEG_SKEW="$WIN_SKEW_MS" LEG_ERR_MS="$WIN_SKEW_ERR_MS" leg "$tag-file-win-to-app" win-to-app file "$((DONE_MS - s0 + WIN_SKEW_MS))" true "$size bytes; accept step scripted; cross-clock, skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms)"
 }
 
 run_windows_legs() {

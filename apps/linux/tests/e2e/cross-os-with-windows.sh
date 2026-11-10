@@ -51,7 +51,9 @@ need docker "needed for Postgres"; need python3 ""; need curl ""; need cargo "ru
 WORK="$(mktemp -d)"
 PG_NAME="fsync-e2e-linux-xos-pg-$$"
 PIDS=()
-LEGS="$WORK/legs.tsv"; : >"$LEGS"   # id <TAB> direction <TAB> kind <TAB> latency_ms <TAB> sha_ok <TAB> note
+LEGS="$WORK/legs.tsv"; : >"$LEGS"   # id, direction, kind, latency_ms, sha_ok, note, limit_ms, tries, skew_ms, skew_err_ms (tab separated)
+ECHO_LOG="$WORK/echo.tsv"; : >"$ECHO_LOG"   # scope <TAB> what was asserted: only checks that PASSED are recorded
+echo_ok() { printf '%s\t%s\n' "$1" "$2" >>"$ECHO_LOG"; }
 . "$ROOT/tests/e2e/lib/assert.sh"; . "$ROOT/tests/e2e/lib/cli-session.sh"
 . "$HERE/lib-postgres-ready.sh"; . "$HERE/lib-app-instance.sh"
 
@@ -80,9 +82,13 @@ make_file() { mkdir -p "$(dirname "$1")"; head -c "$2" /dev/urandom >"$1"; }
 # legs across the ssh tunnel are only recorded against a looser bound).
 leg() {
   local limit="${LEG_MAX_MS:-$((MAX_S * 1000))}"
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" "${6:-}" "$limit" >>"$LEGS"
-  log "leg $1 ($2, $3): ${4} ms (limit ${limit}), sha_ok=$5 ${6:-}"
-  [[ "$4" -le "$limit" ]] || fail "leg $1 latency $4 ms is over ${limit} ms"
+  local err="${LEG_ERR_MS:-0}"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" "${6:-}" "$limit" "${LEG_TRIES:-}" "${LEG_SKEW:-}" "$err" >>"$LEGS"
+  log "leg $1 ($2, $3): ${4} ms (limit ${limit}), sha_ok=$5 ${LEG_SKEW:+skew ${LEG_SKEW} ms +-${err} ms }${LEG_TRIES:+tries $LEG_TRIES }${6:-}"
+  # A cross-clock latency below -error is impossible (bad skew estimate); gate on latency + error so the
+  # clock uncertainty can never push a slow leg under the limit.
+  [[ "$4" -ge "$((-err))" ]] || fail "leg $1 latency $4 ms is below -${err} ms: the clock skew estimate is wrong"
+  [[ "$(( $4 + err ))" -le "$limit" ]] || fail "leg $1 latency $4 ms (+${err} ms clock error) is over ${limit} ms"
 }
 
 # ---- build ----------------------------------------------------------------------------------
@@ -271,6 +277,7 @@ assert_eq "$(clip_count devL1)" 1 "clips devA saw from the app (text copy only; 
 assert_eq "$(clip_count devB)" 1 "clips devA saw from devB"
 assert_eq "$(history_count L1 "$IN")" 1 "history items for the received text"
 assert_eq "$(history_count L1 "$TXT")" 1 "history items for the copied text"
+echo_ok x1 "devL1 published 1 clip, devB 1; one history item per text"
 
 # ==== X2 / X5: Linux app <-> fsync-cli on waso-vm ===============================================
 if [[ $LOCAL_ONLY -eq 0 ]]; then
@@ -279,17 +286,31 @@ fi
 
 # ---- result file ------------------------------------------------------------------------------
 mkdir -p "$(dirname "$RESULT_FILE")"
-python3 -I - "$LEGS" "$RESULT_FILE" "$(git -C "$ROOT" rev-parse --short HEAD)" "$LOCAL_ONLY" "$MAX_S" <<'PY'
+python3 -I - "$LEGS" "$RESULT_FILE" "$(git -C "$ROOT" rev-parse --short HEAD)" "$LOCAL_ONLY" "$MAX_S" "$ECHO_LOG" <<'PY'
 import json, sys, datetime
-legs_f, out, sha, local_only, max_s = sys.argv[1:6]
+legs_f, out, sha, local_only, max_s, echo_f = sys.argv[1:7]
 legs = []
 for line in open(legs_f):
-    i, d, k, lat, ok, note, lim = (line.rstrip("\n").split("\t") + [""] * 7)[:7]
-    legs.append({"id": i, "direction": d, "kind": k, "latency_ms": int(lat), "limit_ms": int(lim), "sha_ok": ok == "true", "note": note})
+    i, d, k, lat, ok, note, lim, tries, skew, err = (line.rstrip("\n").split("\t") + [""] * 10)[:10]
+    leg = {"id": i, "direction": d, "kind": k, "latency_ms": int(lat), "limit_ms": int(lim), "sha_ok": ok == "true", "note": note}
+    if tries: leg["tries"] = int(tries)
+    if skew: leg["skew_ms"] = int(skew); leg["skew_err_ms"] = int(err or 0)
+    legs.append(leg)
+echo = {}
+for line in open(echo_f):
+    scope, what = (line.rstrip("\n").split("\t") + [""])[:2]
+    echo.setdefault(scope, []).append(what)
 res = {
     "run": "linux-cross-os", "git_sha": sha, "date": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
     "scope": "X1" if local_only == "1" else ("X1+X4+X3" if any(l["id"].startswith("x3-") for l in legs) else "X1+X2" + ("+X5" if any(l["id"].startswith("x5-") for l in legs) else "")),
-    "threshold_ms": int(max_s) * 1000, "checks": {"no_echo_or_duplicates": True, "latency_within_threshold": all(l["latency_ms"] <= l["limit_ms"] for l in legs)},
+    "threshold_ms": int(max_s) * 1000, "checks": {
+        # Scopes whose echo/duplicate assertions ran AND passed (the run aborts on a failure); anything not listed was not checked.
+        "echo_checked_scopes": sorted({k.split("-")[0] for k in echo}),
+        "echo_checks": echo,
+        "echo_not_checked": [s for s in ("x2", "x5") if any(l["id"].startswith(s + "-") for l in legs) and s not in echo],
+        "latency_within_threshold": all(l["latency_ms"] + l.get("skew_err_ms", 0) <= l["limit_ms"] for l in legs),
+        "retries": sum(1 for l in legs if l.get("tries", 1) > 1),
+    },
     "legs": legs,
 }
 json.dump(res, open(out, "w"), indent=2); open(out, "a").write("\n")

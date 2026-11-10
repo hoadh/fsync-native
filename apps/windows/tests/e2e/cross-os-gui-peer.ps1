@@ -15,7 +15,8 @@
 #                 copy engine (PasteHelper), bytes streamed from the Linux app
 # Sync files live in %TEMP%\fsync-cross-os\gui\sync. The Linux host reads/writes them over plain ssh
 # (the worker's run output only arrives at the end). Output: JSON lines on stdout. Exit 0 when ok.
-# Test items: 40x40 png with pixel (x*7+y*3)%256 on every channel (same formula on the Linux side).
+# Test items: 40x40 coloured png, R=(x*7+y*3)%256 G=(x*5+y*9+31)%256 B=(x*11+y*13+97)%256 (same formulas on the Linux side;
+# distinct channels catch channel-order bugs; no alpha: CF_DIB carries none).
 param(
     [Parameter(Mandatory)][ValidateSet('build-app', 'pair', 'legs')][string]$Step,
     [ValidateSet('out', 'in-auto', 'in-lazy')][string]$Run,
@@ -34,17 +35,22 @@ $ErrorActionPreference = 'Stop'
 # relay its output and exit code. The user must be logged on (RDP window open).
 if ($Step -ne 'build-app' -and [System.Diagnostics.Process]::GetCurrentProcess().SessionId -eq 0) {
     foreach ($k in $PSBoundParameters.Keys) { if ("$($PSBoundParameters[$k])" -notmatch '^[A-Za-z0-9._@+:/-]*$') { throw "bad character in -$k" } }
-    $tmp = Join-Path $env:TEMP 'fsync-cross-os\gui-launch'
+    if ($PSCommandPath -match "'") { throw "script path contains a quote" }
+    $tmp = Join-Path $env:TEMP "fsync-cross-os\gui-launch-$PID"   # holds the OTP in launch.ps1: removed in finally
     if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }
     New-Item -ItemType Directory -Force $tmp | Out-Null
     $argText = ($PSBoundParameters.Keys | ForEach-Object { "-$_ '$($PSBoundParameters[$_])'" }) -join ' '
     $outFile = Join-Path $tmp 'out.txt'; $codeFile = Join-Path $tmp 'exit.txt'
     $launcher = Join-Path $tmp 'launch.ps1'
+    # The exit code is written last and atomically; a script that dies before its own `exit` leaves
+    # $LASTEXITCODE null, which is recorded as 99 (failure), never as 0.
     @(
-        "& '$PSCommandPath' $argText *> '$outFile'",
-        "Set-Content -Path '$codeFile' -Value `$LASTEXITCODE -Encoding ASCII"
+        "`$code = 99",
+        "try { & '$PSCommandPath' $argText *> '$outFile'; if (`$null -ne `$LASTEXITCODE) { `$code = `$LASTEXITCODE } } catch { `$_ | Out-String | Add-Content '$outFile' }",
+        "Set-Content -Path '$codeFile.tmp' -Value `$code -Encoding ASCII",
+        "Move-Item -Force '$codeFile.tmp' '$codeFile'"
     ) | Set-Content -Path $launcher -Encoding ASCII
-    $task = 'fsync-xos-gui'
+    $task = "fsync-xos-gui-$PID"   # unique per run; the Linux host's abort removes every fsync-xos-gui-*
     & schtasks /create /tn $task /tr "powershell -NoProfile -ExecutionPolicy Bypass -File $launcher" /sc once /st 00:00 /it /ru $env:USERNAME /f | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'schtasks /create failed (is the dev user logged on?)' }
     try {
@@ -54,13 +60,20 @@ if ($Step -ne 'build-app' -and [System.Diagnostics.Process]::GetCurrentProcess()
         $started = [DateTime]::UtcNow
         while (-not (Test-Path $codeFile) -and [DateTime]::UtcNow -lt $limit) {
             Start-Sleep -Milliseconds 500
-            # The task was ended from outside (the Linux host aborts it): stop waiting.
-            if (([DateTime]::UtcNow - $started).TotalSeconds -gt 10 -and -not ((& schtasks /query /tn $task /fo csv /nh 2>$null) -match 'Running')) { Start-Sleep 1; break }
+            # The task was ended from outside (the Linux host aborts it): stop waiting. The state enum is
+            # locale independent (schtasks prints localised text).
+            $state = (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue).State
+            if (([DateTime]::UtcNow - $started).TotalSeconds -gt 10 -and "$state" -ne 'Running') { Start-Sleep 1; break }
         }
-        if (-not (Test-Path $codeFile)) { & schtasks /end /tn $task | Out-Null; Write-Output '{"ok":false,"error":"interactive task did not finish in time"}'; exit 1 }
+        if (-not (Test-Path $codeFile)) { & schtasks /end /tn $task | Out-Null; Write-Output '{"ok":false,"error":"interactive task did not finish in time or ended without an exit code"}'; exit 1 }
         if (Test-Path $outFile) { Get-Content $outFile | ForEach-Object { Write-Output $_ } }
-        exit ([int](Get-Content $codeFile | Select-Object -First 1))
-    } finally { & schtasks /delete /tn $task /f 2>&1 | Out-Null }
+        $codeText = "$(Get-Content $codeFile | Select-Object -First 1)".Trim()
+        if ($codeText -notmatch '^\d{1,3}$') { Write-Output '{"ok":false,"error":"interactive task wrote no valid exit code"}'; exit 98 }
+        exit ([int]$codeText)
+    } finally {
+        & schtasks /delete /tn $task /f 2>&1 | Out-Null
+        Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+    }
 }
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
@@ -102,6 +115,8 @@ function Start-GuiApp {
     if (-not (Test-Path $exe)) { throw "missing app $exe (run -Step build-app)" }
     $env:FSYNC_DATA_DIR = $dataDir; $env:FSYNC_API = $Api; $env:FSYNC_RELAY = $Relay
     $env:FSYNC_DEVICE_NAME = $Name; $env:FSYNC_DOWNLOAD_DIR = Join-Path $base 'downloads'
+    New-Item -ItemType Directory -Force $base | Out-Null
+    Set-Content -Path (Join-Path $base 'exe-path.txt') -Value $exe -Encoding ASCII   # the Linux host's abort kills this exact path only
     $p = Start-Process $exe -PassThru
     $null = $p.Handle   # PS 5.1: caching the handle keeps ExitCode readable
     $script:app = $p
@@ -124,18 +139,19 @@ function Wait-PeerOnline($w) {
     Wait-Like $w "*$Peer*Online*" 90 | Out-Null
 }
 
-# --- png helpers: pixel (x*7+y*3)%256 on every channel ---
+# --- png helpers: R=(x*7+y*3)%256 G=(x*5+y*9+31)%256 B=(x*11+y*13+97)%256 ---
+function Get-TestRgb([int]$x, [int]$y) { @((($x * 7 + $y * 3) % 256), (($x * 5 + $y * 9 + 31) % 256), (($x * 11 + $y * 13 + 97) % 256)) }
 function New-TestBitmap([int]$n) {
     $bmp = New-Object System.Drawing.Bitmap $n, $n
-    for ($y = 0; $y -lt $n; $y++) { for ($x = 0; $x -lt $n; $x++) { $v = ($x * 7 + $y * 3) % 256; $bmp.SetPixel($x, $y, [System.Drawing.Color]::FromArgb(255, $v, $v, $v)) } }
+    for ($y = 0; $y -lt $n; $y++) { for ($x = 0; $x -lt $n; $x++) { $c = Get-TestRgb $x $y; $bmp.SetPixel($x, $y, [System.Drawing.Color]::FromArgb(255, $c[0], $c[1], $c[2])) } }
     $bmp
 }
 function Test-BitmapPixels($img, [int]$n) {
     if ($img.Width -ne $n -or $img.Height -ne $n) { return $false }
     $bmp = New-Object System.Drawing.Bitmap $img
     for ($y = 0; $y -lt $n; $y++) { for ($x = 0; $x -lt $n; $x++) {
-        $v = ($x * 7 + $y * 3) % 256; $c = $bmp.GetPixel($x, $y)
-        if ($c.R -ne $v -or $c.G -ne $v -or $c.B -ne $v) { return $false } } }
+        $v = Get-TestRgb $x $y; $c = $bmp.GetPixel($x, $y)
+        if ($c.R -ne $v[0] -or $c.G -ne $v[1] -or $c.B -ne $v[2]) { return $false } } }
     $true
 }
 function Set-ClipImage($bmp) {
@@ -220,12 +236,14 @@ try {
                         $file = Join-Path $base "gui-$Nonce-out.bin"
                         if ($it -eq 'file' -and -not (Test-Path $file)) { New-RandomFile $file 3MB; $fileSha = (Get-FileHashHex $file).ToLowerInvariant(); Sync-Put 'file-sha' $fileSha }
                         for ($try = 1; $try -le 4; $try++) {
-                            Sync-Put "sent-$it" (Now-Ms)
+                            # `sent-`/`set-` stay the FIRST try's: latency is always measured from the first copy.
+                            if ($try -eq 1) { Sync-Put "sent-$it" (Now-Ms) }
+                            Sync-Put "tries-$it" $try
                             if ($it -eq 'text') { Set-ClipRetry @{ Value = "fsync-gui-$Nonce-text" } }
                             if ($it -eq 'html') { Set-ClipRetry @{ Value = "<b>fsync-gui-$Nonce-html</b>"; AsHtml = $true } }
                             if ($it -eq 'png') { Set-ClipImage (New-TestBitmap 40) }
                             if ($it -eq 'file') { Set-ClipRetry @{ Path = $file } }
-                            Sync-Put "set-$it" (Now-Ms)   # clipboard write returned (diagnostic: separates the write time from the sync time)
+                            if ($try -eq 1) { Sync-Put "set-$it" (Now-Ms) }   # clipboard write returned (diagnostic: separates the write time from the sync time)
                             # rdpclip can re-post the clipboard with the no-history flag right after our write: copy again.
                             try { Sync-Wait "got-$it" 15 | Out-Null; break } catch { if ($try -eq 4) { $res.ok = $false; $res.items[$it] = 'not received' } }
                         }

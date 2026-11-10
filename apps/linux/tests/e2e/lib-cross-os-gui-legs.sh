@@ -46,7 +46,27 @@ gui_sync_wait() { # NAME [SECS]: prints the value; fails when the windows run en
 # busy for minutes). Ending the interactive task and the app lets that run finish at once.
 gui_abort() {
   [[ -n "${GUI_PID:-}" ]] || return 0
-  ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" 'schtasks /end /tn fsync-xos-gui & taskkill /F /IM Fsync.exe & schtasks /delete /tn fsync-xos-gui /f' >/dev/null 2>&1 || true
+  # The default ssh shell of the worker is cmd.exe. Kill ONLY the test build (exact path the run recorded in
+  # exe-path.txt): the dev user's own Fsync, if running, is left alone. Also remove this harness's tasks and
+  # the launch dir (its launch.ps1 holds the OTP).
+  ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" 'powershell -NoProfile -Command "Get-ScheduledTask -TaskName \"fsync-xos-gui-*\" -ErrorAction SilentlyContinue | ForEach-Object { Stop-ScheduledTask -InputObject $_; Unregister-ScheduledTask -InputObject $_ -Confirm:$false }; $f = Join-Path $env:TEMP \"fsync-cross-os\gui\exe-path.txt\"; if (Test-Path $f) { $p = (Get-Content $f | Select-Object -First 1); Get-Process Fsync -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $p } | Stop-Process -Force }; Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $env:TEMP \"fsync-cross-os\gui-launch-*\")"' >/dev/null 2>&1 || true
+}
+
+# gui_leg ID DIRECTION KIND LATENCY NOTE: a cross-clock leg. The skew and its error go to their own fields; a
+# retry (LEG_TRIES > 1, latency stays measured from the first copy) is flagged in the note.
+gui_leg() {
+  local note="$5"
+  [[ "${LEG_TRIES:-1}" -le 1 ]] || note="RETRY: ${LEG_TRIES} tries (latency from the first copy); $note"
+  LEG_SKEW="$WIN_SKEW_MS" LEG_ERR_MS="$WIN_SKEW_ERR_MS" leg "$1" "$2" "$3" "$4" true "$note"
+}
+
+# gui_echo_check SCOPE FROM_NAME EXPECTED WHAT: after a settling time, devA's watch saw exactly EXPECTED clips from
+# FROM_NAME. A received clip that is re-published (echo) or a clip published twice makes the count differ.
+gui_echo_check() {
+  local got; sleep 4
+  got="$(clip_count "$2")"
+  assert_eq "$got" "$3" "$4 (clips devA saw from $2)"
+  echo_ok "$1" "$4: $2 published $3"
 }
 
 # gui_run_start TAG ARGS...: one remote run in the background; GUI_PID/GUI_OUT name it.
@@ -58,11 +78,12 @@ gui_run_start() {
 }
 gui_run_end() { wait "$GUI_PID" || fail "windows gui run failed: $(tail -c 800 "$GUI_OUT" | tr '\n' ' ')"; }
 
-# --- test items: png pixel (x*7+y*3)%256 on every channel; verification of a decoded png ---
+# --- test items: coloured png R=(x*7+y*3)%256 G=(x*5+y*9+31)%256 B=(x*11+y*13+97)%256 (distinct channels catch
+# channel-order bugs; no alpha, CF_DIB has none); verification of a decoded png ---
 gui_make_png() { python3 -I - "$1" "$2" <<'PY'
 import struct, sys, zlib
 w = h = int(sys.argv[2])
-raw = b"".join(b"\x00" + bytes((x * 7 + y * 3) % 256 for x in range(w) for _ in range(3)) for y in range(h))
+raw = b"".join(b"\x00" + bytes(c for x in range(w) for c in ((x * 7 + y * 3) % 256, (x * 5 + y * 9 + 31) % 256, (x * 11 + y * 13 + 97) % 256)) for y in range(h))
 def chunk(t, d): return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
 open(sys.argv[1], "wb").write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
 PY
@@ -78,7 +99,7 @@ while pos < len(d):
     elif t == b"IDAT": idat += body
 w, h, depth, ctype, _, _, inter = hdr
 ch = {0: 1, 2: 3, 4: 2, 6: 4}.get(ctype)
-if (w, h) != (n, n) or depth != 8 or inter != 0 or ch is None: sys.exit(1)
+if (w, h) != (n, n) or depth != 8 or inter != 0 or ctype not in (2, 6): sys.exit(1)
 raw = zlib.decompress(idat); stride = w * ch; prev = bytearray(stride); p = 0
 for y in range(h):
     f = raw[p]; line = bytearray(raw[p + 1:p + 1 + stride]); p += 1 + stride
@@ -91,10 +112,8 @@ for y in range(h):
             pa, pb, pc = abs(b - c), abs(a - c), abs(a + b - 2 * c)
             line[i] = (line[i] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
     for x in range(w):
-        v = (x * 7 + y * 3) % 256
         px = line[x * ch:x * ch + ch]
-        if ctype in (2, 6) and (px[0], px[1], px[2]) != (v, v, v): sys.exit(1)
-        if ctype in (0, 4) and px[0] != v: sys.exit(1)
+        if (px[0], px[1], px[2]) != ((x * 7 + y * 3) % 256, (x * 5 + y * 9 + 31) % 256, (x * 11 + y * 13 + 97) % 256): sys.exit(1)
     prev = line
 PY
 }
@@ -163,12 +182,13 @@ PY
 # --- X3 legs ---
 gui_out_legs() { # windows app copies, the Linux app must receive
   win_measure_skew
-  local nonce="$RANDOM$RANDOM" it t sent seen_ms rows setd
+  local nonce="$RANDOM$RANDOM" it t sent seen_ms rows setd l1_before wg_before
+  l1_before="$(clip_count devL1)"; wg_before="$(clip_count "$WIN_GUI_NAME")"
   gui_run_start out -Step legs -Run out -Api "$API" -Relay "$RELAY" -Name "$WIN_GUI_NAME" -Nonce "$nonce" -ItemOrder "$GUI_ITEMS" -DeadlineSec 150
   gui_sync_wait ready 150 >/dev/null
   for it in ${GUI_ITEMS//-/ }; do
     gui_sync_put "go-$it"
-    local ok=0 i types_ms=""
+    local ok=0 i types_ms="" tries
     for i in $(seq 1 400); do   # 40 s
       case "$it" in
         text) [[ "$(wl_a wl-paste --no-newline -t text/plain 2>/dev/null || true)" == "fsync-gui-$nonce-text" ]] && ok=1 ;;
@@ -183,24 +203,31 @@ gui_out_legs() { # windows app copies, the Linux app must receive
     seen_ms="$(now_ms)"
     [[ $ok -eq 1 ]] || fail "linux app never received the windows $it clip"
     gui_sync_put "got-$it"
+    if [[ "$it" == text ]]; then assert_eq "$(history_count L1 "fsync-gui-$nonce-text")" 1 "L1 history items for the received windows text"; fi
     sent="$(gui_sync_get "sent-$it")"; [[ "$sent" =~ ^[0-9]{13}$ ]] || fail "no send timestamp for $it"
+    tries="$(gui_sync_get "tries-$it")"; [[ "$tries" =~ ^[1-4]$ ]] || fail "no try count for $it"
     setd="$(gui_sync_get "set-$it")"; [[ "$setd" =~ ^[0-9]{13}$ ]] && setd="clipboard write took $((setd - sent)) ms; " || setd=""
     local sh_ms=$((sent - WIN_SKEW_MS)); setd="${setd}sent at $(date -u -d "@$((sh_ms / 1000)).$(printf %03d $((sh_ms % 1000)))" +%T.%3N)Z host clock; "
     [[ -n "$types_ms" ]] && setd="${setd}text/html offered after $((types_ms - sh_ms)) ms; "
     if [[ "$it" == file ]]; then
       local want; want="$(gui_sync_get file-sha)"; [[ "$want" =~ ^[0-9a-f]{64}$ ]] || fail "no file sha from windows"
       [[ "$(sha <"$t")" == "$want" ]] || fail "file clip from windows differs (sha256)"
-      LEG_MAX_MS=10000 leg "x3-$it-win-to-app" win-to-app "$it" "$((seen_ms - (sent - WIN_SKEW_MS)))" true "${setd}eager inbox; skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms)"
+      LEG_MAX_MS=10000 LEG_TRIES="$tries" gui_leg "x3-$it-win-to-app" win-to-app "$it" "$((seen_ms - (sent - WIN_SKEW_MS)))" "${setd}eager inbox"
     else
-      leg "x3-$it-win-to-app" win-to-app "$it" "$((seen_ms - (sent - WIN_SKEW_MS)))" true "${setd}skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms)"
+      LEG_TRIES="$tries" gui_leg "x3-$it-win-to-app" win-to-app "$it" "$((seen_ms - (sent - WIN_SKEW_MS)))" "${setd%; }"
     fi
   done
   gui_run_end
+  # No echo / duplicates: the 4 windows copies were published once each, and the Linux app did not re-publish any.
+  gui_echo_check x3-out "$WIN_GUI_NAME" "$((wg_before + 4))" "x3 win-to-app"
+  assert_eq "$(clip_count devL1)" "$l1_before" "clips the Linux app re-published after receiving the windows clips"
+  echo_ok x3-out "linux app published 0 clips while receiving 4"
 }
 
 gui_in_auto_legs() { # the Linux app copies, the windows app (auto mode) must write its clipboard
   win_measure_skew
-  local nonce="$RANDOM$RANDOM" it offer_ms recv
+  local nonce="$RANDOM$RANDOM" it offer_ms recv l1_before wg_before
+  l1_before="$(clip_count devL1)"; wg_before="$(clip_count "$WIN_GUI_NAME")"
   gui_run_start in-auto -Step legs -Run in-auto -Api "$API" -Relay "$RELAY" -Name "$WIN_GUI_NAME" -Nonce "$nonce" -DeadlineSec 90
   for it in text html png; do
     gui_sync_wait "ready-$it" 120 >/dev/null
@@ -212,9 +239,14 @@ gui_in_auto_legs() { # the Linux app copies, the windows app (auto mode) must wr
     esac
     recv="$(gui_sync_wait "recv-$it" 120)"; [[ "$recv" =~ ^[0-9]{13}$ ]] || fail "no receive timestamp for $it"
     gui_stop_offers
-    leg "x3-$it-app-to-win" app-to-win "$it" "$((recv - WIN_SKEW_MS - offer_ms))" true "skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms)"
+    gui_leg "x3-$it-app-to-win" app-to-win "$it" "$((recv - WIN_SKEW_MS - offer_ms))" ""
   done
   gui_run_end
+  # Echo: the Windows app wrote its clipboard 3 times and must not have published any of them back; the 3 Linux
+  # copies reached devA once each.
+  gui_echo_check x3-in-auto "$WIN_GUI_NAME" "$wg_before" "x3 app-to-win (windows must not re-publish)"
+  assert_eq "$(clip_count devL1)" "$((l1_before + 3))" "clips the Linux app published for 3 copies (duplicates)"
+  echo_ok x3-in-auto "linux app published exactly 3 clips for 3 copies"
   python3 -I - "$GUI_OUT" <<'PY' || fail "windows app did not verify all items: $(tail -c 400 "$GUI_OUT" | tr '\n' ' ')"
 import json, sys
 res = None
@@ -230,7 +262,8 @@ PY
 
 gui_in_lazy_leg() { # file clip Linux -> Windows: virtual files, pasted by the shell copy engine
   win_measure_skew
-  local nonce="$RANDOM$RANDOM" offer_ms recv want got f
+  local nonce="$RANDOM$RANDOM" offer_ms recv want got f wg_before
+  wg_before="$(clip_count "$WIN_GUI_NAME")"
   f="$WORK/home-L1/files/gui-$nonce-in.bin"; make_file "$f" 3000000; want="$(sha <"$f")"
   printf 'file://%s\r\n' "$f" >"$WORK/gui-lazy.uris"; printf 'copy\nfile://%s' "$f" >"$WORK/gui-lazy.gnome"
   gui_run_start in-lazy -Step legs -Run in-lazy -Api "$API" -Relay "$RELAY" -Name "$WIN_GUI_NAME" -Nonce "$nonce" -DeadlineSec 150
@@ -252,8 +285,9 @@ for line in open(sys.argv[1], errors="replace"):
 print(v)
 PY
 )"
+  gui_echo_check x3-in-lazy "$WIN_GUI_NAME" "$wg_before" "x3 lazy file (windows must not re-publish)"
   [[ "$got" == "$want" ]] || fail "file pasted on windows differs: '$got' != '$want'"
-  LEG_MAX_MS=10000 leg "x3-file-app-to-win" app-to-win file "$((recv - WIN_SKEW_MS - offer_ms))" true "lazy virtual files, pasted by the shell copy engine (PasteHelper); skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms)"
+  LEG_MAX_MS=10000 gui_leg "x3-file-app-to-win" app-to-win file "$((recv - WIN_SKEW_MS - offer_ms))" "lazy virtual files, pasted by the shell copy engine (PasteHelper)"
 }
 
 run_windows_gui_legs() {
