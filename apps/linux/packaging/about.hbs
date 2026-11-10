@@ -1,18 +1,26 @@
 Third-party software bundled in fsync-linux
 ===========================================
 {{#each overview}}
-{{name}}  ({{count}} crates)
+{{{name}}}  ({{count}} crates)
 {{/each}}
 
 {{#each licenses}}
 -------------------------------------------------------------------------------
-{{name}}
+{{{name}}}
 -------------------------------------------------------------------------------
 Used by:
 {{#each used_by}}
-  - {{crate.name}} {{crate.version}}{{#if crate.repository}} ({{crate.repository}}){{/if}}
+  - {{{crate.name}}} {{{crate.version}}}{{#if crate.repository}} ({{{crate.repository}}}){{/if}}
 {{/each}}
+{{#if (eq id "MPL-2.0")}}
 
-{{text}}
+Source code of these MPL-2.0 components (shipped unmodified; MPL-2.0 section 3.2) is
+available from crates.io:
+{{#each used_by}}
+  https://crates.io/crates/{{{crate.name}}}/{{{crate.version}}}
+{{/each}}
+{{/if}}
+
+{{{text}}}
 
 {{/each}}

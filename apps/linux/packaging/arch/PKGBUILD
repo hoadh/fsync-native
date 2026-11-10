@@ -5,12 +5,20 @@
 #                      full 40-hex sha of the release commit, then (pacman >= 6.1):
 #                        updpkgsums                         # git checksum in place of SKIP
 #                        makepkg --printsrcinfo > .SRCINFO
-#                      A placeholder or moving branch is refused below, and so is --printsrcinfo
-#                      with FSYNC_LOCAL_SRC set (that .SRCINFO would publish a file:// source).
+#                      A placeholder or moving branch is refused below, and so are
+#                      --printsrcinfo / --source / --allsource with FSYNC_LOCAL_SRC set (that
+#                      .SRCINFO or source package would publish a file:// source).
 #   local              FSYNC_LOCAL_SRC=/abs/path/fsync-src.tar.gz (a tarball of the working tree
 #                      whose top directory is `fsync/`): used by scripts/smoke-install.sh arch
 #                      to build the current tree before anything is committed. The tarball has
 #                      no .git: pass the sha for --build-info in FSYNC_GIT_SHA (else "local").
+#
+# Build dir: BUILDDIR and CARGO_HOME must not contain whitespace (refused in _env): cc-rs splits
+# CFLAGS on whitespace, so the C/C++ path remap could not work and build paths would ship.
+# Cargo config: makepkg runs as you, so ~/.cargo/config.toml ([build] rustflags/rustc-wrapper,
+# [env], [profile]) applies to this build. RUSTFLAGS from it are overridden by
+# CARGO_ENCODED_RUSTFLAGS; anything else is not. Build release packages with no such config, or
+# point CARGO_HOME at a clean directory.
 #
 # Qt rebuild rule: this package compiles QML (qmlcachegen) against the system Qt. Bump pkgrel and
 # rebuild on EVERY Qt 6 minor update in Arch (6.12 -> 6.13), exactly like other Qt applications.
@@ -37,9 +45,10 @@ options=(!lto !debug)
 _commit=REPLACE_WITH_RELEASE_COMMIT_SHA
 
 if [[ -n "${FSYNC_LOCAL_SRC:-}" ]]; then
-  # makepkg sets PRINTSRCINFO for --printsrcinfo before it sources this file.
-  if (( ${PRINTSRCINFO:-0} )); then
-    echo "PKGBUILD: unset FSYNC_LOCAL_SRC to generate .SRCINFO (it would publish a file:// source)" >&2
+  # makepkg sets PRINTSRCINFO (--printsrcinfo) and SOURCEONLY (--source, --allsource) before it
+  # sources this file.
+  if (( ${PRINTSRCINFO:-0} || ${SOURCEONLY:-0} )); then
+    echo "PKGBUILD: unset FSYNC_LOCAL_SRC for .SRCINFO or a source package (it would publish a file:// source)" >&2
     exit 1
   fi
   source=("fsync-src.tar.gz::file://${FSYNC_LOCAL_SRC}")
@@ -74,22 +83,21 @@ _env() {
   # Never build test features into the package (also refused by compile_error! in the app).
   unset FSYNC_ALLOW_TEST_FEATURES RUSTFLAGS CARGO_BUILD_RUSTFLAGS
   # Keep build paths and the builder's home out of the binary (panic locations, C++ __FILE__).
-  # CARGO_ENCODED_RUSTFLAGS is split on 0x1f, not on spaces: a BUILDDIR with spaces survives.
+  # cc-rs splits CFLAGS/CXXFLAGS on whitespace and has no encoded form, so a path with
+  # whitespace cannot be remapped for C/C++: refuse it instead of shipping the path.
+  local p
+  for p in "$srcdir" "$cargo_home"; do
+    if [[ $p == *[[:space:]]* ]]; then
+      echo "PKGBUILD: '$p' contains whitespace; use a BUILDDIR / CARGO_HOME without spaces" >&2
+      return 1
+    fi
+  done
+  # (0x1f-separated, so the Rust flags themselves never depend on word splitting.)
   CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$srcdir=/build"$'\x1f'"--remap-path-prefix=$cargo_home=/cargo"
   export CARGO_ENCODED_RUSTFLAGS
-  # The same two remaps for C/C++ __FILE__ (cxx.cc comes from the cargo registry). cc-rs splits
-  # CFLAGS/CXXFLAGS on whitespace and has no encoded form: a path with whitespace is skipped.
-  local from to
-  for from in "$srcdir" "$cargo_home"; do
-    to=/build; [[ $from == "$cargo_home" ]] && to=/cargo
-    if [[ $from == *[[:space:]]* ]]; then
-      echo "PKGBUILD: '$from' contains whitespace, its C/C++ paths are not remapped" >&2
-      continue
-    fi
-    CXXFLAGS="${CXXFLAGS:-} -ffile-prefix-map=$from=$to"
-    CFLAGS="${CFLAGS:-} -ffile-prefix-map=$from=$to"
-  done
-  export CFLAGS CXXFLAGS
+  # The same two remaps for C/C++ __FILE__ (cxx.cc comes from the cargo registry).
+  export CXXFLAGS="${CXXFLAGS:-} -ffile-prefix-map=$srcdir=/build -ffile-prefix-map=$cargo_home=/cargo"
+  export CFLAGS="${CFLAGS:-} -ffile-prefix-map=$srcdir=/build -ffile-prefix-map=$cargo_home=/cargo"
 }
 
 # Assert on a built binary: exact version, the expected git sha, NO test features (red team #6).

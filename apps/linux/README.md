@@ -60,14 +60,19 @@ a dirty tree is then refused. Packaging tools are pinned in
 **Arch PKGBUILD.** It links the system OpenSSL (`OPENSSL_NO_VENDOR=1`, `depends=openssl`); the deb/rpm keep a vendored copy (below). `source` is a git URL pinned to one commit: before a release set `_commit` to the
 40-hex release sha, run `updpkgsums` (pacman >= 6.1 checksums the git source instead of `SKIP`)
 and regenerate `.SRCINFO` (`makepkg --printsrcinfo > .SRCINFO`); a placeholder or branch is refused,
-and so is `--printsrcinfo` while `FSYNC_LOCAL_SRC` is set. Until a commit exists, build the working
-tree instead: make a tarball whose top directory is `fsync/` and run
-`FSYNC_GIT_SHA=$(git rev-parse --short HEAD) FSYNC_LOCAL_SRC=/abs/fsync-src.tar.gz makepkg -si`
+and so are `--printsrcinfo` / `--source` / `--allsource` while `FSYNC_LOCAL_SRC` is set. Until a
+commit exists, build the working tree instead: make a tarball whose top directory is `fsync/` and
+run (from the repo root; the helper adds `-dirty` for uncommitted changes)
+`FSYNC_GIT_SHA=$(source apps/linux/scripts/lib/common.sh && fsync_git_sha .) FSYNC_LOCAL_SRC=/abs/fsync-src.tar.gz makepkg -si`
 (`scripts/smoke-install.sh arch packaging/arch/PKGBUILD` does exactly this in an Arch container,
-with a build dir that contains a space). `check()` runs the platform tests and both `--smoke` modes;
+in a non-default build dir). `check()` runs the platform tests and both `--smoke` modes;
 `package()` asserts that `--build-info` lists no test features and shows the expected `git_sha`
 (the pinned commit, or `FSYNC_GIT_SHA` / `local` for a tarball), so `--nocheck` cannot skip it.
-Rust paths are remapped through `CARGO_ENCODED_RUSTFLAGS` (`$srcdir` -> `/build`, `$CARGO_HOME` -> `/cargo`).
+Build paths are remapped (`$srcdir` -> `/build`, `$CARGO_HOME` -> `/cargo`; Rust through
+`CARGO_ENCODED_RUSTFLAGS`, C/C++ through `-ffile-prefix-map`). A `BUILDDIR` or `CARGO_HOME` with
+whitespace is refused (cc-rs splits `CFLAGS` on whitespace, the C/C++ remap could not work).
+makepkg runs as you, so your `~/.cargo/config.toml` (`[build] rustc-wrapper`, `[env]`, `[profile]`)
+applies; build release packages without one, or with `CARGO_HOME` pointing at a clean directory.
 
 **Installed files and licenses.** `scripts/lib/assets.list` is the one list of checked-in files a
 package installs (desktop file, three icons, `LICENSE-MIT`, `LICENSE-APACHE` in

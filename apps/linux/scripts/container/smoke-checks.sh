@@ -63,12 +63,12 @@ case "$mode" in
     done < <(grep -Ev '^[[:space:]]*(#|$)' "$assets")
     [[ $n -gt 0 ]] || bad "asset list $assets is empty"
     desktop=$(grep -Eo '/usr/share/applications/[^ ]+\.desktop' "$assets" | head -1)
-    # Debian: the DEP-5 copyright file names both licenses.
+    # Debian: the DEP-5 copyright file names both licenses (Debian's short name for MIT: Expat).
     if command -v dpkg >/dev/null; then
       cr=/usr/share/doc/fsync-linux/copyright
-      if grep -q '^License: MIT or Apache-2.0' "$cr" 2>/dev/null && grep -q '^License: MIT$' "$cr" \
-         && grep -q '^License: Apache-2.0$' "$cr"; then pass "DEP-5 copyright with MIT and Apache-2.0"
-      else bad "$cr is missing or lacks the MIT / Apache-2.0 stanzas"; fi
+      if grep -q '^License: Expat or Apache-2.0$' "$cr" 2>/dev/null && grep -q '^License: Expat$' "$cr" \
+         && grep -q '^License: Apache-2.0$' "$cr"; then pass "DEP-5 copyright with Expat and Apache-2.0"
+      else bad "$cr is missing or lacks the Expat / Apache-2.0 stanzas"; fi
     fi
     for docfile in /usr/share/doc/fsync-linux/THIRD-PARTY-LICENSES.txt \
                    /usr/share/licenses/fsync-linux/THIRD-PARTY-LICENSES.txt; do
@@ -117,6 +117,12 @@ esac
 if [[ $mode != bare ]]; then
   [[ -s ${docfile:-/nonexistent} ]] && pass "third-party license report: $docfile" \
     || bad "missing THIRD-PARTY-LICENSES.txt"
+  # SQLCipher (BSD-3, compiled into the binary) must be credited; plain text, not HTML-escaped.
+  grep -q 'Zetetic LLC' "${docfile:-/nonexistent}" 2>/dev/null && pass "report credits SQLCipher (Zetetic LLC)" \
+    || bad "report lacks the SQLCipher BSD-3 notice"
+  if grep -qE '&(quot|amp|lt|gt|#x[0-9A-Fa-f]+);' "${docfile:-/nonexistent}" 2>/dev/null; then
+    bad "report contains HTML escapes"
+  else pass "report is plain text (no HTML escapes)"; fi
 fi
 
 # 5. desktop-file-validate clean (a missing desktop file is a FAIL in every packaged mode)

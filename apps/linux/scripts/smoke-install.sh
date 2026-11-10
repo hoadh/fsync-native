@@ -107,30 +107,39 @@ case "$target" in
     # The tarball has no .git: the host sha goes in FSYNC_GIT_SHA (--build-info must show it).
     sha=$(fsync_git_sha "$repo")
     [[ $sha =~ ^[0-9a-f]{7,40}(-dirty)?$ ]] || { echo "unexpected git sha '$sha'" >&2; exit 2; }
-    # BUILDDIR with a space: the rustc remap flags must survive it (review L3).
+    # Build in a non-default, space-free BUILDDIR and assert that neither it nor the builder's home
+    # is left in the binary (Rust and C/C++ remaps). A BUILDDIR with whitespace must be refused.
     run_container archlinux:latest "
       pacman -Syu --noconfirm --needed base-devel git cargo lld openssl qt6-base qt6-declarative qt6-tools \
         qt6-wayland perl cargo-about namcap desktop-file-utils ttf-dejavu hicolor-icon-theme >/dev/null
       useradd -m builder && install -d -o builder -g builder /build
       cp /pkg/artifact /build/PKGBUILD && cp /in/fsync-src.tar.gz /build/ && chown builder: /build/*
       cd /build
-      if su builder -c 'FSYNC_LOCAL_SRC=/build/fsync-src.tar.gz makepkg --printsrcinfo' >/dev/null 2>&1; then
-        echo 'FAIL  --printsrcinfo accepted FSYNC_LOCAL_SRC (a file:// source could be published)'; exit 1
-      fi
-      echo 'PASS  --printsrcinfo refused with FSYNC_LOCAL_SRC set'
+      # expect_refused <message> <command>: the command must fail AND print the guard's message.
+      expect_refused() {
+        local msg=\"\$1\" out
+        if out=\$(su builder -c \"FSYNC_LOCAL_SRC=/build/fsync-src.tar.gz \$2\" 2>&1); then
+          echo \"FAIL  accepted: \$2\"; exit 1
+        fi
+        grep -q \"\$msg\" <<<\"\$out\" || { echo \"FAIL  \$2 failed without the guard message:\"; head -5 <<<\"\$out\"; exit 1; }
+        echo \"PASS  refused: \$2\"
+      }
+      expect_refused 'unset FSYNC_LOCAL_SRC' 'makepkg --printsrcinfo'
+      expect_refused 'unset FSYNC_LOCAL_SRC' 'makepkg --source'
+      expect_refused 'contains whitespace' \"BUILDDIR='/build/b d' makepkg --nobuild --noconfirm\"
       # Release mode (placeholder commit replaced by a well-formed dummy) for .SRCINFO and namcap.
       install -d -o builder /tmp/nc
       sed 's/^_commit=.*/_commit=0123456789abcdef0123456789abcdef01234567/' /build/PKGBUILD >/tmp/nc/PKGBUILD
       (cd /tmp/nc && su builder -c 'makepkg --printsrcinfo' >/tmp/nc/.SRCINFO)
       if grep -q 'file://' /tmp/nc/.SRCINFO; then echo 'FAIL  .SRCINFO has a file:// source'; exit 1; fi
       echo \"PASS  release .SRCINFO: \$(grep -c . /tmp/nc/.SRCINFO) lines, \$(grep -m1 'source = ' /tmp/nc/.SRCINFO)\"
-      su builder -c \"BUILDDIR='/build/b d' FSYNC_GIT_SHA=$sha FSYNC_LOCAL_SRC=/build/fsync-src.tar.gz makepkg -f --noconfirm\"
+      su builder -c \"BUILDDIR=/build/work FSYNC_GIT_SHA=$sha FSYNC_LOCAL_SRC=/build/fsync-src.tar.gz makepkg -f --noconfirm\"
       pkg=\$(ls /build/fsync-linux-*.pkg.tar.zst)
       echo \"package: \$pkg (\$(du -h \$pkg | cut -f1))\"
       pacman -U --noconfirm \"\$pkg\" >/dev/null
       echo \"Qt: \$(pacman -Q qt6-base)  OpenSSL: \$(pacman -Q openssl)\"
-      # Remapped: no Rust source path under the build dir, nothing from the builder's home.
-      if strings /usr/bin/fsync-linux | grep -E '/build/b d/.*\\.rs|/home/builder' | head -3 | grep .; then
+      # Remapped: no path under the build dir (Rust or C/C++), nothing from the builder's home.
+      if strings /usr/bin/fsync-linux | grep -E '/build/work|/home/builder' | head -3 | grep .; then
         echo 'FAIL  build paths left in the binary'; exit 1
       fi
       echo 'PASS  no build dir or builder home paths in the binary'
