@@ -3265,18 +3265,41 @@ class FfiConverterTypePairingPeer: FfiConverterRustBuffer<PairingPeer> {
 
 
 
+/// <param name="delivered">
+/// Peers that accepted the offer before `publish_clip` returned (it waits about 1.5 s).
+/// </param>
+/// <param name="failed">
+/// Peers known not to have it (offline after the full attempt, rate limit, rejected).
+/// </param>
 /// <param name="refused">
 /// Peers that no longer trust this device (it was removed or reset there).
+/// </param>
+/// <param name="pending">
+/// Added last (positional): peers that had not answered when `publish_clip` returned. They
+/// are still being tried in the background; the outcome is only logged, never reported.
+/// Show them as "not confirmed", never as failed or as "not connected".
 /// </param>
 public record Published (
     string @itemId, 
     bool @echo, 
+    /// <summary>
+    /// Peers that accepted the offer before `publish_clip` returned (it waits about 1.5 s).
+    /// </summary>
     string[] @delivered, 
+    /// <summary>
+    /// Peers known not to have it (offline after the full attempt, rate limit, rejected).
+    /// </summary>
     string[] @failed, 
     /// <summary>
     /// Peers that no longer trust this device (it was removed or reset there).
     /// </summary>
-    string[] @refused
+    string[] @refused, 
+    /// <summary>
+    /// Added last (positional): peers that had not answered when `publish_clip` returned. They
+    /// are still being tried in the background; the outcome is only logged, never reported.
+    /// Show them as "not confirmed", never as failed or as "not connected".
+    /// </summary>
+    string[] @pending
 ) {
 }
 
@@ -3289,7 +3312,8 @@ class FfiConverterTypePublished: FfiConverterRustBuffer<Published> {
             @echo: FfiConverterBoolean.INSTANCE.Read(stream),
             @delivered: FfiConverterSequenceString.INSTANCE.Read(stream),
             @failed: FfiConverterSequenceString.INSTANCE.Read(stream),
-            @refused: FfiConverterSequenceString.INSTANCE.Read(stream)
+            @refused: FfiConverterSequenceString.INSTANCE.Read(stream),
+            @pending: FfiConverterSequenceString.INSTANCE.Read(stream)
         );
     }
 
@@ -3299,7 +3323,8 @@ class FfiConverterTypePublished: FfiConverterRustBuffer<Published> {
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.@echo)
             + FfiConverterSequenceString.INSTANCE.AllocationSize(value.@delivered)
             + FfiConverterSequenceString.INSTANCE.AllocationSize(value.@failed)
-            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.@refused);
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.@refused)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.@pending);
     }
 
     public override void Write(Published value, BigEndianStream stream) {
@@ -3308,6 +3333,7 @@ class FfiConverterTypePublished: FfiConverterRustBuffer<Published> {
             FfiConverterSequenceString.INSTANCE.Write(value.@delivered, stream);
             FfiConverterSequenceString.INSTANCE.Write(value.@failed, stream);
             FfiConverterSequenceString.INSTANCE.Write(value.@refused, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.@pending, stream);
     }
 }
 

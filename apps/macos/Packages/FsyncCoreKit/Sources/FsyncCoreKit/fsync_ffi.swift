@@ -2354,24 +2354,48 @@ public func FfiConverterTypePairingPeer_lower(_ value: PairingPeer) -> RustBuffe
 public struct Published {
     public var itemId: String
     public var echo: Bool
+    /**
+     * Peers that accepted the offer before `publish_clip` returned (it waits about 1.5 s).
+     */
     public var delivered: [String]
+    /**
+     * Peers known not to have it (offline after the full attempt, rate limit, rejected).
+     */
     public var failed: [String]
     /**
      * Peers that no longer trust this device (it was removed or reset there).
      */
     public var refused: [String]
+    /**
+     * Added last (positional): peers that had not answered when `publish_clip` returned. They
+     * are still being tried in the background; the outcome is only logged, never reported.
+     * Show them as "not confirmed", never as failed or as "not connected".
+     */
+    public var pending: [String]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(itemId: String, echo: Bool, delivered: [String], failed: [String], 
+    public init(itemId: String, echo: Bool, 
+        /**
+         * Peers that accepted the offer before `publish_clip` returned (it waits about 1.5 s).
+         */delivered: [String], 
+        /**
+         * Peers known not to have it (offline after the full attempt, rate limit, rejected).
+         */failed: [String], 
         /**
          * Peers that no longer trust this device (it was removed or reset there).
-         */refused: [String]) {
+         */refused: [String], 
+        /**
+         * Added last (positional): peers that had not answered when `publish_clip` returned. They
+         * are still being tried in the background; the outcome is only logged, never reported.
+         * Show them as "not confirmed", never as failed or as "not connected".
+         */pending: [String]) {
         self.itemId = itemId
         self.echo = echo
         self.delivered = delivered
         self.failed = failed
         self.refused = refused
+        self.pending = pending
     }
 }
 
@@ -2397,6 +2421,9 @@ extension Published: Equatable, Hashable {
         if lhs.refused != rhs.refused {
             return false
         }
+        if lhs.pending != rhs.pending {
+            return false
+        }
         return true
     }
 
@@ -2406,6 +2433,7 @@ extension Published: Equatable, Hashable {
         hasher.combine(delivered)
         hasher.combine(failed)
         hasher.combine(refused)
+        hasher.combine(pending)
     }
 }
 
@@ -2422,7 +2450,8 @@ public struct FfiConverterTypePublished: FfiConverterRustBuffer {
                 echo: FfiConverterBool.read(from: &buf), 
                 delivered: FfiConverterSequenceString.read(from: &buf), 
                 failed: FfiConverterSequenceString.read(from: &buf), 
-                refused: FfiConverterSequenceString.read(from: &buf)
+                refused: FfiConverterSequenceString.read(from: &buf), 
+                pending: FfiConverterSequenceString.read(from: &buf)
         )
     }
 
@@ -2432,6 +2461,7 @@ public struct FfiConverterTypePublished: FfiConverterRustBuffer {
         FfiConverterSequenceString.write(value.delivered, into: &buf)
         FfiConverterSequenceString.write(value.failed, into: &buf)
         FfiConverterSequenceString.write(value.refused, into: &buf)
+        FfiConverterSequenceString.write(value.pending, into: &buf)
     }
 }
 
