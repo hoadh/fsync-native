@@ -33,10 +33,14 @@ usable() {
 # Caddy keeps one directory per ACME issuer; after an issuer switch a stale one can remain. Take the
 # usable pair with the latest expiry.
 best="" best_end=0
-for d in $(find "$root" -type d -name "$host"); do
+dirs="$(find "$root" -type d -name "$host")"
+while IFS= read -r d; do
+  [ -n "$d" ] || continue
   end="$(usable "$d/$host.crt" "$d/$host.key")" || continue
   if [ "$end" -gt "$best_end" ]; then best="$d" best_end="$end"; fi
-done
+done <<DIRS
+$dirs
+DIRS
 [ -n "$best" ] || die "no valid certificate with a matching key for $host under $root"
 
 # root-owned, group-readable by the relay: nothing uid 10001 controls can change the directory.
