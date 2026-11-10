@@ -118,20 +118,29 @@ pub fn collect(change: &ClipChange, ctx: &OutCtx) -> Result<LocalClip, Skip> {
 }
 
 /// One sentence for the status page. A `pending` device (not answered yet, still being tried in
-/// the background) is not a failure.
+/// the background) is "not confirmed", not a failure. The line is static: core only logs a pending
+/// device's late outcome, so it never says more than was known when `publish_clip` returned.
 pub fn describe(p: &Published) -> Option<String> {
     if p.echo {
         return None;
     }
-    let n = p.delivered.len();
-    let k = p.pending.len();
-    Some(if n > 0 {
-        format!("Sent to {n} device{}.", if n == 1 { "" } else { "s" })
+    let devices = |n: usize| format!("{n} device{}", if n == 1 { "" } else { "s" });
+    let (n, k, f) = (p.delivered.len(), p.pending.len(), p.failed.len());
+    let mut line = if n > 0 {
+        format!("Sent to {}", devices(n))
     } else if k > 0 {
-        format!("Sending to {k} device{}...", if k == 1 { "" } else { "s" })
+        format!("Not confirmed by {}", devices(k))
     } else if !p.refused.is_empty() && p.failed.is_empty() {
-        "Not sent: the other devices no longer trust this one.".to_owned()
+        return Some("Not sent: the other devices no longer trust this one.".to_owned());
     } else {
-        "Not sent: no other device is reachable.".to_owned()
-    })
+        return Some("Not sent: no other device is reachable.".to_owned());
+    };
+    if n > 0 && k > 0 {
+        line.push_str(&format!("; {k} not confirmed"));
+    }
+    if f > 0 {
+        line.push_str(&format!("; {f} did not get it"));
+    }
+    line.push('.');
+    Some(line)
 }

@@ -156,9 +156,22 @@ public final class ClipboardSync: ObservableObject {
         case .failure(let error): message = ErrorText.message(for: error, context: .general)
         case .success(let published):
             if published.echo { return }
-            message = published.failed.isEmpty ? nil : "Some devices couldn't be reached."
+            message = Self.publishMessage(published)
             activity = SyncActivity(direction: .sent, summary: clip.preview ?? "Clip", at: Date())
         }
+    }
+
+    /// Hint after a publish. A pending device had not answered when `publishClip` returned and is
+    /// still being tried in the background: it is "not confirmed", never "couldn't be reached". The
+    /// text is not updated when its late result comes in (core only logs it).
+    static func publishMessage(_ published: FsyncCoreKit.Published) -> String? {
+        if !published.failed.isEmpty { return "Some devices couldn't be reached." }
+        let pending = published.pending.count
+        guard pending > 0 else { return nil }
+        func devices(_ n: Int) -> String { n == 1 ? "1 device" : "\(n) devices" }
+        let delivered = published.delivered.count
+        return delivered > 0 ? "Sent to \(devices(delivered)); \(pending) not confirmed."
+            : "Not confirmed by \(devices(pending))."
     }
 
     public func report(_ text: String) { message = text }

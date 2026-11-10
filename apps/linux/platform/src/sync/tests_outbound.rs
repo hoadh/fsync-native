@@ -263,9 +263,23 @@ fn status_line_does_not_call_a_pending_device_a_failure() {
         refused: vec![],
     };
     let text = |x: Published| describe(&x).expect("not an echo");
-    assert_eq!(text(p(&["a"], &[], &["b"])), "Sent to 1 device.");
-    assert_eq!(text(p(&[], &[], &["a", "b"])), "Sending to 2 devices...");
-    assert_eq!(text(p(&[], &["a"], &["b"])), "Sending to 1 device...");
+    assert_eq!(text(p(&["a", "b"], &[], &[])), "Sent to 2 devices.");
+    assert_eq!(
+        text(p(&["a"], &[], &["b"])),
+        "Sent to 1 device; 1 not confirmed."
+    );
+    assert_eq!(
+        text(p(&[], &[], &["a", "b"])),
+        "Not confirmed by 2 devices."
+    );
+    assert_eq!(
+        text(p(&[], &["a"], &["b"])),
+        "Not confirmed by 1 device; 1 did not get it."
+    );
+    assert_eq!(
+        text(p(&["a"], &["b"], &[])),
+        "Sent to 1 device; 1 did not get it."
+    );
     assert_eq!(
         text(p(&[], &["a"], &[])),
         "Not sent: no other device is reachable."
