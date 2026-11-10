@@ -169,6 +169,7 @@ gui_out_legs() { # windows app copies, the Linux app must receive
     gui_sync_put "got-$it"
     sent="$(gui_sync_get "sent-$it")"; [[ "$sent" =~ ^[0-9]{13}$ ]] || fail "no send timestamp for $it"
     setd="$(gui_sync_get "set-$it")"; [[ "$setd" =~ ^[0-9]{13}$ ]] && setd="clipboard write took $((setd - sent)) ms; " || setd=""
+    local sh_ms=$((sent - WIN_SKEW_MS)); setd="${setd}sent at $(date -u -d "@$((sh_ms / 1000)).$(printf %03d $((sh_ms % 1000)))" +%T.%3N)Z host clock; "
     if [[ "$it" == file ]]; then
       local want; want="$(gui_sync_get file-sha)"; [[ "$want" =~ ^[0-9a-f]{64}$ ]] || fail "no file sha from windows"
       [[ "$(sha <"$t")" == "$want" ]] || fail "file clip from windows differs (sha256)"

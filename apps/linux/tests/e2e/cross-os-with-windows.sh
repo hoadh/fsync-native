@@ -189,7 +189,7 @@ login A "$EMAIL"
 grep -q '"account":"created"' "$WORK/login-A.json" || fail "devA should create the account"
 
 log "L1: sign in, pair with devA"
-app_start L1 "$WORK/data-L1" WAYLAND_DISPLAY="$SA_RT/$SA_WL" SWAYSOCK="$(ls "$SA_RT"/sway-ipc.*.sock | head -1)"
+app_start L1 "$WORK/data-L1" FSYNC_LOG="${APP_LOG:-info}" WAYLAND_DISPLAY="$SA_RT/$SA_WL" SWAYSOCK="$(ls "$SA_RT"/sway-ipc.*.sock | head -1)"
 sign_in L1 "$EMAIL"
 CODE="$(app_offer L1)"
 cli A pair join "$CODE" --yes >"$WORK/pair-A.out" 2>"$WORK/pair-A.err" &
