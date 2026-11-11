@@ -70,7 +70,7 @@ Modify: `platform/src/sync/inbound.rs` (files kind), `platform/src/clipboard/for
 
 ## Pending Live Verification
 <!-- red-team 2026-11-06 #14 --> Dolphin/Thunar on other desktops -> ADR 014 "untested".
-- [ ] LIVE: paste of received files in Nautilus on GNOME VM — evidence: ADR 014 table
+- [x] LIVE: paste of received files in Nautilus on GNOME VM — evidence: ADR 014 table (pass 2026-11-12)
 
 ## Risk Assessment
 | Risk | L x I | Mitigation |

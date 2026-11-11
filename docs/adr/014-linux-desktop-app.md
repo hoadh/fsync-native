@@ -194,7 +194,7 @@ Qt platform, which activates windows on show; verified live on GNOME 50 (table b
 |---|---|
 | GNOME VM (ubuntu-gnome, GNOME 50): `--clip-send` pops the window, publishes | pass 2026-11-07: custom shortcut, focus granted without a click, "Sending" then auto-close ~1 s; text from Text Editor received by a CLI peer (3 presses, 3 deliveries) |
 | GNOME VM: `--clip-paste` makes text pasteable in Text Editor | pass 2026-11-07: CLI peer text pasted with Ctrl+V after the window auto-closed |
-| Hyprland: KeePassXC / Bitwarden copy not sent | pending (phase 06) |
+| Hyprland: KeePassXC / Bitwarden copy not sent | deferred 2026-11-12: neither manager is installed on the test host (roadmap) |
 | KDE Plasma, Sway live session, X11 desktops (Xfce/i3) | untested (Sway and X11 covered headless by e2e) |
 
 ## Files, inbox and history (phase 04a)
@@ -264,8 +264,8 @@ Parity with ADR 013 d6/d10/d13/d14, minus virtual files (Linux has none, ADR 009
 
 | Check | Result |
 |---|---|
-| Omarchy: file clip from a second fsync instance pastes in the file manager | pending (manual, not part of 04a automation) |
-| GNOME VM: paste of received files in Nautilus | pending (LIVE) |
+| Omarchy: file clip from a second fsync instance pastes in the file manager | pass 2026-11-12: file copied in Nautilus on the GNOME VM, sent, `--clip-paste` here, Ctrl+V in Nautilus; sha256 equal |
+| GNOME VM: paste of received files in Nautilus | pass 2026-11-12: two files copied in Nautilus on Omarchy, `--clip-paste` on the VM, Ctrl+V in Nautilus; sha256 equal |
 | Dolphin / Thunar on other desktops | untested |
 
 ## Phase 04b decisions (settings, send to a device, hotkey help)
@@ -298,8 +298,8 @@ Parity with ADR 013 d6/d10/d13/d14, minus virtual files (Linux has none, ADR 009
 
 | Check | Result |
 |---|---|
-| Omarchy: `SUPER ALT, C` bind sends in manual mode; settings survive a restart | pending (LIVE, manual) |
-| Drop from Nautilus / Dolphin / Thunar onto a row | untested (only `file://` is accepted) |
+| Omarchy: `SUPER ALT, C` bind sends in manual mode; settings survive a restart | pass 2026-11-12: a copy is not sent in Manual, the bind sends it once, Manual survives a restart. Omarchy now uses `bindings.lua` (`o.bind(...)`): the help text is stale (see LIVE run below) |
+| Drop from Nautilus / Dolphin / Thunar onto a row | Nautilus pass 2026-11-12 on Hyprland (drop on a row, and on the window then the picker) and on the GNOME VM (drop on a row); sha256 equal. Dolphin / Thunar untested |
 
 ### Phase 04b fix round 1
 - **Validated = sent.** `send_files::validate` returns canonical UTF-8 `String`s and refuses a
@@ -456,7 +456,7 @@ Docker starts; `smoke-install.sh fedora <release binary with e2e-control>` exits
 | Check | Result |
 |---|---|
 | AppImage on a GNOME VM: QPA and Manual-mode shortcuts | pass with xcb, 2026-11-07 (Ubuntu 26.04, GNOME 50.1). Bundled Qt 6.2 picks xcb on GNOME by design ("Ignoring WAYLAND_DISPLAY on Gnome"); `QT_QPA_PLATFORM=wayland` also loads the bundled `libqwayland-generic.so` + EGL plugin (rc 0). Decision: keep xcb (XWayland) as the GNOME default (same as the Qt 6.2 .deb on 22.04); no AppRun override, because Qt 6.2 on GNOME Wayland draws its own decorations. Live with the AppImage's Qt 6.2 runtime (e2e binary swapped in for IPC; maps show bundled `libQt6Core`, `libqxcb.so`): Super+Alt+C sent the copied text to the CLI peer, Super+Alt+V then Ctrl+V pasted the CLI text; window focused without a click and auto-closed both times |
-| Omarchy: `makepkg -si`, launcher entry, autostart toggle, relogin shows the tray | pending (manual) |
+| Omarchy: `makepkg -si`, launcher entry, autostart toggle, relogin shows the tray | partial 2026-11-12: package from 5b257a9 built and installed (`--build-info` sha 5b257a9), launcher entry opens the app, tray works. Autostart + relogin pending |
 | Real Ubuntu 22.04 / Fedora desktops | untested (container smoke only) |
 
 ### Fix round 1 (code review 8.3 + tester, 2026-11-07)
@@ -721,8 +721,46 @@ Nothing below blocks acceptance (the acceptance condition is X3 and X4, met abov
 - **X2 and X5** re-run 2026-11-11 (`linux-cross-os-261111-1206.json`, aed5ec8): pass (see the latency follow-up above).
 - **Codec gaps.** 32-bpp images with non-standard masks are refused with a log line, not converted. Alpha is not tested.
   16-bpp masks other than 565/555 reach WIC unchecked.
-- LIVE items carried from phases 02-05 and the Hyprland check (KeePassXC / Bitwarden not sent): tables above.
+- LIVE: autostart + relogin on Omarchy, and the password-manager check (deferred, no manager on the test host).
+- Tray "Pause sync" check mark does not update after a click (pause itself works); a Ghostty copy is published twice
+  (LIVE run 2026-11-12, below).
 - Pairing flake on the Windows tunnel ("No addressing information available"): fixed 2026-11-11 (`RELAY_WAIT` 6 s, see
   "Known issues"); one Windows-offer pairing passed since (more runs needed to confirm). The local "connection lost" flake is fixed.
 - Platform emit gate: the backend deploy and the Mac/Windows releases with the tolerant decoder.
-- Confirm no tunnel process or portproxy rule remains on waso-vm and this host (phase 06 step 8). Not recorded yet.
+- ~~Confirm no tunnel process remains on waso-vm and this host.~~ None on 2026-11-11 after the plan 261110 phase-03 runs.
+
+## LIVE run (plan 261110 phase 05, 2026-11-12)
+
+Installed builds: Omarchy `makepkg` package and GNOME VM AppImage, both from main 5b257a9 (`--build-info`
+`features: []`). Counterpart: `fsync-cli` in a throwaway data dir on the production backend; the account's trust
+list was reset from the CLI (`account reset-trust`), then the app and the VM app were paired to it. Steps and
+evidence format: `docs/how-to/linux-live-checks.md`.
+
+| Check | Result |
+|---|---|
+| H2 tray: Open fsync, History, Send clipboard now | pass (Send clipboard now: one publish) |
+| H2 tray: Pause sync | **fail (display)**: pausing works (a copy while paused is not sent), but the check mark never changes |
+| H3 real login, code pairing, QR render | pass (email code login; code pairing with SAS; QR shown) |
+| H4 `fsync-linux --show` raises the window | pass |
+| H5 KeePassXC / Bitwarden copy not sent | deferred (no manager installed) |
+| H6 Manual mode, `--clip-send` bind, settings after restart | pass |
+| H7 file clip from a second instance pastes in Nautilus | pass |
+| H8 drag-drop send from Nautilus (row, window + picker) | pass |
+| H1 autostart + relogin tray | pending |
+| G1 GNOME without AppIndicator: no tray, close minimizes, second launch shows (IPC) | pass (extension disabled for the run; second launch exits 0 in 119 ms, one process) |
+| G2 keyring: relogin keeps node id and session | pass (same node id 1166b312d3, a CLI clip is delivered without re-pairing) |
+| G3 received files paste in Nautilus (GNOME) | pass |
+| G4 drag-drop from Nautilus (GNOME) | pass |
+
+Findings (each one is its own fix task):
+- **F1, Ghostty copy published twice.** Every Ctrl+Shift+C in Ghostty on Hyprland reaches the peer as two clips with
+  different ids about 2 ms apart (`clip delivered` twice in the debug log). Primary selection is ignored, no clipboard
+  manager runs, and tray "Send clipboard now" sends once: the backend sees two regular selections for one copy and the
+  outbound path does not drop an identical repeat.
+- **F2, tray "Pause sync" check mark.** `toggle_pause` flips the engine state (verified: no publish while paused), but
+  the menu keeps showing the old state on Omarchy's tray.
+- **F3, stale Hyprland help.** README and `shortcut_help` give `bind = SUPER ALT, C, exec, ...` for
+  `~/.config/hypr/bindings.conf`; current Omarchy uses `~/.config/hypr/bindings.lua` with
+  `o.bind("SUPER + ALT + C", "...", "fsync-linux --clip-send")`.
+- Observation: once, tray or bind sends of one clip came 4 times in 0.7 s; not reproduced.
+

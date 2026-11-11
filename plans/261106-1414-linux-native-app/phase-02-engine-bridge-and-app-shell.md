@@ -95,7 +95,7 @@ Core (separate commit, `feat(proto): forward-compatible Platform decoding`): <!-
 - [x] Single instance + forwarding + `--background` + shutdown deadline
 - [x] `e2e-control` compile guard + `--build-info`
 - [x] `tests/e2e/pair-with-cli.sh` PASS
-- [ ] Manual Omarchy run (window + tray registration + app id verified; tray clicks, real login, QR, Wayland raise pending)
+- [x] Manual Omarchy run: tray clicks, real login, QR, Wayland raise pass 2026-11-12 (ADR 014 "LIVE run"; Pause sync check mark does not update: finding F2)
 
 ## Success Criteria
 - `cargo test --manifest-path apps/linux/Cargo.toml -p fsync-linux-platform` green; clippy `-D warnings` clean on apps/linux workspace.
@@ -108,7 +108,7 @@ Core (separate commit, `feat(proto): forward-compatible Platform decoding`): <!-
 
 ## Pending Live Verification
 <!-- red-team 2026-11-06 #14 --> KDE tray / KWallet -> ADR 014 "untested".
-- [ ] LIVE: GNOME VM without AppIndicator: no tray, window reachable via launcher (IPC show); Secret Service via gnome-keyring, relaunch after keyring unlock keeps node id — evidence: ADR 014 table
+- [x] LIVE (pass 2026-11-12, G1/G2): GNOME VM without AppIndicator: no tray, window reachable via launcher (IPC show); Secret Service via gnome-keyring, relaunch after keyring unlock keeps node id — evidence: ADR 014 table
 
 ## Risk Assessment
 | Risk | L x I | Mitigation |

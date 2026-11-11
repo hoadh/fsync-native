@@ -2,6 +2,17 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-11-12 - Linux app LIVE checks (Hyprland + GNOME VM)
+
+Plan `plans/261110-2344-linux-app-follow-ups` phase 05, ADR [014](./adr/014-linux-desktop-app.md) "LIVE run".
+
+### Added
+- `docs/how-to/linux-live-checks.md`: the manual checks for the Linux app (Hyprland H1-H8, GNOME G1-G4), with steps, expected results and evidence.
+
+### Verified (main 5b257a9, production backend)
+- Pass: tray actions, real login, code pairing, QR, `--show` raise, Manual mode bind and settings after restart, file clip paste in Nautilus (both directions), Nautilus drag-drop (Hyprland and GNOME), GNOME without AppIndicator, keyring relogin keeps the node id. No tunnel process left after the cross-OS runs.
+- Open findings: a Ghostty copy is published twice (F1); the tray "Pause sync" check mark does not update (F2); the Hyprland bind help is stale for Lua configs (F3). Autostart + relogin pending; the password-manager check is deferred (no manager on the test host).
+
 ## 2026-11-11 - Lazy-file and text latency to Windows; dial follows new addresses
 
 Plan `plans/261110-2344-linux-app-follow-ups` phase 03, ADR [014](./adr/014-linux-desktop-app.md) "Latency follow-up". Branch `fix/lazy-file-latency`.
