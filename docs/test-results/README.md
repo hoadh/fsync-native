@@ -123,8 +123,10 @@ No single run covers X1-X5. Runs, newest first:
 
 | file | git_sha | scope | status |
 | --- | --- | --- | --- |
-| `linux-cross-os-261110-1511.json` | `30a6f3c` | X1+X2+X5 | latest X2/X5 pass with the current harness (10 s file gate, skew probe +-8 ms); passed on the 3rd attempt, the first 2 hit the known local L1<->devA pairing flake (ADR 014) |
-| `linux-cross-os-261110-1241.json` | `312a67a` | X1+X4+X3 | latest X3/X4 pass; 0 retries; real echo checks |
+| `linux-cross-os-261111-1206.json` | `aed5ec8` | X1+X2+X5 | latest X2/X5 pass: text app-to-win 60 / 66 ms (first copy waits for the CLI), files 4002 / 3246 ms; Linux binaries from 9d6562a (`SKIP_BUILD`, only the offer's relay wait differs) |
+| `linux-cross-os-261111-1145.json`, `-1153`, `-1155`, `-1158`, `-1200` | `9d6562a` | X1+X4+X3 (5 runs) | the lazy-file gate: x3 file app-to-win 2971, 2977, 3029, 2975, 2970 ms (median 2977, max 3029). Run 1 built both sides; runs 2-5 used `SKIP_BUILD`/`SKIP_WIN_BUILD` |
+| `linux-cross-os-261110-1511.json` | `30a6f3c` | X1+X2+X5 | superseded by 1206: X2/X5 pass with the older harness (10 s file gate, skew probe +-8 ms); passed on the 3rd attempt, the first 2 hit the known local L1<->devA pairing flake (ADR 014) |
+| `linux-cross-os-261110-1241.json` | `312a67a` | X1+X4+X3 | X3/X4 pass; 0 retries; real echo checks; lazy file 8701 ms (before the phase 03 harness fix; the 2026-11-11 runs above replace it for the file gate) |
 | `linux-cross-os-261110-1217.json` | `ea954a6` | X1+X4+X3 | superseded: echo field hardcoded, negative latencies from the old skew probe |
 | `linux-cross-os-261109-1753.json` | `994119f` | X1+X2+X5 | latest X2/X5 pass; file legs gated at 30 s (before the 10 s decision); pre-review harness |
 | `linux-cross-os-261109-1741.json` | `994119f` | X1+X2 | earlier |
@@ -137,5 +139,12 @@ file was wrong). The gate is on latency + clock error. Files: sha256 equal. PNG:
 JSON fields: `checks` (`echo_checked_scopes`, `echo_checks`, `echo_not_checked`, `retries`,
 `latency_within_threshold`); per leg `latency_ms`, `limit_ms`, `sha_ok`, `note`, and for Windows legs `tries`,
 `skew_ms`, `skew_err_ms`.
+
+Diagnostics (not part of the result files): `APP_LOG=info,fsync_core=debug` sets the Linux app's log filter and
+`WIN_RUST_LOG=fsync_core=debug,iroh=info` the Windows CLI's `RUST_LOG` (its stderr is pulled into the work dir,
+`win-<tag>-text-in.cli.log`, and kept with `KEEP=1`); `NO_READY_WAIT=1` makes the first X2/X5 text copy at once
+(the old behaviour, to look at the offline-peer dial). The X3 lazy leg logs `x3 lazy stages after offer (ms)` (Windows
+app: clip logged, hotkey, formats on the clipboard, paste started, file created, file closed) and X2/X5 text logs
+`... text app-to-win stages` (CLI launch and ready relative to copy #1); both go into the leg `note`.
 
 Results table and open items: [ADR 014](../adr/014-linux-desktop-app.md#cross-os-results-phase-06).

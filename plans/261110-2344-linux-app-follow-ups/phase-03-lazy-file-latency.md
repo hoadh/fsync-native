@@ -24,11 +24,11 @@
 5. Gate: 5 X3 runs, median ≤ 5 s and max < 10 s. Record the results JSON.
 
 ## Todo
-- [ ] Stage timestamps in the leg
-- [ ] 3 measuring runs, breakdown in the report
-- [ ] Fix (harness and/or product) + tests
-- [ ] 5-run gate, results JSON, ADR "Open" row updated
-- [ ] Review >= 9.5, PR, CI green
+- [x] Stage timestamps in the leg (X3 lazy + X2/X5 text)
+- [x] 3 measuring runs, breakdown in the report (reports/implementer-*-phase-03.md)
+- [x] Fix (harness and product) + tests
+- [x] 5-run gate, results JSON, ADR "Open" row updated
+- [x] Review >= 9.5 (9.0 -> 9.5 after fixes), PR #5, CI green
 
 ## Risks
 Needs the user's RDP session. If waso-vm is off, stop and ask (do not switch to headless for GUI legs).

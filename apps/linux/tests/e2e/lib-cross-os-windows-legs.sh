@@ -107,7 +107,8 @@ win_prepare() { # build + pair runs; run_windows_legs calls it once
   # the offer event is read over plain ssh from the file the peer writes (read-only probing).
   local offer_path="(Join-Path \$env:TEMP 'fsync-cross-os\\pair-offer.out')"   # PowerShell expression, expanded on the worker
   ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" "powershell -NoProfile -Command \"Remove-Item -Force -ErrorAction SilentlyContinue $offer_path\"" >/dev/null 2>&1 || true
-  win_remote 300 "$WORK/win-pair.out" -- "$WIN_PEER" -Step pair -Api "$API" -Relay "$RELAY" -Email "$EMAIL" -Otp "$otp" -Name "$WIN_NAME" -DeadlineSec 200 &
+  win_remote 300 "$WORK/win-pair.out" -- "$WIN_PEER" -Step pair -Api "$API" -Relay "$RELAY" -Email "$EMAIL" -Otp "$otp" -Name "$WIN_NAME" -DeadlineSec 200 ${WIN_RUST_LOG:+-RustLog "$WIN_RUST_LOG"} \
+    &
   WINPAIR=$!; PIDS+=("$WINPAIR")
   local code=""
   for i in $(seq 1 240); do
@@ -132,6 +133,7 @@ for line in sys.stdin:
   done
   if [[ "$(status_field L1 pairing.phase)" != confirm ]]; then
     ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" "powershell -NoProfile -Command \"Get-Content -ErrorAction SilentlyContinue $offer_path\"" >"$WORK/win-offer-file.txt" 2>&1 || true
+    ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" "powershell -NoProfile -Command \"Get-Content -ErrorAction SilentlyContinue ($offer_path + '.err')\"" >"$WORK/win-offer-file.err.txt" 2>&1 || true   # the offering CLI's stderr (RUST_LOG)
     fail "L1 never reached the SAS prompt (L1 phase '$(status_field L1 pairing.phase)', message '$(status_field L1 pairing.message)'; windows offer file: $(tr '\n' ' ' <"$WORK/win-offer-file.txt" | cut -c1-300))"
   fi
   local app_sas; app_sas="$(status_field L1 pairing.sas)"
@@ -148,13 +150,35 @@ for line in sys.stdin:
 # Common peer args for a leg run.
 win_leg_args() { echo -Step leg -Leg "$1" -Api "$API" -Relay "$RELAY" -Name "$WIN_NAME" -Nonce "$2" -DeadlineSec "$3" ${FORCE_RELAY:+-ForceRelay}; }
 
+# win_wait_cli_ready NONCE PID: the first copy of a text-in leg waits for a real readiness signal, not for the
+# `remote run` call to return: (1) the CLI's own `ready` event in its stdout file on the worker (read over ssh, the
+# nonce makes the file this run's), then (2) the Linux app's backend presence listing the device as online. Copying
+# earlier hits an offline peer, and the offline-peer retry schedule (2 s + stage stall) ends up in the latency.
+win_wait_cli_ready() {
+  local nonce="$1" pid="$2" ready_path out ready=""
+  ready_path="(Join-Path \$env:TEMP 'fsync-cross-os\\work-$nonce\\text-in.out')"   # PowerShell expression, expanded on the worker
+  for _ in $(seq 1 240); do
+    # timeout: ConnectTimeout only covers connecting; a wedged remote PowerShell must not hang the leg.
+    out="$(timeout 20 ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" "powershell -NoProfile -Command \"Get-Content -ErrorAction SilentlyContinue $ready_path\"" 2>/dev/null || true)"
+    [[ "$out" == *'"event":"ready"'* ]] && { ready=1; break; }
+    kill -0 "$pid" 2>/dev/null || { wait "$pid" || true; fail "windows text-in run ended before the CLI was ready"; }
+    sleep 0.25
+  done
+  [[ -n "$ready" ]] || fail "windows CLI did not report ready (nonce $nonce)"
+  peer_online L1 "$WIN_NAME"
+}
+
 # --- the four legs; TAG labels results (x2 / x5), SIZE_B is the file size ---
 win_text_to_win() { # app copies text (repeated every 8 s until the run ends); windows receives
   win_measure_skew
   local tag="$1" nonce="$RANDOM$RANDOM" out="$WORK/win-$1-text-in.out" n=0 pid
   local prefix="fsync-xleg-$tag-$nonce"; declare -A ts
   # shellcheck disable=SC2046
-  win_remote 300 "$out" -- "$WIN_PEER" $(win_leg_args text-in "$nonce" 240) -TextPrefix "$prefix" & pid=$!; PIDS+=("$pid")
+  win_remote 300 "$out" -- "$WIN_PEER" $(win_leg_args text-in "$nonce" 240) -TextPrefix "$prefix" ${WIN_RUST_LOG:+-RustLog "$WIN_RUST_LOG"} & pid=$!; PIDS+=("$pid")
+  local t_launch; t_launch="$(now_ms)"
+  # NO_READY_WAIT=1 reproduces the old harness (copy #1 at once): a diagnostic for the offline-peer dial schedule.
+  [[ -n "${NO_READY_WAIT:-}" ]] || win_wait_cli_ready "$nonce" "$pid"
+  local t_ready_seen; t_ready_seen="$(now_ms)"
   while kill -0 "$pid" 2>/dev/null; do
     n=$((n + 1)); ts[$n]="$(now_ms)"; printf %s "$prefix-$n" | wl_a wl-copy
     for _ in $(seq 1 40); do kill -0 "$pid" 2>/dev/null || break; sleep 0.2; done
@@ -163,7 +187,17 @@ win_text_to_win() { # app copies text (repeated every 8 s until the run ends); w
   local txt rx; txt="$(win_field "$out" text-in text str)"; rx="$(win_field "$out" text-in recv_ts_ms int)"
   [[ "$txt" == "$prefix"-* && -n "$rx" ]] || fail "windows text-in: bad result '$txt' / '$rx'"
   local k="${txt##*-}"; [[ -n "${ts[$k]:-}" ]] || fail "windows received an unknown copy index '$k'"
-  LEG_SKEW="$WIN_SKEW_MS" LEG_ERR_MS="$WIN_SKEW_ERR_MS" leg "$tag-text-app-to-win" app-to-win text "$((rx - WIN_SKEW_MS - ts[$k]))" true "cross-clock, skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms)"
+  # Stages on the host clock (windows stamps minus skew): when the peer was online vs. each copy.
+  local rd la; rd="$(win_field "$out" text-in ready_ts_ms int)"; la="$(win_field "$out" text-in launch_ts_ms int)"
+  local stages="copy #$k of $n (first copy ${ts[1]} ms host clock)"
+  [[ -z "$la" ]] || stages+="; windows CLI launched $((la - WIN_SKEW_MS - ts[1])) ms after copy #1"
+  [[ -z "$rd" ]] || stages+="; ready (online) $((rd - WIN_SKEW_MS - ts[1])) ms after copy #1"
+  stages+="; arrived $((rx - WIN_SKEW_MS - ts[1])) ms after copy #1; first copy $((ts[1] - t_launch)) ms after run start (CLI ready + backend presence seen at $((t_ready_seen - t_launch)))"
+  log "$tag text app-to-win stages: $stages"
+  if [[ -n "${WIN_RUST_LOG:-}" ]]; then   # RUST_LOG run: pull the CLI's stderr (data, read-only)
+    ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" "powershell -NoProfile -Command \"Get-Content -ErrorAction SilentlyContinue (Join-Path \$env:TEMP 'fsync-cross-os\\work-$nonce\\text-in.out.err')\"" >"$WORK/win-$tag-text-in.cli.log" 2>&1 || true
+  fi
+  LEG_SKEW="$WIN_SKEW_MS" LEG_ERR_MS="$WIN_SKEW_ERR_MS" leg "$tag-text-app-to-win" app-to-win text "$((rx - WIN_SKEW_MS - ts[$k]))" true "cross-clock, skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms); $stages"
 }
 
 win_text_from_win() {

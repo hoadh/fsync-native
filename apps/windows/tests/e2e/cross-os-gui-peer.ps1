@@ -139,6 +139,30 @@ function Wait-PeerOnline($w) {
     Wait-Like $w "*$Peer*Online*" 90 | Out-Null
 }
 
+# --- app.log stage timestamps (the app stamps its own lines with local HH:mm:ss.fff) ---
+$logFile = Join-Path $dataDir 'app.log'
+function Get-LogLength { try { (New-Object System.IO.FileInfo $logFile).Length } catch { 0 } }
+# Epoch ms (UTC) of the first app.log line after byte $offset that contains $needle, or 0.
+function Get-LogStageMs([long]$offset, [string]$needle) {
+    try {
+        $fs = [System.IO.File]::Open($logFile, 'Open', 'Read', 'ReadWrite')
+        try {
+            if ($fs.Length -le $offset) { return 0 }
+            $null = $fs.Seek($offset, 'Begin')
+            $text = (New-Object System.IO.StreamReader($fs)).ReadToEnd()
+        } finally { $fs.Dispose() }
+    } catch { return 0 }
+    foreach ($line in ($text -split "`r?`n")) {
+        if ($line.IndexOf($needle, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and $line -match '(\d{2}):(\d{2}):(\d{2})\.(\d{3}) ') {
+            $now = Get-Date
+            $local = Get-Date -Year $now.Year -Month $now.Month -Day $now.Day -Hour ([int]$Matches[1]) -Minute ([int]$Matches[2]) -Second ([int]$Matches[3]) -Millisecond ([int]$Matches[4])
+            if ($local -gt $now.AddMinutes(1)) { $local = $local.AddDays(-1) }   # log line from before midnight
+            return [DateTimeOffset]::new($local.ToUniversalTime()).ToUnixTimeMilliseconds()
+        }
+    }
+    0
+}
+
 # --- png helpers: R=(x*7+y*3)%256 G=(x*5+y*9+31)%256 B=(x*11+y*13+97)%256 ---
 function Get-TestRgb([int]$x, [int]$y) { @((($x * 7 + $y * 3) % 256), (($x * 5 + $y * 9 + 31) % 256), (($x * 11 + $y * 13 + 97) % 256)) }
 function New-TestBitmap([int]$n) {
@@ -274,18 +298,46 @@ try {
                 }
                 'in-lazy' {
                     if (-not (Test-Path $pasteHelper)) { throw "missing $pasteHelper (run -Step build-app)" }
-                    Sync-Put 'ready-file'
-                    Wait-Until -Seconds $DeadlineSec -What 'virtual files on the clipboard (Win+Alt+V)' {
-                        Send-WinAlt 'V'; Start-Sleep -Milliseconds 1500
-                        (Get-ClipFormats) -contains 'FileGroupDescriptorW'
-                    } | Out-Null
+                    $logOffset = Get-LogLength
+                    $st = [ordered]@{}   # stage timestamps, Windows clock (epoch ms), no skew involved
+                    # Warm helper: process + COM start-up are paid before the clip arrives; it pastes on the "paste" line.
                     $pasteDir = Join-Path $base 'pasted'; New-Item -ItemType Directory -Force $pasteDir | Out-Null
                     $psi = New-Object System.Diagnostics.ProcessStartInfo $pasteHelper
-                    $psi.Arguments = "`"$pasteDir`""; $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.CreateNoWindow = $true
+                    $psi.Arguments = "`"$pasteDir`" --warm"; $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.CreateNoWindow = $true
                     $helper = [System.Diagnostics.Process]::Start($psi)
+                    $helperReady = $helper.StandardOutput.ReadLineAsync()
+                    if (-not $helperReady.Wait(30000) -or $helperReady.Result -ne 'READY') { throw 'paste helper did not become ready' }
+                    $st.helper_ready_ms = Now-Ms
+                    Sync-Put 'ready-file'; $st.ready_ms = Now-Ms
+                    $presses = @{ n = 0 }
+                    # Own loop (50 ms): Wait-Until polls at 250 ms, which is a visible part of this latency.
+                    $limit = [DateTime]::UtcNow.AddSeconds($DeadlineSec); $haveFormats = $false
+                    while (-not $haveFormats) {
+                        if ([DateTime]::UtcNow -gt $limit) { throw "timeout after ${DeadlineSec}s waiting for virtual files on the Windows clipboard (Win+Alt+V)" }
+                        if (-not $st.Contains('clip_logged_ms')) { $t = Get-LogStageMs $logOffset 'clipboard: received files'; if ($t) { $st.clip_logged_ms = $t } }
+                        # The log line is the readiness signal; after 20 s without it press anyway (log format changed?).
+                        if (-not ($st.Contains('clip_logged_ms') -or $presses.n -gt 0 -or ((Now-Ms) - $st.ready_ms) -gt 20000)) { Start-Sleep -Milliseconds 50; continue }
+                        $presses.n++
+                        if (-not $st.Contains('paste_trigger_ms')) { $st.paste_trigger_ms = Now-Ms }
+                        Send-WinAlt 'V'
+                        # Poll the clipboard formats every 50 ms; press again only after 1.5 s without them.
+                        $until = [DateTime]::UtcNow.AddMilliseconds(1500)
+                        while (-not $haveFormats -and [DateTime]::UtcNow -lt $until) {
+                            if ((Get-ClipFormats) -contains 'FileGroupDescriptorW') { $st.formats_seen_ms = Now-Ms; $haveFormats = $true } else { Start-Sleep -Milliseconds 50 }
+                        }
+                    }
+                    $res.hotkey_presses = $presses.n
+                    $st.helper_start_ms = Now-Ms
+                    $helper.StandardInput.WriteLine('paste')
                     $pasted = Join-Path $pasteDir "gui-$Nonce-in.bin"
-                    Wait-Until -Seconds 120 -What 'pasted file closed' { Test-FileClosed $pasted } | Out-Null
-                    Sync-Put 'recv-file' (Now-Ms)
+                    Wait-Until -Seconds 120 -What 'pasted file closed' {
+                        if (-not $st.Contains('file_created_ms') -and (Test-Path $pasted)) { $st.file_created_ms = [DateTimeOffset]::new((Get-Item $pasted).CreationTimeUtc).ToUnixTimeMilliseconds() }
+                        Test-FileClosed $pasted
+                    } | Out-Null
+                    $st.file_closed_ms = Now-Ms
+                    Sync-Put 'recv-file' $st.file_closed_ms
+                    $t = Get-LogStageMs $logOffset 'clipboard: wrote formats'; if ($t) { $st.wrote_logged_ms = $t }
+                    $res.stages = $st
                     $res.file_sha256 = (Get-FileHashHex $pasted).ToLowerInvariant()
                     $res.bytes = (Get-Item $pasted).Length
                     try { $helper.StandardInput.WriteLine('done') } catch {}

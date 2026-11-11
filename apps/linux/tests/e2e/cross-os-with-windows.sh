@@ -24,7 +24,9 @@
 #     code only, not to the client that started login) and is passed as `-Otp <code>`.
 # Env: WIN_MACHINE (default waso-vm), REF (default HEAD; must be pushed),
 #      X5=1 (relay-forced variant, CLI side `--force-relay`, text + 8 MiB file), SKIP_BUILD=1, KEEP=1,
-#      CARGO_TARGET_DIR, REMOTE_JS (default ~/.claude/skills/remote/scripts/remote.cjs).
+#      CARGO_TARGET_DIR, REMOTE_JS (default ~/.claude/skills/remote/scripts/remote.cjs),
+#      APP_LOG (Linux app log filter), WIN_RUST_LOG (Windows CLI RUST_LOG, e.g. fsync_core=debug,iroh=info),
+#      NO_READY_WAIT=1 (X2/X5 text: copy #1 at once, diagnostic).
 # Needs: docker, dbus-run-session, python3, cargo + qmake6, curl, sway, wl-clipboard, Xvfb, xclip.
 set -euo pipefail
 

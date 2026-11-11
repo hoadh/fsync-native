@@ -2,6 +2,21 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-11-11 - Lazy-file and text latency to Windows; dial follows new addresses
+
+Plan `plans/261110-2344-linux-app-follow-ups` phase 03, ADR [014](./adr/014-linux-desktop-app.md) "Latency follow-up". Branch `fix/lazy-file-latency`.
+
+### Fixed
+- Core: a running dial restarts when presence gives the peer an address it did not know (checked every 100 ms; removed addresses never restart it). Before, a peer that came online (or restarted on a new port) during a dial was only tried after the 2 s dial stage ended. A clip sent to a peer that had just started took the next 2 s boundary plus the retry; with the old harness x2 text Linux app -> Windows CLI went 4057 -> 2877 ms (earlier runs 6.2 s). Test: `dial_follows_addresses` (2.01 s before the fix, 0.38 s after). Severity: low (latency only).
+- Core: a pairing offer waits 6 s (was 3 s) for the home relay, longer than iroh's 5 s net report timeout. The 3 s wait raced iroh's 3 s probe timeout over a TCP-only relay path and the offer then carried no relay URL (the joiner's "No addressing information available", 4 of 8 Windows-offer pairings in this plan's runs). A unit test pins the margin.
+
+### Changed
+- Cross-OS harness: X3 lazy file Linux -> Windows 4577 / 8701 ms before, median 2977 ms (max 3029 ms) over 5 runs: Win+Alt+V is sent when the app logs the clip, the clipboard is polled every 50 ms (was a fixed 1.5 s sleep) and `Fsync.Interop.PasteHelper --warm` is started before the offer. X2/X5 text: the first copy waits for the CLI's `ready` event and the Linux app's presence list (60 / 66 ms, was 4-6 s: the copy used to hit a peer that was not online yet).
+- Stage timestamps in the legs (`x3 lazy stages`, `text app-to-win stages`), `WIN_RUST_LOG`, `APP_LOG`, `NO_READY_WAIT` diagnostics. `fsync-cli clip watch` adds `ts_ms` to its `ready` event.
+
+### Open
+- The first send after about 30 s idle waits 2 s on the cached connection whose direct path idled out (ADR 014 Open).
+
 ## 2026-11-11 - Offline-publish lows; FFI contract 3
 
 Plan `plans/261110-2344-linux-app-follow-ups` phase 02 (review lows L1, L2, L-new-1 of the offline-peer publish). Branch `fix/offline-publish-lows`.

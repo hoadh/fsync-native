@@ -287,7 +287,29 @@ PY
 )"
   gui_echo_check x3-in-lazy "$WIN_GUI_NAME" "$wg_before" "x3 lazy file (windows must not re-publish)"
   [[ "$got" == "$want" ]] || fail "file pasted on windows differs: '$got' != '$want'"
-  LEG_MAX_MS=10000 gui_leg "x3-file-app-to-win" app-to-win file "$((recv - WIN_SKEW_MS - offer_ms))" "lazy virtual files, pasted by the shell copy engine (PasteHelper)"
+  # Stage timestamps are on the Windows clock; shown as ms after the offer (skew corrected, +-WIN_SKEW_ERR_MS).
+  local stages
+  stages="$(python3 -I - "$GUI_OUT" "$offer_ms" "$WIN_SKEW_MS" <<'PY'
+import json, sys
+offer, skew = int(sys.argv[2]), int(sys.argv[3])
+st, presses = {}, ""
+for line in open(sys.argv[1], errors="replace"):
+    line = line.strip()
+    if line.startswith("{"):
+        try: o = json.loads(line)
+        except ValueError: continue
+        if o.get("leg") == "in-lazy" and isinstance(o.get("stages"), dict):
+            st = o["stages"]; presses = o.get("hotkey_presses", "")
+names = ["helper_ready_ms", "ready_ms", "clip_logged_ms", "paste_trigger_ms", "formats_seen_ms", "helper_start_ms", "file_created_ms", "file_closed_ms", "wrote_logged_ms"]
+out = []
+for n in names:
+    v = st.get(n)
+    if isinstance(v, int) and not isinstance(v, bool) and 10**12 < v < 10**14: out.append("%s=%d" % (n[:-3], v - skew - offer))
+print("stages after offer (ms): " + " ".join(out) + " presses=" + str(presses))
+PY
+)"
+  log "x3 lazy $stages"
+  LEG_MAX_MS=10000 gui_leg "x3-file-app-to-win" app-to-win file "$((recv - WIN_SKEW_MS - offer_ms))" "lazy virtual files, pasted by the shell copy engine (PasteHelper); $stages"
 }
 
 run_windows_gui_legs() {

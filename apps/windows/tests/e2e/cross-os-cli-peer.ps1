@@ -27,6 +27,7 @@ param(
     [int]$SizeBytes = 3000000,
     [int]$DeadlineSec = 240,
     [switch]$ForceRelay,
+    [string]$RustLog = '',
     [switch]$WithApp
 )
 $ErrorActionPreference = 'Stop'
@@ -49,6 +50,7 @@ if ($Step -ne 'build') {
     Assert-Arg 'Peer' $Peer '^[A-Za-z0-9]{1,16}$'
     Assert-Arg 'Nonce' $Nonce '^\d{1,12}$'
     Assert-Arg 'TextPrefix' $TextPrefix '^[A-Za-z0-9-]{1,64}$'
+    if ($RustLog) { Assert-Arg 'RustLog' $RustLog '^[A-Za-z0-9_=,:]{1,120}$'; $env:RUST_LOG = $RustLog; $env:NO_COLOR = '1' }
 }
 
 # fsync-cli with the common arguments; stdout/stderr to files so a deadline can kill it. Returns
@@ -113,10 +115,13 @@ try {
             if (-not (Test-Forward)) { Finish @{ leg = $Leg; ok = $false; error = 'api not reachable through the forward' } }
             switch ($Leg) {
                 'text-in' {
-                    $r = Invoke-FsyncCli @('clip', 'watch', '--json', '--count', '1', '--timeout', "$DeadlineSec") ($DeadlineSec + 20)
-                    $c = Get-Event $r 'clip'
+                    # Stage stamps (Windows clock): peer script start, CLI launch, the CLI's `ready` event (online), the clip.
+                    $logFile = Join-Path $work 'text-in.out'   # stdout; stderr (RUST_LOG) is text-in.out.err
+                    $launchMs = Now-Ms
+                    $r = Invoke-FsyncCli @('clip', 'watch', '--json', '--count', '1', '--timeout', "$DeadlineSec") ($DeadlineSec + 20) $logFile
+                    $c = Get-Event $r 'clip'; $ready = Get-Event $r 'ready'
                     $ok = ($null -ne $c -and "$($c.text)".StartsWith($TextPrefix))
-                    Finish @{ leg = $Leg; ok = $ok; text = "$($c.text)"; recv_ts_ms = [int64]($c.ts_ms); error = $(if ($ok) { '' } else { "no matching clip: $($r.Err)" }) }
+                    Finish @{ leg = $Leg; ok = $ok; text = "$($c.text)"; recv_ts_ms = [int64]($c.ts_ms); launch_ts_ms = $launchMs; ready_ts_ms = [int64]($ready.ts_ms); error = $(if ($ok) { '' } else { "no matching clip: $($r.Err)" }) }
                 }
                 'text-out' {
                     $r = Invoke-FsyncCli @('clip', 'put', '--text', $TextPrefix, '--wait', "$DeadlineSec") ($DeadlineSec + 30)

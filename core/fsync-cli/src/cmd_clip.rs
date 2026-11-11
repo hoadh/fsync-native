@@ -67,7 +67,7 @@ pub fn put(c: &Ctx, text: &str, wait: u64) -> Result<()> {
 
 pub fn watch(c: &Ctx, as_json: bool, count: u32, timeout: u64) -> Result<()> {
     c.online(true)?;
-    emit(json!({"event": "ready", "node_id": c.svc.node_id()}));
+    emit(json!({"event": "ready", "node_id": c.svc.node_id(), "ts_ms": unix_ms()}));
     let deadline = Instant::now() + Duration::from_secs(timeout);
     let mut seen = 0u32;
     while count == 0 || seen < count {
