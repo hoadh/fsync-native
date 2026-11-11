@@ -143,3 +143,43 @@ All changed files are under 500 lines. The largest is `system-architecture.md` (
 **Status:** DONE_WITH_CONCERNS
 **Summary:** The lane rewrite is sound, bounded and latest-wins-preserving, and the tests and mutation claims check out. One narrow ordering regression (M1, fix verified) and an unreachable contract check plus inaccurate docs (M2).
 **Concerns/Blockers:** macOS and Windows CI are unverified here; Swift and C# are review-only.
+
+---
+
+# Re-review (fix round: edca5db, f2de096 on c10cd4a)
+
+**Score: 9.6/10.** Critical 0, high 0, medium 0, low 1. **Approved** (bar 9.5 met), on the condition that the macOS and Windows CI jobs are green. Swift and C# were not compiled here.
+
+I checked each claim myself, in a fresh `git archive` copy of the branch. After the mutations I diffed `send.rs` against the branch: it was back to the original.
+
+## Previous findings
+| ID | Verdict | Evidence |
+|---|---|---|
+| M1 | Fixed | `send.rs` `run_lane`: `job = lane.next()` now runs before `finish_send`. The pause hook `lane_report_pause` (cfg `test` or `test-hooks`, `config.rs`) sleeps after the report. With the old order restored and the pause in between, the new test `a_live_peer_is_never_busy_once_its_result_is_reported` FAILS at `tests/clip_offline_peer_publish.rs:257`, and the other 6 pass. The test is deterministic: a 1 s pause against back-to-back publishes. |
+| M2 | Fixed | The `contract_version` doc comment is byte-identical to main's. The history moved to a `//` comment (`core/fsync-ffi/src/lib.rs:26-30`). I regenerated Swift (repo `uniffi-bindgen`, debug `.so`) and C# (`uniffi-bindgen-cs 0.10.0+v0.29.4`, `--no-format`, repo `uniffi.toml`); both are byte-identical to main and to the branch, with checksum 18762 again. `git diff main` on both binding files is empty. I also confirmed the premise: 02c31de (`Published.pending` appended) changed no checksum line. So a v2 binding loads against the v3 library and reaches the friendly check. |
+| M2 (Windows) | Fixed | `App.xaml.cs:73-79`: the filter adds `TypeInitializationException` and unwraps it with `e is TypeInitializationException { InnerException: { } inner } ? inner.Message : e.Message`. That is valid C# 9; `inner` is definitely assigned. This also covers the earlier gap where a missing DLL arrived wrapped. |
+| Docs (M2) | Fixed, one wording nit (R1) | `ffi-contract.md:10` now describes what really happens: a checksum mismatch is `fatalError` on macOS and a caught `TypeInitializationException` on Windows, and the doc comment stays stable. `:226-232`: the new "v3 (version bump)" section is accurate. The changelog is corrected. |
+| L1 | Documented, accepted | The `LaneRunner` doc (`peer_send_lanes.rs:90-95`) states that the waiting clip is dropped without an unoffer, the publish sees "no answer", and the outbox expiry handles it. The reasoning is sound. |
+| L2 | Fixed | The `Engine::clip_offered_to` hook (`api.rs`, `test-hooks` only) reads `offered_to` from a live outbox entry. The slow-peer test asserts that n+1's offer list is `Some([])` and n+2's is `[b]`. A mutation that only answers the superseded clip, with no unoffer, FAILS: "n+1 unoffered". The superseded unoffer runs synchronously inside the n+2 publish, so the assertion does not race. |
+| L3 | Fixed (not run) | `EngineBridgeBootTests.testExpectedContractMatchesTheBundledEngine`. The file imports FsyncCoreKit, and both sides are synchronous and nonisolated inside a `@MainActor` class. It should compile; the macOS CI job runs it. |
+| L4 | Fixed | `send.rs:66-67`: `(!opts.push).then(\|\| PublishInFlight::enter(self))`. A push is neither counted nor logged. |
+| L5 | Fixed | The "v3 (version bump)" section holds `Published.pending`, and the section paragraph is rewrapped. Long lines elsewhere in that file already existed, so they are not a finding. |
+
+## Remaining finding
+- **R1 (low, docs):** the last sentence of `ffi-contract.md:10` is too general: "a binding one contract older or newer still loads and gets the friendly message".
+  - It holds for v2↔v3, which I verified: no function signature changed, and no function was added or removed between main and this branch.
+  - It does not hold for a future bump that changes or adds an exported function. A newer binding then checks a checksum or symbol the older library lacks (or has with a different value). macOS gets `fatalError`; Windows shows the inner exception (caught).
+  - Suggested qualifier: "...still loads as long as the bump changes no exported function (true for v3)".
+
+## Commands (scratch copy, `~/.cache/fsync-review02-*`)
+- `cargo fmt --all --check` OK.
+- `cargo clippy -p fsync-core -p fsync-ffi --all-targets -D warnings` OK. With `--lib` (no hooks): OK.
+- `cargo test -p fsync-core --lib`: 67 passed, 1 ignored.
+- `clip_offline_peer_publish`: 7/7 in 3 runs (about 8.1 s each).
+- Mutations: old report order makes the M1 test fail (`:257`); no unoffer makes the slow-peer test fail ("n+1 unoffered").
+- Bindings: regenerated Swift and C# are byte-identical to main.
+- File sizes: every changed file is under 500 lines (largest code file: `send.rs` at 319).
+
+**Status:** DONE
+**Summary:** All findings are resolved and verified by mutation and binding regeneration. One low doc-wording nit is left (R1).
+**Concerns/Blockers:** macOS and Windows CI results are still pending; Swift and C# were not compiled here.
