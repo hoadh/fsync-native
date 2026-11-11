@@ -153,7 +153,7 @@ function Get-LogStageMs([long]$offset, [string]$needle) {
         } finally { $fs.Dispose() }
     } catch { return 0 }
     foreach ($line in ($text -split "`r?`n")) {
-        if ($line.Contains($needle) -and $line -match '(\d{2}):(\d{2}):(\d{2})\.(\d{3}) ') {
+        if ($line.IndexOf($needle, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and $line -match '(\d{2}):(\d{2}):(\d{2})\.(\d{3}) ') {
             $now = Get-Date
             $local = Get-Date -Year $now.Year -Month $now.Month -Day $now.Day -Hour ([int]$Matches[1]) -Minute ([int]$Matches[2]) -Second ([int]$Matches[3]) -Millisecond ([int]$Matches[4])
             if ($local -gt $now.AddMinutes(1)) { $local = $local.AddDays(-1) }   # log line from before midnight
@@ -304,7 +304,8 @@ try {
                     $presses = 0
                     Wait-Until -Seconds $DeadlineSec -What 'virtual files on the Windows clipboard (Win+Alt+V)' {
                         if (-not $st.Contains('clip_logged_ms')) { $t = Get-LogStageMs $logOffset 'clipboard: received files'; if ($t) { $st.clip_logged_ms = $t } }
-                        if ($st.Contains('clip_logged_ms') -or $presses -gt 0) {
+                        # The log line is the readiness signal; after 20 s without it press anyway (log format changed?).
+                        if ($st.Contains('clip_logged_ms') -or $presses -gt 0 -or ((Now-Ms) - $st.ready_ms) -gt 20000) {
                             $presses++
                             if (-not $st.Contains('paste_trigger_ms')) { $st.paste_trigger_ms = Now-Ms }
                             Send-WinAlt 'V'; Start-Sleep -Milliseconds 1500
