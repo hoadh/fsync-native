@@ -23,7 +23,7 @@ Open LIVE items carried from plan 261106:
 
 ## Todo
 - [x] Checklist doc (`docs/how-to/linux-live-checks.md`)
-- [ ] Hyprland: tray/login/QR/raise, manual bind, file paste, drag-drop pass 2026-11-12; password manager deferred; autostart + relogin pending
+- [ ] Hyprland: tray/login/QR/raise, manual bind, file paste, drag-drop pass 2026-11-12; password manager deferred; autostart + relogin pass (journal, 2026-11-11 login)
 - [x] GNOME VM: no-tray launcher, keyring relaunch, Nautilus paste, drag-drop (pass 2026-11-12)
 - [x] Tunnel leftover check recorded (none, 2026-11-11)
 - [x] ADR 014 LIVE table updated (section "LIVE run", findings F1-F3)

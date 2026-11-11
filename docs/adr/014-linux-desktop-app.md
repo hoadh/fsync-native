@@ -456,7 +456,7 @@ Docker starts; `smoke-install.sh fedora <release binary with e2e-control>` exits
 | Check | Result |
 |---|---|
 | AppImage on a GNOME VM: QPA and Manual-mode shortcuts | pass with xcb, 2026-11-07 (Ubuntu 26.04, GNOME 50.1). Bundled Qt 6.2 picks xcb on GNOME by design ("Ignoring WAYLAND_DISPLAY on Gnome"); `QT_QPA_PLATFORM=wayland` also loads the bundled `libqwayland-generic.so` + EGL plugin (rc 0). Decision: keep xcb (XWayland) as the GNOME default (same as the Qt 6.2 .deb on 22.04); no AppRun override, because Qt 6.2 on GNOME Wayland draws its own decorations. Live with the AppImage's Qt 6.2 runtime (e2e binary swapped in for IPC; maps show bundled `libQt6Core`, `libqxcb.so`): Super+Alt+C sent the copied text to the CLI peer, Super+Alt+V then Ctrl+V pasted the CLI text; window focused without a click and auto-closed both times |
-| Omarchy: `makepkg -si`, launcher entry, autostart toggle, relogin shows the tray | partial 2026-11-12: package from 5b257a9 built and installed (`--build-info` sha 5b257a9), launcher entry opens the app, tray works. Autostart + relogin pending |
+| Omarchy: `makepkg -si`, launcher entry, autostart toggle, relogin shows the tray | partial 2026-11-12: package from 5b257a9 built and installed (`--build-info` sha 5b257a9), launcher entry opens the app, tray works. Autostart + relogin pass on the 2026-11-11 login (journal; pre-5b257a9 package) |
 | Real Ubuntu 22.04 / Fedora desktops | untested (container smoke only) |
 
 ### Fix round 1 (code review 8.3 + tester, 2026-11-07)
@@ -721,7 +721,7 @@ Nothing below blocks acceptance (the acceptance condition is X3 and X4, met abov
 - **X2 and X5** re-run 2026-11-11 (`linux-cross-os-261111-1206.json`, aed5ec8): pass (see the latency follow-up above).
 - **Codec gaps.** 32-bpp images with non-standard masks are refused with a log line, not converted. Alpha is not tested.
   16-bpp masks other than 565/555 reach WIC unchecked.
-- LIVE: autostart + relogin on Omarchy, and the password-manager check (deferred, no manager on the test host).
+- LIVE: the password-manager check (deferred, no manager on the test host); confirm autostart for 5b257a9 in the journal after the next login.
 - Tray "Pause sync" check mark does not update after a click (pause itself works); a Ghostty copy is published twice
   (LIVE run 2026-11-12, below).
 - Pairing flake on the Windows tunnel ("No addressing information available"): fixed 2026-11-11 (`RELAY_WAIT` 6 s, see
@@ -746,7 +746,7 @@ evidence format: `docs/how-to/linux-live-checks.md`.
 | H6 Manual mode, `--clip-send` bind, settings after restart | pass |
 | H7 file clip from a second instance pastes in Nautilus | pass |
 | H8 drag-drop send from Nautilus (row, window + picker) | pass |
-| H1 autostart + relogin tray | pending |
+| H1 autostart + relogin tray | pass on the 2026-11-11 09:14 login (pre-5b257a9 package, journal of `app-app.fsync.Fsync@autostart.service`): started `--background` with no window, no watcher at first, tray registered 2 s later through the watcher retry. Re-check the journal after the next login for 5b257a9 |
 | G1 GNOME without AppIndicator: no tray, close minimizes, second launch shows (IPC) | pass (extension disabled for the run; second launch exits 0 in 119 ms, one process) |
 | G2 keyring: relogin keeps node id and session | pass (same node id 1166b312d3, a CLI clip is delivered without re-pairing) |
 | G3 received files paste in Nautilus (GNOME) | pass |
