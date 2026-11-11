@@ -28,7 +28,7 @@ Inputs:
 |---|---|---|
 | [01](phase-01-pairing-flake-root-cause.md) | Pairing "connection lost" flake: reproduce, root-cause, fix (3 d) | Pending |
 | [02](phase-02-offline-publish-lows-and-ffi-contract.md) | Offline-publish L1/L2 (latest slot per lane, serialized ordering doc) + `contract_version` 3 (1 d) | Pending |
-| [03](phase-03-lazy-file-latency.md) | Linux -> Windows lazy file 8.7 s vs 10 s gate: measure, cut the wait (1.5 d) | Pending |
+| [03](phase-03-lazy-file-latency.md) | Linux -> Windows lazy file 8.7 s vs 10 s gate: measure, cut the wait (1.5 d) | In Progress |
 | [04](phase-04-packaging-hardening.md) | PKGBUILD git sha, Phase 05 lows L3/L4/L6/L8, maintainer, repo license MIT OR Apache-2.0 (1.5 d) | Pending |
 | [05](phase-05-live-checks.md) | LIVE checks on Hyprland + GNOME VM; tunnel-leftover check (1 d, user at the desktop) | Pending |
 | [06](phase-06-close-out.md) | Devlog, plan 261106 close-out, branch + waso-vm run cleanup (0.5 d) | Pending |

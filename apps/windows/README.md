@@ -35,7 +35,7 @@ X5=1 REF=<pushed sha> apps/linux/tests/e2e/cross-os-with-windows.sh   # X1 + X2 
 - **Desktop:** `remote run` executes in session 0, where the WinUI app crashes. `cross-os-gui-peer.ps1 -Step pair|legs`
   therefore re-runs itself as a one-shot scheduled task (`schtasks /it`) in the logged-on user's session. An RDP
   or console session must be open. `taskMode: interactive` is machine-wide on the worker: set it only for the X3 run and restore it afterwards.
-- **Ordering:** no barrier. The Linux side reads and writes sync files under `%TEMP%\fsync-cross-os\gui\sync`
+- **Ordering:** no barrier (X2/X5 text: the first copy waits for the CLI's `ready` event plus the Linux app's presence list; X3 lazy: the Windows side starts a warm `Fsync.Interop.PasteHelper <dir> --warm`, which pastes when it gets a stdin line, and sends Win+Alt+V once the app logs the clip). The Linux side reads and writes sync files under `%TEMP%\fsync-cross-os\gui\sync`
   over ssh; each leg has its own deadline.
 - **Output:** JSON lines on stdout. The Linux harness reads only whitelisted fields; the output is untrusted data.
 - **Fixture:** a 40x40 coloured PNG with distinct channel formulas (same on both sides); files are 3 MB random.

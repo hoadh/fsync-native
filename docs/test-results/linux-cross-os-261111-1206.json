@@ -1,0 +1,149 @@
+{
+  "run": "linux-cross-os",
+  "git_sha": "aed5ec8",
+  "date": "2026-11-11T12:09:29+07:00",
+  "scope": "X1+X2+X5",
+  "threshold_ms": 5000,
+  "checks": {
+    "echo_checked_scopes": [
+      "x1"
+    ],
+    "echo_checks": {
+      "x1": [
+        "devL1 published 1 clip, devB 1; one history item per text"
+      ]
+    },
+    "echo_not_checked": [
+      "x2",
+      "x5"
+    ],
+    "latency_within_threshold": true,
+    "retries": 0
+  },
+  "legs": [
+    {
+      "id": "x1-text-app-to-cli",
+      "direction": "app-to-cli",
+      "kind": "text",
+      "latency_ms": 106,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": ""
+    },
+    {
+      "id": "x1-text-cli-to-app",
+      "direction": "cli-to-app",
+      "kind": "text",
+      "latency_ms": 59,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": ""
+    },
+    {
+      "id": "x1-file-cli-to-app",
+      "direction": "cli-to-app",
+      "kind": "file",
+      "latency_ms": 1494,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "3 MB; accept step is scripted (offer-accept), pending after 450 ms"
+    },
+    {
+      "id": "x1-file-app-to-cli",
+      "direction": "app-to-cli",
+      "kind": "file",
+      "latency_ms": 1140,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "3 MB, pick-device to fetch done"
+    },
+    {
+      "id": "x2-text-app-to-win",
+      "direction": "app-to-win",
+      "kind": "text",
+      "latency_ms": 60,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "cross-clock, skew 7909 ms corrected (+-14 ms); copy #1 of 1 (first copy 1794373691612 ms host clock); windows CLI launched -695 ms after copy #1; ready (online) -553 ms after copy #1; arrived 60 ms after copy #1; first copy 3160 ms after run start (CLI ready + backend presence seen at 3159)",
+      "skew_ms": 7909,
+      "skew_err_ms": 14
+    },
+    {
+      "id": "x2-text-win-to-app",
+      "direction": "win-to-app",
+      "kind": "text",
+      "latency_ms": 73,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "cross-clock, skew 7909 ms corrected (+-16 ms)",
+      "skew_ms": 7909,
+      "skew_err_ms": 16
+    },
+    {
+      "id": "x2-file-app-to-win",
+      "direction": "app-to-win",
+      "kind": "file",
+      "latency_ms": 4002,
+      "limit_ms": 10000,
+      "sha_ok": true,
+      "note": "3000000 bytes; cross-clock, skew 7911 ms corrected (+-12 ms)",
+      "skew_ms": 7911,
+      "skew_err_ms": 12
+    },
+    {
+      "id": "x2-file-win-to-app",
+      "direction": "win-to-app",
+      "kind": "file",
+      "latency_ms": 1753,
+      "limit_ms": 10000,
+      "sha_ok": true,
+      "note": "3000000 bytes; accept step scripted; cross-clock, skew 7912 ms corrected (+-17 ms)",
+      "skew_ms": 7912,
+      "skew_err_ms": 17
+    },
+    {
+      "id": "x5-text-app-to-win",
+      "direction": "app-to-win",
+      "kind": "text",
+      "latency_ms": 66,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "cross-clock, skew 7912 ms corrected (+-17 ms); copy #1 of 1 (first copy 1794373738340 ms host clock); windows CLI launched -570 ms after copy #1; ready (online) -439 ms after copy #1; arrived 66 ms after copy #1; first copy 2897 ms after run start (CLI ready + backend presence seen at 2896)",
+      "skew_ms": 7912,
+      "skew_err_ms": 17
+    },
+    {
+      "id": "x5-text-win-to-app",
+      "direction": "win-to-app",
+      "kind": "text",
+      "latency_ms": 60,
+      "limit_ms": 5000,
+      "sha_ok": true,
+      "note": "cross-clock, skew 7913 ms corrected (+-13 ms)",
+      "skew_ms": 7913,
+      "skew_err_ms": 13
+    },
+    {
+      "id": "x5-file-app-to-win",
+      "direction": "app-to-win",
+      "kind": "file",
+      "latency_ms": 3246,
+      "limit_ms": 10000,
+      "sha_ok": true,
+      "note": "8388608 bytes; cross-clock, skew 7914 ms corrected (+-7 ms)",
+      "skew_ms": 7914,
+      "skew_err_ms": 7
+    },
+    {
+      "id": "x5-file-win-to-app",
+      "direction": "win-to-app",
+      "kind": "file",
+      "latency_ms": 3984,
+      "limit_ms": 10000,
+      "sha_ok": true,
+      "note": "8388608 bytes; accept step scripted; cross-clock, skew 7915 ms corrected (+-21 ms)",
+      "skew_ms": 7915,
+      "skew_err_ms": 21
+    }
+  ]
+}

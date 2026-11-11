@@ -652,22 +652,77 @@ message seen. Not reproduced locally (the CLI starts the 3 s wait after the acco
 The offer now logs a warning when it has no relay URL. Candidate fix if X2 confirms it: wait longer than iroh's
 5 s report timeout for the home relay. The 120 s hang is not explained.
 
+**Fixed 2026-11-11 (plan 261110 phase 03).** The race was confirmed on waso-vm: 4 of 8 Windows-offer pairings
+failed, and the offering CLI's debug log shows the warning "pairing offer without a relay URL: no home relay after
+3s" in the same millisecond as iroh's "home is now relay" (3.0 s after the probes started). `RELAY_WAIT` is now 6 s
+(longer than iroh's 5 s report timeout; a unit test pins that), and the next pairing passed (one run; the old 4 of 8 rate makes that weak evidence, so watch it). The cost is a longer
+offer only when no relay is reachable at all.
+
 An orphan Windows `pair offer` can linger up to 200 s after a failed pair run.
+
+## Latency follow-up (plan 261110 phase 03, 2026-11-11)
+Two Windows legs were close to their gates: X3 lazy file Linux -> Windows (4577 / 8701 ms against 10 s) and X2/X5 text
+Linux app -> Windows CLI (about 6.2 s against 5 s). Stage timestamps were added to both legs (all on one clock).
+
+**X3 lazy file, ms after the Linux offer** (Windows app clock, skew removed):
+
+| Stage | before (2 runs) | after (5 gate runs) |
+|---|---|---|
+| Windows app logs "received files" | 2039, 2056 | 2031-2047 |
+| paste hotkey sent (harness saw the log line) | 2134, 2339 | 2072-2122 |
+| virtual files on the clipboard | 3665, 3866 | 2160-2226 |
+| PasteHelper starts the Paste verb | 3689, 3884 | 2161-2228 |
+| pasted file created | 6791, 4583 | 2671-2820 |
+| pasted file closed (leg latency) | 7156, 4946 | 2970-3029 |
+
+- The harness caused most of the variance: Win+Alt+V was sent and then the clipboard was polled only after a fixed
+  1.5 s sleep (the clip was seen 1.5 s late), and PasteHelper was started cold after that (0.7 s once, 3.1 s once,
+  from process start to the first byte of the file). Now: the hotkey goes out when the app logs the clip, the
+  clipboard is polled every 50 ms, and a warm PasteHelper (`--warm`: process and shell objects ready, pastes on a
+  stdin line) is started before the offer.
+- Gate: 5 runs, 2971, 2977, 3029, 2975, 2970 ms: median 2977 ms (limit 5000), max 3029 ms (limit 10000).
+- Product share that remains: about 2.0 s from the offer to "received files" on Windows. The Linux app's first send
+  after about 30 s idle goes through the cached connection, whose direct path has idled out; that attempt waits its
+  full 2 s limit (`FIRST_ATTEMPT`), then a fresh connection delivers in about 40 ms. Open (below).
+
+**X2/X5 text Linux app -> Windows CLI.** Root cause: both. The harness made copy #1 when the `remote run` was
+launched; the Windows CLI is online only about 2.4 s later (ssh, checkout, PowerShell, CLI start). So the first send hit an
+offline peer: attempt 1 fails after 2.0 s, attempt 2 starts a dial with the addresses known at that moment. The
+CLI came online during that dial, but a running dial kept its address snapshot: it only tried the new
+addresses after the 2 s stage ended. Arrival was therefore the next 2 s stage boundary after the peer came online
+(x2 4057 ms with the CLI online at 2445 ms; the earlier 6.2 s fits an online time just after the second boundary).
+Not the publish wait (1.5 s, which only decides when `publish` stops waiting), and not the Windows side
+(its debug log shows the connection arriving 0.1 s after the stage ended).
+- Product fix: `Dialer::connect_following_addrs` restarts a running dial when presence or mDNS gives the peer new
+  addresses (checked every 100 ms). With the old harness still copying at once: x2 4057 -> 2877 ms and x5 3076 -> 2701 ms
+  (online at 2.4 s, arrival 0.3-0.45 s later). Core test `dial_follows_addresses` (stale address, then the real one
+  after 300 ms: 2.01 s before, 0.38 s after).
+- Harness fix: the first copy waits for the CLI's `ready` event (read from its stdout file on the worker) and for the
+  Linux app's presence list showing the device online. Result: x2 text 60 ms, x5 text 66 ms. `NO_READY_WAIT=1`
+  restores the old behaviour for diagnosis.
 
 ## Open
 Nothing below blocks acceptance (the acceptance condition is X3 and X4, met above).
 - **X4 QR text: not tested.** The phase 06 spec asks for "code and QR text"; only the code (SAS) path ran. Decide whether
   QR is needed before the Platform emit gate opens, or record it as a permanent gap.
-- **Lazy file margin.** Linux -> Windows lazy file took 4577 ms (1217) and 8701 ms (1241) against 10 s. Variance comes
-  from the Win+Alt+V poll (1.5 s steps) and PasteHelper. Not changed.
+- **First send after idle costs about 2 s (product, open).** A clip sent after about 30 s without traffic goes first
+  over the cached connection whose direct path has idled out; the attempt waits its full 2 s (`FIRST_ATTEMPT`), then a
+  new connection delivers. Seen as the 2.0 s before "received files" in the X3 lazy leg and the first in-auto text
+  (about 2.2 s). Candidates: QUIC keep-alive on clip connections (traffic and battery cost to weigh) or a shorter first
+  attempt. Not changed: the gates have margin and the transport settings affect every app.
+- **x5 file Windows -> app varies (harness, open).** One run took 11.3 s (limit 10 s) with iroh's "Dropping received
+  relay packet: no available capacity" on the Linux side: the relay-forced 8 MiB transfer runs through the ssh
+  tunnel, 4.0-4.4 s in the passing runs. Not related to the dial change (the dial had finished).
+- **Windows clock steps.** Once the skew measured before a leg was off by 0.7 s (8480 vs 7794 ms at the next run): the VM
+  clock stepped between the probe and the leg (no w32time service). The harness fails such a leg (latency below minus
+  the error) instead of reporting it.
 - **Offline account device delays publishes (product, not fixed).** Publishes are sequential. While one device of the
   account is offline, each following publish waits up to 7 s (about 2 s + 5 s tries). Affects the Windows app and the CLI.
-- **X2 and X5 not re-run since the harness fixes.** Their evidence is at 994119f. The skew probe, echo checks and
-  `tries` fields changed after that. Re-run `X5=1` at HEAD to refresh them.
+- **X2 and X5** re-run 2026-11-11 (`linux-cross-os-261111-1206.json`, aed5ec8): pass (see the latency follow-up above).
 - **Codec gaps.** 32-bpp images with non-standard masks are refused with a log line, not converted. Alpha is not tested.
   16-bpp masks other than 565/555 reach WIC unchecked.
 - LIVE items carried from phases 02-05 and the Hyprland check (KeePassXC / Bitwarden not sent): tables above.
-- Pairing flake on the Windows tunnel ("No addressing information available"): confirm the relay URL race
-  (see "Known issues"). The local "connection lost" flake is fixed.
+- Pairing flake on the Windows tunnel ("No addressing information available"): fixed 2026-11-11 (`RELAY_WAIT` 6 s, see
+  "Known issues"); one Windows-offer pairing passed since (more runs needed to confirm). The local "connection lost" flake is fixed.
 - Platform emit gate: the backend deploy and the Mac/Windows releases with the tolerant decoder.
 - Confirm no tunnel process or portproxy rule remains on waso-vm and this host (phase 06 step 8). Not recorded yet.
