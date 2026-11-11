@@ -21,7 +21,7 @@ type ConnMap = HashMap<(NodeId, &'static [u8]), Connection>;
 
 const DIAL_TIMEOUT: Duration = Duration::from_secs(10);
 const FIRST_ATTEMPT: Duration = Duration::from_secs(2);
-/// How often a running dial checks whether presence / mDNS gave the peer new addresses.
+/// How often a running dial checks whether presence gave the peer new addresses.
 const ADDR_POLL: Duration = Duration::from_millis(100);
 
 #[derive(Clone)]
@@ -131,7 +131,7 @@ impl Dialer {
     /// One dial that follows the peer's addresses: `connect` uses the addresses known when it
     /// starts, so a peer that comes online (presence delivers its addresses) while the dial runs
     /// would otherwise only be tried after the whole stage timed out. The dial restarts at once
-    /// with the new addresses instead (a clip sent to a peer that was offline a moment ago must
+    /// when an address it does not know appears (removals never restart it) (a clip sent to a peer that was offline a moment ago must
     /// not wait out a 2 s stage).
     async fn connect_following_addrs(
         &self,
@@ -143,12 +143,20 @@ impl Dialer {
             let changed = async {
                 loop {
                     tokio::time::sleep(ADDR_POLL).await;
-                    if self.discovery.addr_for(peer).is_ok_and(|a| a != addr) {
+                    // Only an address the dial does not know yet is worth a restart: a lost or
+                    // removed one (peer flapping offline) must not cancel a handshake in flight.
+                    if self
+                        .discovery
+                        .addr_for(peer)
+                        .is_ok_and(|a| !a.addrs.is_subset(&addr.addrs))
+                    {
                         return;
                     }
                 }
             };
             tokio::select! {
+                // A connection that finished in the same poll wins over a restart.
+                biased;
                 res = self.ep.connect(addr.clone(), alpn) => return res.map_err(CoreError::net),
                 () = changed => tracing::debug!("peer addresses changed during a dial; dialing again"),
             }

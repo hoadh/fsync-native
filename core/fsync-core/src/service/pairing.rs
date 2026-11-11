@@ -195,6 +195,6 @@ mod tests {
     /// the offer's relay wait must outlast it (see `RELAY_WAIT`).
     #[test]
     fn relay_wait_outlasts_the_net_report_timeout() {
-        assert!(RELAY_WAIT > Duration::from_secs(5));
+        assert!(RELAY_WAIT > Duration::from_secs(iroh::NET_REPORT_TIMEOUT));
     }
 }

@@ -92,3 +92,31 @@ async fn dial_follows_addresses_that_change_mid_dial() {
         "dial took {took:?}: it did not follow the new address"
     );
 }
+
+/// Presence dropping the peer's addresses mid-dial (it flapped offline) must not cancel the
+/// running dial: only an address the dial does not know restarts it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dial_ignores_addresses_removed_mid_dial() {
+    let (ida, idb) = (Identity::generate().unwrap(), Identity::generate().unwrap());
+    let chain = chain_of(&ida, &idb);
+    let a = spawn(&ida, &chain, false).await;
+    let b = spawn(&idb, &chain, true).await;
+    let stale = SocketAddr::from(([127, 0, 0, 1], 9));
+    a.discovery.hint(&idb.node_id(), None, &[stale]).unwrap();
+    let dialer = a.dialer();
+    let b_id = idb.node_id();
+    let dial = tokio::spawn(async move { dialer.connect(&b_id, TEST_ALPN).await });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    // The peer's entry loses its address: the dial keeps running instead of failing.
+    a.discovery.hint(&idb.node_id(), None, &[]).unwrap();
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(!dial.is_finished(), "an address removal ended the dial");
+    a.discovery
+        .hint(&idb.node_id(), None, &[loopback(&b)])
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(20), dial)
+        .await
+        .expect("dial finished")
+        .unwrap()
+        .expect("dial ok");
+}

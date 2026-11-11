@@ -693,7 +693,7 @@ addresses after the 2 s stage ended. Arrival was therefore the next 2 s stage bo
 (x2 4057 ms with the CLI online at 2445 ms; the earlier 6.2 s fits an online time just after the second boundary).
 Not the publish wait (1.5 s, which only decides when `publish` stops waiting), and not the Windows side
 (its debug log shows the connection arriving 0.1 s after the stage ended).
-- Product fix: `Dialer::connect_following_addrs` restarts a running dial when presence or mDNS gives the peer new
+- Product fix: `Dialer::connect_following_addrs` restarts a running dial when presence gives the peer new
   addresses (checked every 100 ms). With the old harness still copying at once: x2 4057 -> 2877 ms and x5 3076 -> 2701 ms
   (online at 2.4 s, arrival 0.3-0.45 s later). Core test `dial_follows_addresses` (stale address, then the real one
   after 300 ms: 2.01 s before, 0.38 s after).

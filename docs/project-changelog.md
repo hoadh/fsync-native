@@ -7,7 +7,7 @@ Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-n
 Plan `plans/261110-2344-linux-app-follow-ups` phase 03, ADR [014](./adr/014-linux-desktop-app.md) "Latency follow-up". Branch `fix/lazy-file-latency`.
 
 ### Fixed
-- Core: a running dial restarts when presence or mDNS gives the peer new addresses (checked every 100 ms). Before, a peer that came online (or restarted on a new port) during a dial was only tried after the 2 s dial stage ended. A clip sent to a peer that had just started took the next 2 s boundary plus the retry; with the old harness x2 text Linux app -> Windows CLI went 4057 -> 2877 ms (earlier runs 6.2 s). Test: `dial_follows_addresses` (2.01 s before the fix, 0.38 s after). Severity: low (latency only).
+- Core: a running dial restarts when presence gives the peer an address it did not know (checked every 100 ms; removed addresses never restart it). Before, a peer that came online (or restarted on a new port) during a dial was only tried after the 2 s dial stage ended. A clip sent to a peer that had just started took the next 2 s boundary plus the retry; with the old harness x2 text Linux app -> Windows CLI went 4057 -> 2877 ms (earlier runs 6.2 s). Test: `dial_follows_addresses` (2.01 s before the fix, 0.38 s after). Severity: low (latency only).
 - Core: a pairing offer waits 6 s (was 3 s) for the home relay, longer than iroh's 5 s net report timeout. The 3 s wait raced iroh's 3 s probe timeout over a TCP-only relay path and the offer then carried no relay URL (the joiner's "No addressing information available", 4 of 8 Windows-offer pairings in this plan's runs). A unit test pins the margin.
 
 ### Changed
