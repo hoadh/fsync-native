@@ -21,6 +21,8 @@ type ConnMap = HashMap<(NodeId, &'static [u8]), Connection>;
 
 const DIAL_TIMEOUT: Duration = Duration::from_secs(10);
 const FIRST_ATTEMPT: Duration = Duration::from_secs(2);
+/// How often a running dial checks whether presence / mDNS gave the peer new addresses.
+const ADDR_POLL: Duration = Duration::from_millis(100);
 
 #[derive(Clone)]
 pub struct Dialer {
@@ -103,9 +105,10 @@ impl Dialer {
         // 2) the peer's idle inbound connections, 3) its in-use clip/presence ones too (a running
         // pull is always spared). Each step only happens if the dial still stalls.
         for stage in 0..3 {
-            let addr = self.discovery.addr_for(peer)?;
-            match tokio::time::timeout(FIRST_ATTEMPT, self.ep.connect(addr, alpn)).await {
-                Ok(res) => return res.map_err(CoreError::net),
+            match tokio::time::timeout(FIRST_ATTEMPT, self.connect_following_addrs(peer, alpn))
+                .await
+            {
+                Ok(res) => return res,
                 Err(_) if stage == 0 => {
                     self.forget(peer, alpn);
                     self.gate.close_stale(peer, alpn, started_std);
@@ -120,11 +123,36 @@ impl Dialer {
             }
         }
         let left = DIAL_TIMEOUT.saturating_sub(started.elapsed());
-        let addr = self.discovery.addr_for(peer)?;
-        tokio::time::timeout(left, self.ep.connect(addr, alpn))
+        tokio::time::timeout(left, self.connect_following_addrs(peer, alpn))
             .await
             .map_err(|_| CoreError::Net("dial timed out".into()))?
-            .map_err(CoreError::net)
+    }
+
+    /// One dial that follows the peer's addresses: `connect` uses the addresses known when it
+    /// starts, so a peer that comes online (presence delivers its addresses) while the dial runs
+    /// would otherwise only be tried after the whole stage timed out. The dial restarts at once
+    /// with the new addresses instead (a clip sent to a peer that was offline a moment ago must
+    /// not wait out a 2 s stage).
+    async fn connect_following_addrs(
+        &self,
+        peer: &NodeId,
+        alpn: &'static [u8],
+    ) -> Result<Connection> {
+        loop {
+            let addr = self.discovery.addr_for(peer)?;
+            let changed = async {
+                loop {
+                    tokio::time::sleep(ADDR_POLL).await;
+                    if self.discovery.addr_for(peer).is_ok_and(|a| a != addr) {
+                        return;
+                    }
+                }
+            };
+            tokio::select! {
+                res = self.ep.connect(addr.clone(), alpn) => return res.map_err(CoreError::net),
+                () = changed => tracing::debug!("peer addresses changed during a dial; dialing again"),
+            }
+        }
     }
 
     /// Drop a cached connection that turned out to be dead.

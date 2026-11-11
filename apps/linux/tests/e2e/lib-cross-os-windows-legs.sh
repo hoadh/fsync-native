@@ -172,7 +172,8 @@ win_text_to_win() { # app copies text (repeated every 8 s until the run ends); w
   # shellcheck disable=SC2046
   win_remote 300 "$out" -- "$WIN_PEER" $(win_leg_args text-in "$nonce" 240) -TextPrefix "$prefix" ${WIN_RUST_LOG:+-RustLog "$WIN_RUST_LOG"} & pid=$!; PIDS+=("$pid")
   local t_launch; t_launch="$(now_ms)"
-  win_wait_cli_ready "$nonce" "$pid"
+  # NO_READY_WAIT=1 reproduces the old harness (copy #1 at once): a diagnostic for the offline-peer dial schedule.
+  [[ -n "${NO_READY_WAIT:-}" ]] || win_wait_cli_ready "$nonce" "$pid"
   local t_ready_seen; t_ready_seen="$(now_ms)"
   while kill -0 "$pid" 2>/dev/null; do
     n=$((n + 1)); ts[$n]="$(now_ms)"; printf %s "$prefix-$n" | wl_a wl-copy
