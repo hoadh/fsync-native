@@ -15,7 +15,7 @@ namespace Fsync.App;
 /// </summary>
 public partial class App : Application
 {
-    public const uint ExpectedContract = 2;
+    public const uint ExpectedContract = 3;
 
     private readonly AppSettings _settings;
     private readonly bool _showWindowAtStart;

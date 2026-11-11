@@ -1,4 +1,4 @@
-//! FFI surface (contract v1, see docs/ffi-contract.md). Thin adapters over
+//! FFI surface (contract v3, see docs/ffi-contract.md). Thin adapters over
 //! `fsync_core::service`: records and enums are mirrored, nothing else lives here.
 //!
 //! Methods block; call them off the UI thread. Delegate callbacks arrive on one dedicated
@@ -24,10 +24,11 @@ pub use types_history::*;
 uniffi::setup_scaffolding!();
 
 /// Bumped on every breaking contract change (v2: trust-reset API, `ReauthRequired`,
-/// `AccountEvent::TrustReset`).
+/// `AccountEvent::TrustReset`; v3: `Published.pending` appended, so an older binding fails to
+/// decode `publish_clip` results). Apps compare it at startup before creating an engine.
 #[uniffi::export]
 pub fn contract_version() -> u32 {
-    2
+    3
 }
 
 /// Abandons the history in `data_dir` (moved aside as `history.corrupt-*`, not deleted) and

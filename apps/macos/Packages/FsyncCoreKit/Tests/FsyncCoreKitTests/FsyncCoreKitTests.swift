@@ -50,7 +50,7 @@ final class FsyncCoreKitTests: XCTestCase {
     }
 
     func testContractVersion() {
-        XCTAssertEqual(contractVersion(), 2)
+        XCTAssertEqual(contractVersion(), 3)
     }
 
     func testSettingsHistoryDevicesOnFreshEngine() throws {
