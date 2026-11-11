@@ -3,11 +3,11 @@ using Fsync.Core;
 
 namespace Fsync.CoreBindings.Tests;
 
-/// <summary>C# port of FsyncCoreKitTests.swift (contract v2), plus Windows-side checks.</summary>
+/// <summary>C# port of FsyncCoreKitTests.swift (contract v3), plus Windows-side checks.</summary>
 public sealed class EngineContractTests : EngineTestBase
 {
     [Fact]
-    public void ContractVersion() => Assert.Equal(2u, FsyncFfi.ContractVersion());
+    public void ContractVersion() => Assert.Equal(3u, FsyncFfi.ContractVersion());
 
     [Fact]
     public void SettingsHistoryDevicesOnFreshEngine()

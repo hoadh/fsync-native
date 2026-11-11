@@ -5,7 +5,7 @@ use super::{
     echo_guard::set_hash,
     input::{ClipInput, PublishOpts, PublishOutcome, Published},
     offer::build_entry,
-    peer_send_lanes::LaneTicket,
+    peer_send_lanes::{LaneRunner, Submit},
 };
 use crate::net::Dialer;
 use crate::net::gate::CLOSE_UNTRUSTED;
@@ -19,7 +19,7 @@ use fsync_proto::{
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use iroh::endpoint::{Connection, ConnectionError, WriteError};
 use std::{
-    sync::Arc,
+    sync::{Arc, atomic::Ordering},
     time::{Duration, Instant},
 };
 use tokio::sync::oneshot;
@@ -53,11 +53,18 @@ impl Shared {
     /// most `cfg.publish_wait` unless it is a push or `wait_all`: peers that have not answered
     /// by then are reported `pending` and keep being tried in the background. A peer still busy
     /// with an older clip's attempt is `pending` at once (no wait at all).
+    ///
+    /// Publishes must be serialized for ordering: each one queues its clip in every peer's lane
+    /// in turn, so two concurrent publishes can interleave there (A is newest for one peer, B for
+    /// another) and "latest" then differs between peers. The apps publish one clip at a time;
+    /// overlapping publishes are logged (debug), not prevented.
     pub(crate) async fn publish(
         self: &Arc<Self>,
         input: ClipInput,
         opts: PublishOpts,
     ) -> Result<PublishOutcome> {
+        // Pushes bypass the lanes, so only clipboard publishes can interleave there.
+        let _one = (!opts.push).then(|| PublishInFlight::enter(self));
         let peers = self.peers(opts.targets)?;
         let sensitive = input.sensitive;
         let persist = self.history.is_some() && !sensitive;
@@ -92,6 +99,8 @@ impl Shared {
                 .await;
         }
         let frame: Arc<[u8]> = encode_frame(&*offer)?.into();
+        #[cfg(feature = "test-hooks")]
+        self.track_frame(&frame);
         // Explicit pushes and one-shot callers wait for every peer's real result.
         let deadline = (!opts.push && !opts.wait_all)
             .then(|| tokio::time::Instant::now() + self.cfg.publish_wait);
@@ -141,11 +150,11 @@ impl Shared {
 
     /// Sends `frame` to `peer` in an engine-owned task (`Engine::close` aborts it) so a slow peer
     /// can finish after `publish` returned. The result arrives on the returned channel; when the
-    /// send fails the task itself logs it and withdraws the offer, whether anyone still waits or
-    /// not. Clipboard sends go through the peer's lane (in order, latest wins: an older clip is
-    /// never delivered after a newer one). A push bypasses the lane: it is the user's own action,
-    /// so it neither waits behind nor supersedes clipboard sends. `busy`: the clip has to wait
-    /// for an older attempt to this peer to end first.
+    /// send fails it is logged and the offer withdrawn, whether anyone still waits or not.
+    /// Clipboard sends go through the peer's lane (one attempt at a time, latest wins: an older
+    /// clip is never delivered after a newer one, see `PeerSendLanes`). A push bypasses the lane:
+    /// it is the user's own action, so it neither waits behind nor supersedes clipboard sends.
+    /// `busy`: the clip has to wait for an older attempt to this peer to end first.
     fn start_send(
         self: &Arc<Self>,
         peer: NodeId,
@@ -154,30 +163,60 @@ impl Shared {
         push: bool,
     ) -> (oneshot::Receiver<Result<()>>, bool) {
         let (tx, rx) = oneshot::channel();
-        let ticket = (!push).then(|| self.send_lanes.ticket(peer));
-        let busy = ticket.as_ref().is_some_and(LaneTicket::busy);
+        let job = SendJob { item_id, frame, tx };
         let sh = self.clone();
         // After close the task is dropped unrun: `rx` then reports no answer.
-        self.background.spawn(async move {
-            let r = match &ticket {
-                None => sh.send_one(&peer, &frame).await,
-                Some(t) => match t.turn().await {
-                    Some(_turn) => sh.send_one(&peer, &frame).await,
-                    None => Err(CoreError::Net("superseded by a newer clip".into())),
-                },
-            };
-            match &r {
-                Ok(()) => tracing::debug!("clip {item_id} delivered to {peer}"),
-                Err(e) => {
-                    tracing::debug!("clip {item_id} not delivered to {peer}: {e}");
-                    if let Ok(mut o) = sh.outbox.lock() {
-                        o.unoffer(&item_id, &peer);
-                    }
+        if push {
+            self.background.spawn(async move {
+                let r = sh.send_one(&peer, &job.frame).await;
+                sh.finish_send(&peer, job, r);
+            });
+            return (rx, false);
+        }
+        match self.send_lanes.submit(peer, job) {
+            Submit::Run(runner, job) => {
+                self.background.spawn(sh.run_lane(peer, runner, job));
+                (rx, false)
+            }
+            Submit::Wait { replaced } => {
+                if let Some(old) = replaced {
+                    let superseded = Err(CoreError::Net("superseded by a newer clip".into()));
+                    self.finish_send(&peer, old, superseded);
+                }
+                (rx, true)
+            }
+        }
+    }
+
+    /// Sends `job`, then every clip that queued behind it, until the peer's lane is empty.
+    /// The lane is freed (or the next clip taken) BEFORE the result is reported: the publish it
+    /// wakes may publish again at once, and must find the lane idle, not a live peer "busy".
+    async fn run_lane(self: Arc<Self>, peer: NodeId, mut lane: LaneRunner<SendJob>, job: SendJob) {
+        let mut job = Some(job);
+        while let Some(j) = job {
+            let r = self.send_one(&peer, &j.frame).await;
+            job = lane.next();
+            self.finish_send(&peer, j, r);
+            #[cfg(any(test, feature = "test-hooks"))]
+            if let Some(d) = self.cfg.lane_report_pause {
+                tokio::time::sleep(d).await;
+            }
+        }
+    }
+
+    /// Logs a send's result, withdraws the offer from `peer` if it failed, and reports it.
+    fn finish_send(&self, peer: &NodeId, job: SendJob, r: Result<()>) {
+        let SendJob { item_id, tx, .. } = job;
+        match &r {
+            Ok(()) => tracing::debug!("clip {item_id} delivered to {peer}"),
+            Err(e) => {
+                tracing::debug!("clip {item_id} not delivered to {peer}: {e}");
+                if let Ok(mut o) = self.outbox.lock() {
+                    o.unoffer(&item_id, peer);
                 }
             }
-            let _ = tx.send(r);
-        });
-        (rx, busy)
+        }
+        let _ = tx.send(r);
     }
 
     /// One attempt on the cached connection (short limit: a dead path must not hold up
@@ -195,6 +234,33 @@ impl Shared {
             }
             r => r,
         }
+    }
+}
+
+/// One clip queued for one peer: its encoded offer and where its result goes.
+pub(crate) struct SendJob {
+    item_id: Uuid,
+    frame: Arc<[u8]>,
+    tx: oneshot::Sender<Result<()>>,
+}
+
+/// Counts running publishes so an overlap (unordered, see `Shared::publish`) shows in the log.
+struct PublishInFlight<'a>(&'a Shared);
+
+impl<'a> PublishInFlight<'a> {
+    fn enter(sh: &'a Shared) -> Self {
+        if sh.publishing.fetch_add(1, Ordering::SeqCst) > 0 {
+            tracing::debug!(
+                "overlapping clip publishes: per-peer order may not follow publish order"
+            );
+        }
+        Self(sh)
+    }
+}
+
+impl Drop for PublishInFlight<'_> {
+    fn drop(&mut self) {
+        self.0.publishing.fetch_sub(1, Ordering::SeqCst);
     }
 }
 

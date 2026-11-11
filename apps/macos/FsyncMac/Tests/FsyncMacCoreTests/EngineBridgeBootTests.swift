@@ -8,6 +8,10 @@ final class EngineBridgeBootTests: EngineTestCase {
         EngineBridge(config: offlineConfig, secrets: AppSecrets(store: store), dataDir: dir, retryDelays: delays)
     }
 
+    func testExpectedContractMatchesTheBundledEngine() {
+        XCTAssertEqual(EngineBridge.expectedContract, contractVersion())
+    }
+
     func testBootWithoutSessionIsSignedOut() async throws {
         let bridge = makeBridge(makeStore(), dir: try tempDir())
         XCTAssertEqual(bridge.phase, .booting)

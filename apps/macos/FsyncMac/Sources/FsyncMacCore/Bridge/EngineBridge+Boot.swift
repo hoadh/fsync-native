@@ -2,6 +2,9 @@ import FsyncCoreKit
 import Foundation
 
 extension EngineBridge {
+    /// FFI contract this app was built against (`contractVersion()` of the bundled engine).
+    nonisolated public static let expectedContract: UInt32 = 3
+
     /// Starts booting in the background; observe `phase`. Calling it again restarts the account check.
     public func boot() {
         bootTask?.cancel()
@@ -50,6 +53,14 @@ extension EngineBridge {
 
     /// Builds the engine off the main actor. False when boot failed (phase already set).
     private func makeEngine() async -> Bool {
+        // Self-check: an engine built for another contract would fail later with a decode error.
+        let contract = contractVersion()
+        guard contract == Self.expectedContract else {
+            phase = .bootFailed(
+                "fsync could not load its engine: fsync_ffi contract \(contract), app expects \(Self.expectedContract)",
+                canReset: false)
+            return false
+        }
         let (config, secrets, dataDir, gate) = (config, secrets, dataDir, sessionGate)
         let forward: @Sendable (EngineEvent) -> Void = { [weak self] event in
             // FIFO main queue keeps callback order; a Task per event would not.

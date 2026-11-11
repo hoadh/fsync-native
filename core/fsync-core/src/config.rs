@@ -47,6 +47,11 @@ pub struct EngineConfig {
     #[cfg(any(test, feature = "test-hooks"))]
     #[doc(hidden)]
     pub clip_accept_delay: Option<Duration>,
+    /// Test hook (feature `test-hooks`): a peer lane's runner waits this long after reporting a
+    /// send's result (the runner thread preempted right after waking the publish).
+    #[cfg(any(test, feature = "test-hooks"))]
+    #[doc(hidden)]
+    pub lane_report_pause: Option<Duration>,
 }
 
 impl Default for EngineConfig {
@@ -66,6 +71,8 @@ impl Default for EngineConfig {
             serve_delay: None,
             #[cfg(any(test, feature = "test-hooks"))]
             clip_accept_delay: None,
+            #[cfg(any(test, feature = "test-hooks"))]
+            lane_report_pause: None,
         }
     }
 }

@@ -56,6 +56,9 @@ impl Engine {
             log: Mutex::default(),
             echo: EchoGuard::default(),
             send_lanes: Default::default(),
+            publishing: Default::default(),
+            #[cfg(feature = "test-hooks")]
+            frames: Default::default(),
             background: Default::default(),
             fetch_locks: Default::default(),
             offer_rate: Default::default(),

@@ -23,13 +23,29 @@ impl Shared {
 }
 
 impl Engine {
-    /// Announce a clipboard item (or files) to paired devices; see `PublishOpts`.
+    /// Announce a clipboard item (or files) to paired devices; see `PublishOpts`. Publishes must
+    /// be serialized for ordering: overlapping calls may reach peers in different orders.
     pub async fn publish_clip(
         &self,
         input: ClipInput,
         opts: PublishOpts,
     ) -> Result<PublishOutcome> {
         self.sh.publish(input, opts).await
+    }
+
+    /// Test hook (feature `test-hooks`): clip frames that sends still hold in memory.
+    #[cfg(feature = "test-hooks")]
+    pub fn clip_frames_held(&self) -> usize {
+        self.sh.clip_frames_held()
+    }
+
+    /// Test hook (feature `test-hooks`): peers our outbox entry for `item_id` is still offered to
+    /// (`None`: no live entry).
+    #[cfg(feature = "test-hooks")]
+    pub fn clip_offered_to(&self, item_id: &Uuid) -> Option<Vec<NodeId>> {
+        let o = self.sh.outbox.lock().ok()?;
+        let e = o.get(item_id, std::time::Instant::now())?;
+        Some(e.offered_to.iter().copied().collect())
     }
 
     /// A previously received (and validated) offer, while it is still remembered.

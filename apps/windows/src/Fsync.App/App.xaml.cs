@@ -15,7 +15,7 @@ namespace Fsync.App;
 /// </summary>
 public partial class App : Application
 {
-    public const uint ExpectedContract = 2;
+    public const uint ExpectedContract = 3;
 
     private readonly AppSettings _settings;
     private readonly bool _showWindowAtStart;
@@ -70,10 +70,13 @@ public partial class App : Application
             var v = FsyncFfi.ContractVersion();
             if (v != ExpectedContract) throw new InvalidOperationException($"fsync_ffi contract {v}, app expects {ExpectedContract}");
         }
-        catch (Exception e) when (e is DllNotFoundException or BadImageFormatException or EntryPointNotFoundException or InvalidOperationException)
+        // The bindings' static initializer (DLL load, UniFFI checksum check) fails wrapped in a
+        // TypeInitializationException: show the inner reason.
+        catch (Exception e) when (e is DllNotFoundException or BadImageFormatException or EntryPointNotFoundException or InvalidOperationException or TypeInitializationException)
         {
+            var why = e is TypeInitializationException { InnerException: { } inner } ? inner.Message : e.Message;
             ShowWindow();
-            _window!.ShowFatal($"fsync could not load its engine: {e.Message}");
+            _window!.ShowFatal($"fsync could not load its engine: {why}");
             return;
         }
 
