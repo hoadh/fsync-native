@@ -133,6 +133,7 @@ for line in sys.stdin:
   done
   if [[ "$(status_field L1 pairing.phase)" != confirm ]]; then
     ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" "powershell -NoProfile -Command \"Get-Content -ErrorAction SilentlyContinue $offer_path\"" >"$WORK/win-offer-file.txt" 2>&1 || true
+    ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" "powershell -NoProfile -Command \"Get-Content -ErrorAction SilentlyContinue ($offer_path + '.err')\"" >"$WORK/win-offer-file.err.txt" 2>&1 || true   # the offering CLI's stderr (RUST_LOG)
     fail "L1 never reached the SAS prompt (L1 phase '$(status_field L1 pairing.phase)', message '$(status_field L1 pairing.message)'; windows offer file: $(tr '\n' ' ' <"$WORK/win-offer-file.txt" | cut -c1-300))"
   fi
   local app_sas; app_sas="$(status_field L1 pairing.sas)"
