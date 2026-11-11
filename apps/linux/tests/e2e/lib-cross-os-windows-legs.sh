@@ -154,7 +154,8 @@ win_text_to_win() { # app copies text (repeated every 8 s until the run ends); w
   local tag="$1" nonce="$RANDOM$RANDOM" out="$WORK/win-$1-text-in.out" n=0 pid
   local prefix="fsync-xleg-$tag-$nonce"; declare -A ts
   # shellcheck disable=SC2046
-  win_remote 300 "$out" -- "$WIN_PEER" $(win_leg_args text-in "$nonce" 240) -TextPrefix "$prefix" & pid=$!; PIDS+=("$pid")
+  win_remote 300 "$out" -- "$WIN_PEER" $(win_leg_args text-in "$nonce" 240) -TextPrefix "$prefix" ${WIN_RUST_LOG:+-RustLog "$WIN_RUST_LOG"} & pid=$!; PIDS+=("$pid")
+  local t_launch; t_launch="$(now_ms)"
   while kill -0 "$pid" 2>/dev/null; do
     n=$((n + 1)); ts[$n]="$(now_ms)"; printf %s "$prefix-$n" | wl_a wl-copy
     for _ in $(seq 1 40); do kill -0 "$pid" 2>/dev/null || break; sleep 0.2; done
@@ -163,7 +164,17 @@ win_text_to_win() { # app copies text (repeated every 8 s until the run ends); w
   local txt rx; txt="$(win_field "$out" text-in text str)"; rx="$(win_field "$out" text-in recv_ts_ms int)"
   [[ "$txt" == "$prefix"-* && -n "$rx" ]] || fail "windows text-in: bad result '$txt' / '$rx'"
   local k="${txt##*-}"; [[ -n "${ts[$k]:-}" ]] || fail "windows received an unknown copy index '$k'"
-  LEG_SKEW="$WIN_SKEW_MS" LEG_ERR_MS="$WIN_SKEW_ERR_MS" leg "$tag-text-app-to-win" app-to-win text "$((rx - WIN_SKEW_MS - ts[$k]))" true "cross-clock, skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms)"
+  # Stages on the host clock (windows stamps minus skew): when the peer was online vs. each copy.
+  local rd la; rd="$(win_field "$out" text-in ready_ts_ms int)"; la="$(win_field "$out" text-in launch_ts_ms int)"
+  local stages="copy #$k of $n (first copy ${ts[1]} ms host clock)"
+  [[ -z "$la" ]] || stages+="; windows CLI launched $((la - WIN_SKEW_MS - ts[1])) ms after copy #1"
+  [[ -z "$rd" ]] || stages+="; ready (online) $((rd - WIN_SKEW_MS - ts[1])) ms after copy #1"
+  stages+="; arrived $((rx - WIN_SKEW_MS - ts[1])) ms after copy #1; remote-run launch $((ts[1] - t_launch)) ms after run start"
+  log "$tag text app-to-win stages: $stages"
+  if [[ -n "${WIN_RUST_LOG:-}" ]]; then   # RUST_LOG run: pull the CLI's stderr (data, read-only)
+    ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" "powershell -NoProfile -Command \"Get-Content -ErrorAction SilentlyContinue (Join-Path \$env:TEMP 'fsync-cross-os\\work-$nonce\\text-in.out.err')\"" >"$WORK/win-$tag-text-in.cli.log" 2>&1 || true
+  fi
+  LEG_SKEW="$WIN_SKEW_MS" LEG_ERR_MS="$WIN_SKEW_ERR_MS" leg "$tag-text-app-to-win" app-to-win text "$((rx - WIN_SKEW_MS - ts[$k]))" true "cross-clock, skew ${WIN_SKEW_MS} ms corrected (+-${WIN_SKEW_ERR_MS} ms); $stages"
 }
 
 win_text_from_win() {
