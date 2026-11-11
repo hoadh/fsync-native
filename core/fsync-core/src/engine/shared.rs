@@ -2,7 +2,7 @@
 
 use crate::{
     blobs::BlobStore,
-    clip::{BackgroundSends, EchoGuard, PeerRate, PeerSendLanes, ReceivedLog},
+    clip::{BackgroundSends, EchoGuard, PeerRate, PeerSendLanes, ReceivedLog, SendJob},
     config::EngineConfig,
     error::{CoreError, Result},
     events::EventSink,
@@ -14,7 +14,7 @@ use crate::{
 use fsync_proto::NodeId;
 use std::sync::{
     Arc, Mutex, OnceLock,
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicU64, AtomicUsize, Ordering},
 };
 
 pub struct Shared {
@@ -30,7 +30,12 @@ pub struct Shared {
     pub log: Mutex<ReceivedLog>,
     pub echo: EchoGuard,
     /// Clip sends to one peer run in order, latest wins (see `PeerSendLanes`).
-    pub(crate) send_lanes: PeerSendLanes,
+    pub(crate) send_lanes: PeerSendLanes<SendJob>,
+    /// `publish` calls running now; more than one is logged (see `Shared::publish`).
+    pub(crate) publishing: AtomicUsize,
+    /// Test hook: every clip frame built, to count those still held by sends.
+    #[cfg(feature = "test-hooks")]
+    pub(crate) frames: Mutex<Vec<std::sync::Weak<[u8]>>>,
     /// Sends still running after `publish` returned; aborted by `Engine::close`.
     pub(crate) background: BackgroundSends,
     pub fetch_locks: FetchLocks,
@@ -51,6 +56,21 @@ impl Shared {
 
     pub fn dialer(&self) -> Result<&Dialer> {
         self.dialer.get().ok_or(CoreError::Closed)
+    }
+
+    /// Test hook: remember `frame` so `clip_frames_held` can tell whether a send still holds it.
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn track_frame(&self, frame: &std::sync::Arc<[u8]>) {
+        let mut f = self.frames.lock().unwrap_or_else(|p| p.into_inner());
+        f.retain(|w| w.strong_count() > 0);
+        f.push(std::sync::Arc::downgrade(frame));
+    }
+
+    /// Test hook: clip frames still alive (held by a running send or a clip waiting in a lane).
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn clip_frames_held(&self) -> usize {
+        let f = self.frames.lock().unwrap_or_else(|p| p.into_inner());
+        f.iter().filter(|w| w.strong_count() > 0).count()
     }
 
     /// Drop blobs nothing else uses: no live outbox entry serves them and no history item

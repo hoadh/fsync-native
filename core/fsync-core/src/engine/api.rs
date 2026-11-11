@@ -23,13 +23,20 @@ impl Shared {
 }
 
 impl Engine {
-    /// Announce a clipboard item (or files) to paired devices; see `PublishOpts`.
+    /// Announce a clipboard item (or files) to paired devices; see `PublishOpts`. Publishes must
+    /// be serialized for ordering: overlapping calls may reach peers in different orders.
     pub async fn publish_clip(
         &self,
         input: ClipInput,
         opts: PublishOpts,
     ) -> Result<PublishOutcome> {
         self.sh.publish(input, opts).await
+    }
+
+    /// Test hook (feature `test-hooks`): clip frames that sends still hold in memory.
+    #[cfg(feature = "test-hooks")]
+    pub fn clip_frames_held(&self) -> usize {
+        self.sh.clip_frames_held()
     }
 
     /// A previously received (and validated) offer, while it is still remembered.

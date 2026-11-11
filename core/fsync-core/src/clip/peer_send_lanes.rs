@@ -3,40 +3,60 @@
 //! `publish` returns after a short wait and lets slow peers finish in the background, so the
 //! attempt for clip N to a peer may still run while clip N+1 is published. The receiver applies
 //! every offer it accepts as the newest clipboard (no ordering check), so N must never reach the
-//! peer after N+1. Each peer has one lane: sends to it run one at a time, and a send that gets its
-//! turn after a newer clip was queued for that peer is skipped (latest wins). At most one attempt
-//! per peer is on the wire, so a dead peer never accumulates dials either.
+//! peer after N+1. Each peer has one lane: at most one attempt runs (the lane's runner), and
+//! behind it waits at most one clip, the newest. A newer clip replaces the waiting one (latest
+//! wins); the running attempt keeps its own clip. So a dead peer holds at most two frames and one
+//! dial, however many clips are copied while it is away.
 
 use fsync_proto::NodeId;
 use std::{
     collections::HashMap,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::{Arc, Mutex},
 };
-use tokio::sync::{Mutex as AsyncMutex, MutexGuard};
 
-#[derive(Default)]
-struct Lane {
-    /// Number of the newest clip queued for this peer.
-    latest: AtomicU64,
-    /// Held for the whole send attempt.
-    turn: AsyncMutex<()>,
+struct LaneState<T> {
+    /// A runner owns the lane (an attempt is on the wire, or about to be).
+    running: bool,
+    /// The newest clip queued behind the running attempt.
+    waiting: Option<T>,
+}
+
+impl<T> Default for LaneState<T> {
+    fn default() -> Self {
+        Self {
+            running: false,
+            waiting: None,
+        }
+    }
+}
+
+type Lane<T> = Arc<Mutex<LaneState<T>>>;
+
+fn lock<T>(lane: &Lane<T>) -> std::sync::MutexGuard<'_, LaneState<T>> {
+    lane.lock().unwrap_or_else(|p| p.into_inner())
 }
 
 /// One lane per paired peer (the map only grows with the paired device list).
-#[derive(Default)]
-pub(crate) struct PeerSendLanes(Mutex<HashMap<NodeId, Arc<Lane>>>);
+pub(crate) struct PeerSendLanes<T>(Mutex<HashMap<NodeId, Lane<T>>>);
 
-/// A clip's place in a peer's lane. Taken in publish order, before the send task starts.
-pub(crate) struct LaneTicket {
-    lane: Arc<Lane>,
-    seq: u64,
+impl<T> Default for PeerSendLanes<T> {
+    fn default() -> Self {
+        Self(Mutex::new(HashMap::new()))
+    }
 }
 
-impl PeerSendLanes {
-    pub(crate) fn ticket(&self, peer: NodeId) -> LaneTicket {
+/// What `submit` did with a send.
+pub(crate) enum Submit<T> {
+    /// The lane was idle: the caller runs `job` now, then asks `runner.next()` for more.
+    Run(LaneRunner<T>, T),
+    /// An older attempt to this peer still runs: `job` waits behind it. `replaced` is the clip
+    /// that waited before, superseded by this one and never sent.
+    Wait { replaced: Option<T> },
+}
+
+impl<T> PeerSendLanes<T> {
+    /// Queues `job` for `peer`. Called in publish order.
+    pub(crate) fn submit(&self, peer: NodeId, job: T) -> Submit<T> {
         let lane = self
             .0
             .lock()
@@ -44,56 +64,134 @@ impl PeerSendLanes {
             .entry(peer)
             .or_default()
             .clone();
-        let seq = lane.latest.fetch_add(1, Ordering::SeqCst) + 1;
-        LaneTicket { lane, seq }
+        let mut s = lock(&lane);
+        if s.running {
+            let replaced = s.waiting.replace(job);
+            return Submit::Wait { replaced };
+        }
+        s.running = true;
+        drop(s);
+        Submit::Run(LaneRunner { lane, done: false }, job)
+    }
+
+    /// Frames held by all lanes: running attempts plus waiting clips (for tests).
+    #[cfg(test)]
+    fn held(&self) -> usize {
+        let map = self.0.lock().unwrap();
+        map.values()
+            .map(|l| {
+                let s = lock(l);
+                usize::from(s.running) + usize::from(s.waiting.is_some())
+            })
+            .sum()
     }
 }
 
-impl LaneTicket {
-    /// An older send to this peer is still running (with apps publishing one clip at a time,
-    /// that is an attempt that outlived its `publish`: the peer is slow or offline).
-    pub(crate) fn busy(&self) -> bool {
-        self.lane.turn.try_lock().is_err()
-    }
+/// Owns a peer's lane while its attempts run. Dropped without draining (the send task was aborted
+/// or never ran, e.g. engine closing): the lane is freed and the waiting clip dropped with it.
+pub(crate) struct LaneRunner<T> {
+    lane: Lane<T>,
+    done: bool,
+}
 
-    /// Waits until no other send to this peer runs. `None`: a newer clip was queued for the peer
-    /// meanwhile, so this one must not be sent (it would overwrite the newer one there).
-    pub(crate) async fn turn(&self) -> Option<MutexGuard<'_, ()>> {
-        let guard = self.lane.turn.lock().await;
-        (self.lane.latest.load(Ordering::SeqCst) == self.seq).then_some(guard)
+impl<T> LaneRunner<T> {
+    /// The clip to send next, after the current attempt ended. `None`: nothing waits, the lane is
+    /// idle again and the runner must stop.
+    pub(crate) fn next(&mut self) -> Option<T> {
+        let mut s = lock(&self.lane);
+        let job = s.waiting.take();
+        if job.is_none() {
+            s.running = false;
+            self.done = true;
+        }
+        job
+    }
+}
+
+impl<T> Drop for LaneRunner<T> {
+    fn drop(&mut self) {
+        if !self.done {
+            let waiting = {
+                let mut s = lock(&self.lane);
+                s.running = false;
+                s.waiting.take()
+            };
+            drop(waiting);
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
     fn peer(c: char) -> NodeId {
         c.to_string().repeat(64).parse().unwrap()
     }
 
-    #[tokio::test]
-    async fn older_clip_waiting_for_its_turn_is_skipped() {
-        let lanes = PeerSendLanes::default();
-        let (n1, n2) = (lanes.ticket(peer('a')), lanes.ticket(peer('a')));
-        assert!(n1.turn().await.is_none(), "n1 was superseded by n2");
-        assert!(n2.turn().await.is_some());
+    fn run<T>(s: Submit<T>) -> (LaneRunner<T>, T) {
+        match s {
+            Submit::Run(r, j) => (r, j),
+            Submit::Wait { .. } => panic!("lane was busy"),
+        }
     }
 
-    #[tokio::test]
-    async fn sends_to_one_peer_run_one_at_a_time_other_peers_do_not_wait() {
+    fn replaced<T>(s: Submit<T>) -> Option<T> {
+        match s {
+            Submit::Wait { replaced } => replaced,
+            Submit::Run(..) => panic!("lane was idle"),
+        }
+    }
+
+    #[test]
+    fn a_newer_clip_replaces_the_waiting_one_the_running_one_keeps_its_own() {
         let lanes = PeerSendLanes::default();
-        let n1 = lanes.ticket(peer('a'));
-        assert!(!n1.busy());
-        let held = n1.turn().await.expect("latest");
-        let n2 = lanes.ticket(peer('a'));
-        assert!(n2.busy(), "n1's attempt still runs");
-        let other = lanes.ticket(peer('b'));
-        assert!(other.turn().await.is_some(), "peer b has its own lane");
-        let blocked = tokio::time::timeout(Duration::from_millis(50), n2.turn()).await;
-        assert!(blocked.is_err(), "n2 must wait for n1's attempt");
-        drop(held);
-        assert!(n2.turn().await.is_some());
+        let (mut r, first) = run(lanes.submit(peer('a'), 1));
+        assert_eq!(first, 1);
+        assert_eq!(replaced(lanes.submit(peer('a'), 2)), None);
+        assert_eq!(
+            replaced(lanes.submit(peer('a'), 3)),
+            Some(2),
+            "2 superseded"
+        );
+        assert_eq!(r.next(), Some(3));
+        assert_eq!(r.next(), None, "lane idle again");
+        let (_r, again) = run(lanes.submit(peer('a'), 4));
+        assert_eq!(again, 4);
+    }
+
+    #[test]
+    fn other_peers_have_their_own_lane() {
+        let lanes = PeerSendLanes::default();
+        let (_a, _) = run(lanes.submit(peer('a'), 1));
+        let (_b, _) = run(lanes.submit(peer('b'), 1));
+    }
+
+    #[test]
+    fn a_burst_behind_a_stuck_attempt_holds_at_most_two_frames() {
+        let lanes = PeerSendLanes::default();
+        let frame = Arc::new([0u8; 16]);
+        let (_r, _running) = run(lanes.submit(peer('a'), frame.clone()));
+        for _ in 0..50 {
+            drop(replaced(lanes.submit(peer('a'), frame.clone())));
+        }
+        assert_eq!(lanes.held(), 2);
+        assert_eq!(
+            Arc::strong_count(&frame),
+            3,
+            "ours, the running and the waiting one"
+        );
+    }
+
+    #[test]
+    fn an_aborted_runner_frees_the_lane_and_drops_the_waiting_clip() {
+        let lanes = PeerSendLanes::default();
+        let frame = Arc::new(0u8);
+        let (r, running) = run(lanes.submit(peer('a'), frame.clone()));
+        assert!(replaced(lanes.submit(peer('a'), frame.clone())).is_none());
+        drop((r, running));
+        assert_eq!(Arc::strong_count(&frame), 1);
+        assert_eq!(lanes.held(), 0);
+        let (_r, _) = run(lanes.submit(peer('a'), frame));
     }
 }

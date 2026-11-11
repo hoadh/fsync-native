@@ -152,7 +152,8 @@ impl Inner {
 impl FsyncService {
     /// Offers a local clip to every paired device. Returns after a short wait
     /// (`EngineConfig::publish_wait`); devices that have not answered by then are listed in
-    /// `pending` and keep being tried in the background while the engine runs.
+    /// `pending` and keep being tried in the background while the engine runs. Publishes must be
+    /// serialized for ordering (call it from one thread at a time); see `Engine::publish_clip`.
     pub fn publish_clip(&self, clip: LocalClip) -> SvcResult<Published> {
         self.run(self.inner.publish(clip, false))
     }

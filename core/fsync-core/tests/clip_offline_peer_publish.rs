@@ -1,8 +1,8 @@
 //! An offline account device must not slow down publishing to the others: `publish` returns after
 //! `publish_wait` and the dead peer is tried in the background. A device that comes back gets the
 //! next clip, a slow but live peer gets the newest clip and never an older one after it, an
-//! explicit push still waits for the real result, and closing the engine with a send still
-//! running neither hangs nor panics.
+//! explicit push still waits for the real result, a copy burst behind a dead peer holds at most
+//! two clip frames, and closing the engine with a send still running neither hangs nor panics.
 
 mod common;
 
@@ -209,6 +209,28 @@ async fn slow_live_peer_gets_the_newest_clip_never_an_older_one_after_it() {
         n1.item_id,
         n2.item_id
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_burst_to_a_dead_peer_holds_at_most_two_frames() {
+    // A long retry (2 s + 30 s): the first clip's attempt runs for the whole burst.
+    let cfg = EngineConfig {
+        send_timeout: Duration::from_secs(30),
+        publish_wait: Duration::from_millis(200),
+        ..EngineConfig::default()
+    };
+    let ps = group(vec![cfg; 2]).await;
+    let (a, b) = (&ps[0], &ps[1]);
+    b.engine.close().await;
+    for i in 0..50 {
+        let (p, _) = publish(a, &format!("burst {i}")).await;
+        assert_eq!(p.pending, vec![b.nid()], "clip {i}: {p:?}");
+    }
+    // The running attempt's frame and the newest waiting one; the 48 in between were dropped.
+    let held = a.engine.clip_frames_held();
+    assert!(held <= 2, "{held} frames held for a dead peer");
+    a.engine.close().await;
+    assert_eq!(a.engine.clip_frames_held(), 0, "close frees every frame");
 }
 
 #[tokio::test(flavor = "multi_thread")]

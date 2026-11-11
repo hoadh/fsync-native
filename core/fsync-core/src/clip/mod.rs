@@ -20,3 +20,4 @@ pub(crate) use peer_send_lanes::PeerSendLanes;
 pub(crate) use rate::PeerRate;
 pub(crate) use receive::ClipHandler;
 pub use received_log::{KEEP_BYTES, ReceivedLog, ReceivedOffer, checked_total};
+pub(crate) use send::SendJob;
