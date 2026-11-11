@@ -155,14 +155,16 @@ win_leg_args() { echo -Step leg -Leg "$1" -Api "$API" -Relay "$RELAY" -Name "$WI
 # nonce makes the file this run's), then (2) the Linux app's backend presence listing the device as online. Copying
 # earlier hits an offline peer, and the offline-peer retry schedule (2 s + stage stall) ends up in the latency.
 win_wait_cli_ready() {
-  local nonce="$1" pid="$2" ready_path
+  local nonce="$1" pid="$2" ready_path out ready=""
   ready_path="(Join-Path \$env:TEMP 'fsync-cross-os\\work-$nonce\\text-in.out')"   # PowerShell expression, expanded on the worker
   for _ in $(seq 1 240); do
-    ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" "powershell -NoProfile -Command \"Get-Content -ErrorAction SilentlyContinue $ready_path\"" 2>/dev/null \
-      | grep -q '"event":"ready"' && break
+    # timeout: ConnectTimeout only covers connecting; a wedged remote PowerShell must not hang the leg.
+    out="$(timeout 20 ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" "powershell -NoProfile -Command \"Get-Content -ErrorAction SilentlyContinue $ready_path\"" 2>/dev/null || true)"
+    [[ "$out" == *'"event":"ready"'* ]] && { ready=1; break; }
     kill -0 "$pid" 2>/dev/null || { wait "$pid" || true; fail "windows text-in run ended before the CLI was ready"; }
     sleep 0.25
   done
+  [[ -n "$ready" ]] || fail "windows CLI did not report ready (nonce $nonce)"
   peer_online L1 "$WIN_NAME"
 }
 
