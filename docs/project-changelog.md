@@ -8,12 +8,13 @@ Plan `plans/261110-2344-linux-app-follow-ups` phase 02 (review lows L1, L2, L-ne
 
 ### Changed
 - Core: each peer's clip lane keeps one "latest" slot instead of a queue. One attempt runs at a time; a newer clip replaces the one waiting behind it (the replaced clip is reported as not delivered, "superseded", and its offer withdrawn), and the running attempt keeps its own clip. A copy burst behind a dead peer now holds at most two clip frames (up to about 256 KiB each) instead of one per copy for up to 7 s. Latest-wins is unchanged.
-- Core: `publish_clip` (engine, service, FFI) documents that publishes must be serialized for ordering; two overlapping publishes are logged at debug level. No locking change (the apps publish one clip at a time).
-- FFI: `contract_version()` is 3 (`Published.pending` was appended in a positional record, so an older binding fails at the first `publish_clip` decode). The Windows startup check and the macOS and C# contract tests expect 3. Swift and C# bindings regenerated (doc comment and the `contract_version` checksum only; the UniFFI checksum covers the doc comment, so an old binding now also fails its load-time checksum check).
+- Core: `publish_clip` (engine, service, FFI) documents that publishes must be serialized for ordering; two overlapping clipboard publishes are logged at debug level (pushes bypass the lanes and are not counted). No locking change (the apps publish one clip at a time).
+- FFI: `contract_version()` is 3 (`Published.pending` was appended in a positional record, so an older binding fails at the first `publish_clip` decode). The Windows startup check and the macOS and C# contract tests expect 3. The `contract_version` doc comment is unchanged (its history is now a plain `//` comment), so its UniFFI checksum and the generated Swift and C# bindings stay as they were: a v2 binding still loads against the new library and gets the startup mismatch message instead of a decode error.
 
 ### Added
+- Windows app: the startup check also catches `TypeInitializationException` (the bindings' static initializer: DLL load, UniFFI checksum) and shows its inner reason instead of crashing.
 - macOS app: a startup check of `contractVersion()` before the engine is created (`EngineBridge.expectedContract`); a mismatch shows "fsync could not load its engine" as a boot failure, like Windows.
-- Core tests: lane unit tests (replace, burst bound, aborted runner frees the lane) and `a_burst_to_a_dead_peer_holds_at_most_two_frames` (50 publishes to a dead peer; test hook `Engine::clip_frames_held`, feature `test-hooks`).
+- Core tests: lane unit tests (replace, burst bound, aborted runner frees the lane) and `a_burst_to_a_dead_peer_holds_at_most_two_frames` (50 publishes to a dead peer; test hook `Engine::clip_frames_held`, feature `test-hooks`), `a_live_peer_is_never_busy_once_its_result_is_reported` (hook `lane_report_pause`: the lane is freed before a result wakes the publish, so a live peer is never reported pending by the next publish), and a check that a superseded clip's offer is withdrawn (hook `Engine::clip_offered_to`).
 
 ## 2026-11-11 - Pairing "connection lost" flake fixed
 

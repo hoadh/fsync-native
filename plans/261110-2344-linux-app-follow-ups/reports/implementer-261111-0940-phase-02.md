@@ -29,3 +29,18 @@ Branch `fix/offline-publish-lows` (from main 381de6e). Not pushed.
 ## Unresolved questions
 - The macOS startup check and the Swift/C# tests are unverified locally. The macOS and Windows CI jobs must be green (the plan's gate).
 - The scratch dirs `~/.cache/fsync-p02-{mut,mut-target,bindgen-cs,bindings,tmp}` are left in place. Delete them when they are no longer needed.
+
+## Fix round (review code-reviewer-261111-0945-phase-02, 8.5)
+- **M1** `send.rs` `run_lane`: `job = lane.next()` now runs BEFORE `finish_send`. The lane is free, or the next clip is taken, before the result wakes the publish. New test hook `EngineConfig::lane_report_pause` (test-hooks only) makes the runner sleep right after `finish_send`. New test `a_live_peer_is_never_busy_once_its_result_is_reported`: 3 back-to-back publishes to a live peer with a 1 s pause, and each must be `delivered`, never `pending`. Mutation (old order, pause between report and free; scratch copy) FAILS: "clip 1: ... pending: [peer]". The other 6 tests pass.
+- **M2**:
+  - The `contract_version` doc comment is restored to main's exact text. The version history moved to a plain `//` comment that explains why the doc comment must not change.
+  - Regenerated Swift and C# (same tools as before) are byte-identical to main's (checksum 18762). The checked-in bindings now equal main.
+  - A v2 binding therefore loads against the v3 library and gets the friendly message. The 02c31de diff also shows that appending a record field changed no checksum.
+  - Windows `App.xaml.cs`: the filter adds `TypeInitializationException` and shows `InnerException.Message`.
+  - `ffi-contract.md` now describes the real behaviour: a checksum mismatch is `fatalError` on macOS and a caught `TypeInitializationException` on Windows, and the doc comment stays stable. The changelog is corrected too.
+- **L1**: documented on `LaneRunner`. When a send panics, the waiting clip is dropped without unoffer: its publish sees "no answer", and the offer expires from the outbox, as for sends aborted at close. Justification: this is a bug path that `BackgroundSends` already logs; the clip would have been replaced anyway; a generic lane cannot reach the outbox; and catch_unwind is not worth its cost here.
+- **L2**: new test hook `Engine::clip_offered_to`. The slow-peer test now asserts that n+1's offer to b is withdrawn and n+2's is kept. Mutation (superseded clip only answered, no unoffer) FAILS: "n+1 unoffered".
+- **L3**: `EngineBridgeBootTests.testExpectedContractMatchesTheBundledEngine` (`EngineBridge.expectedContract == contractVersion()`). Not run here; it runs in the macOS CI job.
+- **L4**: `PublishInFlight` is entered only for non-push publishes.
+- **L5**: ffi-contract has a new "v3 (version bump)" section holding `Published.pending`, and the long line is rewrapped. The "5 s per-peer timeout" wording from the old review is no longer in docs/ (grep finds nothing).
+- Verification: fmt OK; clippy --workspace --all-targets -D warnings OK; clippy -p fsync-core -p fsync-ffi --lib -D warnings OK; fsync-core + fsync-ffi tests 253 passed, 0 failed, 3 ignored; clip_offline_peer_publish 7/7 in 5 consecutive runs (~8.1 s). Bindings: regenerated, identical to main. Swift and C# not compiled here (macOS/Windows CI).
