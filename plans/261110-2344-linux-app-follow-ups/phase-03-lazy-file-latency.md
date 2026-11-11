@@ -28,7 +28,7 @@
 - [x] 3 measuring runs, breakdown in the report (reports/implementer-*-phase-03.md)
 - [x] Fix (harness and product) + tests
 - [x] 5-run gate, results JSON, ADR "Open" row updated
-- [ ] Review >= 9.5, PR, CI green
+- [x] Review >= 9.5 (9.0 -> 9.5 after fixes), PR #5, CI green
 
 ## Risks
 Needs the user's RDP session. If waso-vm is off, stop and ask (do not switch to headless for GUI legs).
