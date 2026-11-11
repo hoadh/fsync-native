@@ -756,7 +756,9 @@ Findings (fixed on branch `fix/linux-live-findings`, 2026-11-12; re-check live a
   different ids about 2 ms apart (`clip delivered` twice in the debug log). Primary selection is ignored, no clipboard
   manager runs, and tray "Send clipboard now" sends once: the backend sees two regular selections for one copy and the
   outbound path does not drop an identical repeat. Fix: an automatic change whose content equals the last automatic
-  publish within 1 s (`AUTO_REPEAT_WINDOW`) is dropped; explicit sends always publish and, like a received clip written
+  publish seen within 1 s of it (`AUTO_REPEAT_WINDOW`, measured between the watcher's sightings: the first live
+  re-check of baaf93f still sent the copy twice, 1.5 s apart, because the second sighting waited in the lane while the
+  first publish waited 1.5 s for confirmations) is dropped; explicit sends always publish and, like a received clip written
   to the clipboard, reset the record. The cancel check and the record share one lock, so a replaced job never hides the
   change that replaced it (`sync/tests_repeat.rs`).
 - **F2, tray "Pause sync" check mark.** `toggle_pause` flips the engine state (verified: no publish while paused), but

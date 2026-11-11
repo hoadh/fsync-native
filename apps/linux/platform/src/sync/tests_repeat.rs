@@ -63,6 +63,28 @@ fn the_same_copy_seen_twice_while_the_first_publishes_is_published_once() {
 }
 
 #[test]
+fn a_publish_slower_than_the_window_does_not_let_the_second_sighting_through() {
+    // Live 2026-11-12: the first publish waited 1.5 s for confirmations while the second
+    // sighting (2 ms later) sat in the lane; measured from the publish it was "outside" the 1 s
+    // window and went out 1.5 s later. The window is measured between sightings.
+    let r = rig(true, true, false);
+    r.engine.set_repeat_window(Duration::from_millis(250));
+    *r.service.publish_delay.lock().expect("d") = Duration::from_millis(800);
+    copy(&r, b"slow");
+    std::thread::sleep(Duration::from_millis(20));
+    copy(&r, b"slow");
+    assert!(r.published.recv_timeout(Duration::from_secs(3)).is_ok());
+    // A second publish would need another 800 ms: wait well past it.
+    assert!(
+        r.published
+            .recv_timeout(Duration::from_millis(1500))
+            .is_err(),
+        "the second sighting was published"
+    );
+    r.engine.shutdown(Duration::from_secs(2));
+}
+
+#[test]
 fn the_same_copy_seen_twice_after_the_first_publish_is_published_once() {
     let r = wide_rig();
     copy(&r, b"twice");

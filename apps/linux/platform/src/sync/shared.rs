@@ -20,7 +20,9 @@ use std::time::{Duration, Instant};
 pub(super) const AUTO_REPEAT_WINDOW: Duration = Duration::from_secs(1);
 
 pub(super) enum OutJob {
-    Auto(ClipChange),
+    /// A background change and when the watcher saw it (the repeat window is measured between
+    /// sightings, not between publishes: a publish can wait 1.5 s for confirmations).
+    Auto(ClipChange, Instant),
     Explicit(ClipChange),
     Clip(LocalClip),
 }
@@ -55,7 +57,8 @@ fn fingerprint(clip: &LocalClip) -> u64 {
     h.finish()
 }
 
-/// Whether an automatic publish with fingerprint `fp` goes out, recording it when it does. A
+/// Whether an automatic change with fingerprint `fp`, seen at `now`, is published, recording it
+/// when it is (times are sightings, so a slow earlier publish does not stretch the window). A
 /// cancelled job neither sends nor records; a repeat within `window` is dropped.
 pub(super) fn admit_auto(
     last: &mut Option<(u64, Instant)>,
@@ -84,15 +87,15 @@ pub(super) fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 impl Shared {
     pub(super) fn run_out(&self, job: OutJob, cancel: &Cancel) {
-        let (change, explicit) = match job {
+        let (change, seen) = match job {
             OutJob::Clip(clip) => return self.publish_explicit(clip, cancel),
-            OutJob::Auto(c) => (c, false),
-            OutJob::Explicit(c) => (c, true),
+            OutJob::Auto(c, seen) => (c, Some(seen)),
+            OutJob::Explicit(c) => (c, None),
         };
-        match self.collect_local(&change) {
-            Ok(clip) if explicit => self.publish_explicit(clip, cancel),
-            Ok(clip) => self.publish_auto(clip, cancel),
-            Err(skip) => self.skipped(&skip, explicit),
+        match (self.collect_local(&change), seen) {
+            (Ok(clip), Some(seen)) => self.publish_auto(clip, seen, cancel),
+            (Ok(clip), None) => self.publish_explicit(clip, cancel),
+            (Err(skip), seen) => self.skipped(&skip, seen.is_none()),
         }
     }
 
@@ -106,16 +109,18 @@ impl Shared {
         self.send(clip);
     }
 
-    /// An automatic publish, dropped when it repeats the last one within `AUTO_REPEAT_WINDOW`.
+    /// An automatic publish, dropped when it repeats the last one seen within `AUTO_REPEAT_WINDOW`
+    /// (`seen`: when the watcher got the change; the second sighting of one copy may wait in the
+    /// lane while the first publish runs, which can take longer than the window).
     /// The cancel check and the record happen under one lock, after the (possibly slow) hash, and
     /// the send that follows has no second cancel check: a job either records and sends, or
     /// neither, so a cancelled job can never hide the change that replaced it.
-    fn publish_auto(&self, clip: LocalClip, cancel: &Cancel) {
+    fn publish_auto(&self, clip: LocalClip, seen: Instant, cancel: &Cancel) {
         let fp = fingerprint(&clip);
         let admitted = {
             let mut last = lock(&self.last_auto);
             let window = Duration::from_millis(self.repeat_window_ms.load(Ordering::Relaxed));
-            admit_auto(&mut last, fp, cancel.is_cancelled(), Instant::now(), window)
+            admit_auto(&mut last, fp, cancel.is_cancelled(), seen, window)
         };
         if admitted {
             self.send(clip);

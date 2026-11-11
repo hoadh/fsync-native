@@ -121,3 +121,18 @@ I did not re-run tests or clippy. I relied on the coordinator's results for 13bc
 
 ### Still open
 - F1 and F2 still need the live re-check on Omarchy: a Ghostty copy is sent once (confirms L2: both selections identical), and the Pause check and paste row update.
+
+## Re-review 2 (13bc7a1..baaf93f)
+
+Score: **9 / 10**. R1 and R2 are fixed and nothing new was found. The missing point is the open live re-check, not the code.
+
+| Finding | Verdict |
+|---|---|
+| R1 refresh lost at startup | **Fixed** (`tray.rs:200-205`). The loop now checks `swap(false)` and calls `update` before `park()`. A change made before `tray_thread` was set is picked up on the first pass. A later `unpark` before `park` leaves the park token set, so that change is not lost either. Spurious wake-ups only re-check the flag. |
+| R2 timing-dependent tests | **Fixed.** `admit_auto` takes the window, and `Shared.repeat_window_ms` defaults to `AUTO_REPEAT_WINDOW`; `set_repeat_window` is `#[cfg(test)]` only. With a 60 s window, "within the window" holds on any runner, so the reset tests cannot pass without the reset (the coordinator checked this by making `forget_last_auto` a no-op). The expiry test (50 ms window; at least 250 ms of `expect_published` plus a 100 ms sleep) only gets more certain under load, because elapsed time only grows. |
+
+Production behaviour is unchanged: the window is 1 s from `AUTO_REPEAT_WINDOW`, and the `Relaxed` load of a value that never changes outside tests is fine.
+
+Not re-run: I used the coordinator's baaf93f results (clippy `-D warnings` clean, workspace 241 passed / 0 failed). No target dir was created.
+
+Open: the live re-check of F1 (a Ghostty copy is sent once) and F2 (the Pause check mark and paste row update on Omarchy).
