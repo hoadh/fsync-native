@@ -1,6 +1,7 @@
 //! An offline account device must not slow down publishing to the others: `publish` returns after
 //! `publish_wait` and the dead peer is tried in the background. A device that comes back gets the
-//! next clip, a slow but live peer gets the newest clip and never an older one after it, an
+//! next clip, a slow but live peer gets the newest clip and never an older one after it (a
+//! superseded clip's offer is withdrawn), a live peer is never reported busy after its result, an
 //! explicit push still waits for the real result, a copy burst behind a dead peer holds at most
 //! two clip frames, and closing the engine with a send still running neither hangs nor panics.
 
@@ -197,6 +198,14 @@ async fn slow_live_peer_gets_the_newest_clip_never_an_older_one_after_it() {
         assert!(p.failed.is_empty(), "queued, not failed: {p:?}");
         assert!(t < delay, "a busy lane is not waited for ({t:?})");
     }
+    // n+1 was superseded at once: its offer to b is withdrawn, n+2's stays.
+    let a = &ps[0].engine;
+    assert_eq!(
+        a.clip_offered_to(&n1.item_id),
+        Some(vec![]),
+        "n+1 unoffered"
+    );
+    assert_eq!(a.clip_offered_to(&n2.item_id), Some(vec![ps[1].nid()]));
     let b = &mut ps[1];
     let mut got = received(b, 2, Duration::from_secs(10)).await;
     // Twice the delay: room for n+1 to be (wrongly) sent after n+2.
@@ -231,6 +240,26 @@ async fn a_burst_to_a_dead_peer_holds_at_most_two_frames() {
     assert!(held <= 2, "{held} frames held for a dead peer");
     a.engine.close().await;
     assert_eq!(a.engine.clip_frames_held(), 0, "close frees every frame");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_live_peer_is_never_busy_once_its_result_is_reported() {
+    // The lane runner stalls 1 s right after reporting each result. If the lane were still marked
+    // running then, the next publish would find the live peer "busy" and report it pending.
+    let a_cfg = EngineConfig {
+        lane_report_pause: Some(Duration::from_secs(1)),
+        ..EngineConfig::default()
+    };
+    let ps = group(vec![a_cfg, EngineConfig::default()]).await;
+    let (a, b) = (&ps[0], &ps[1]);
+    for i in 0..3 {
+        let (p, _) = publish(a, &format!("live {i}")).await;
+        assert_eq!(p.delivered, vec![b.nid()], "clip {i}: {p:?}");
+        assert!(
+            p.pending.is_empty(),
+            "clip {i}: live peer reported pending: {p:?}"
+        );
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]

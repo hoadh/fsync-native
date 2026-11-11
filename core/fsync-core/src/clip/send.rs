@@ -63,7 +63,8 @@ impl Shared {
         input: ClipInput,
         opts: PublishOpts,
     ) -> Result<PublishOutcome> {
-        let _one = PublishInFlight::enter(self);
+        // Pushes bypass the lanes, so only clipboard publishes can interleave there.
+        let _one = (!opts.push).then(|| PublishInFlight::enter(self));
         let peers = self.peers(opts.targets)?;
         let sensitive = input.sensitive;
         let persist = self.history.is_some() && !sensitive;
@@ -188,12 +189,18 @@ impl Shared {
     }
 
     /// Sends `job`, then every clip that queued behind it, until the peer's lane is empty.
+    /// The lane is freed (or the next clip taken) BEFORE the result is reported: the publish it
+    /// wakes may publish again at once, and must find the lane idle, not a live peer "busy".
     async fn run_lane(self: Arc<Self>, peer: NodeId, mut lane: LaneRunner<SendJob>, job: SendJob) {
         let mut job = Some(job);
         while let Some(j) = job {
             let r = self.send_one(&peer, &j.frame).await;
-            self.finish_send(&peer, j, r);
             job = lane.next();
+            self.finish_send(&peer, j, r);
+            #[cfg(any(test, feature = "test-hooks"))]
+            if let Some(d) = self.cfg.lane_report_pause {
+                tokio::time::sleep(d).await;
+            }
         }
     }
 

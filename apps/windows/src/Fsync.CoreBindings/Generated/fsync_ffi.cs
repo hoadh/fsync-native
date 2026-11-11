@@ -1501,8 +1501,8 @@ static class _UniFFILib {
     static void uniffiCheckApiChecksums() {
         {
             var checksum = _UniFFILib.uniffi_fsync_ffi_checksum_func_contract_version();
-            if (checksum != 64396) {
-                throw new UniffiContractChecksumException($"Fsync.Core: uniffi bindings expected function `uniffi_fsync_ffi_checksum_func_contract_version` checksum `64396`, library returned `{checksum}`");
+            if (checksum != 18762) {
+                throw new UniffiContractChecksumException($"Fsync.Core: uniffi bindings expected function `uniffi_fsync_ffi_checksum_func_contract_version` checksum `18762`, library returned `{checksum}`");
             }
         }
         {
@@ -4730,8 +4730,7 @@ class FfiConverterSequenceTypeTrustResetInfo: FfiConverterRustBuffer<TrustResetI
 public static class FsyncFfi {
     /// <summary>
     /// Bumped on every breaking contract change (v2: trust-reset API, `ReauthRequired`,
-    /// `AccountEvent::TrustReset`; v3: `Published.pending` appended, so an older binding fails to
-    /// decode `publish_clip` results). Apps compare it at startup before creating an engine.
+    /// `AccountEvent::TrustReset`).
     /// </summary>
     public static uint ContractVersion() {
         return FfiConverterUInt32.INSTANCE.Lift(

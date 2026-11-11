@@ -4213,8 +4213,7 @@ fileprivate struct FfiConverterSequenceTypeTrustResetInfo: FfiConverterRustBuffe
 }
 /**
  * Bumped on every breaking contract change (v2: trust-reset API, `ReauthRequired`,
- * `AccountEvent::TrustReset`; v3: `Published.pending` appended, so an older binding fails to
- * decode `publish_clip` results). Apps compare it at startup before creating an engine.
+ * `AccountEvent::TrustReset`).
  */
 public func contractVersion() -> UInt32  {
     return try!  FfiConverterUInt32.lift(try! rustCall() {
@@ -4265,7 +4264,7 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_fsync_ffi_checksum_func_contract_version() != 64396) {
+    if (uniffi_fsync_ffi_checksum_func_contract_version() != 18762) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fsync_ffi_checksum_func_reset_history() != 51414) {

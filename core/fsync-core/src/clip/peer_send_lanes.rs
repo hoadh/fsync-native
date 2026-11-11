@@ -88,7 +88,11 @@ impl<T> PeerSendLanes<T> {
 }
 
 /// Owns a peer's lane while its attempts run. Dropped without draining (the send task was aborted
-/// or never ran, e.g. engine closing): the lane is freed and the waiting clip dropped with it.
+/// or never ran, e.g. engine closing; or it panicked): the lane is freed and the waiting clip
+/// dropped with it. A dropped clip is not unoffered: its publish sees "no answer" (`failed`),
+/// and the offer stays until the outbox expires it, as for every send aborted at close. On a
+/// panic (a bug, logged by `BackgroundSends`) that costs one clip that was going to be replaced
+/// anyway; a generic lane cannot reach the outbox, and catching panics is not worth it.
 pub(crate) struct LaneRunner<T> {
     lane: Lane<T>,
     done: bool,

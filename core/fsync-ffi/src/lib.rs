@@ -23,9 +23,14 @@ pub use types_history::*;
 
 uniffi::setup_scaffolding!();
 
+// History (plain comment on purpose: UniFFI's checksum covers the doc comment below, so it must
+// never change, or an older binding fails its checksum check before it can read the version and
+// show the apps' friendly mismatch message). v2: trust-reset API, `ReauthRequired`,
+// `AccountEvent::TrustReset`. v3: `Published.pending` appended to a positional record (an older
+// binding fails to decode `publish_clip` results). Apps compare it at startup.
+
 /// Bumped on every breaking contract change (v2: trust-reset API, `ReauthRequired`,
-/// `AccountEvent::TrustReset`; v3: `Published.pending` appended, so an older binding fails to
-/// decode `publish_clip` results). Apps compare it at startup before creating an engine.
+/// `AccountEvent::TrustReset`).
 #[uniffi::export]
 pub fn contract_version() -> u32 {
     3

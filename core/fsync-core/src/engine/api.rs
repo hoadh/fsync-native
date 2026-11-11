@@ -39,6 +39,15 @@ impl Engine {
         self.sh.clip_frames_held()
     }
 
+    /// Test hook (feature `test-hooks`): peers our outbox entry for `item_id` is still offered to
+    /// (`None`: no live entry).
+    #[cfg(feature = "test-hooks")]
+    pub fn clip_offered_to(&self, item_id: &Uuid) -> Option<Vec<NodeId>> {
+        let o = self.sh.outbox.lock().ok()?;
+        let e = o.get(item_id, std::time::Instant::now())?;
+        Some(e.offered_to.iter().copied().collect())
+    }
+
     /// A previously received (and validated) offer, while it is still remembered.
     pub fn received_offer(&self, item_id: &Uuid) -> Option<OfferRef> {
         self.sh
