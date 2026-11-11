@@ -722,8 +722,7 @@ Nothing below blocks acceptance (the acceptance condition is X3 and X4, met abov
 - **Codec gaps.** 32-bpp images with non-standard masks are refused with a log line, not converted. Alpha is not tested.
   16-bpp masks other than 565/555 reach WIC unchecked.
 - LIVE: the password-manager check (deferred, no manager on the test host); confirm autostart for 5b257a9 in the journal after the next login.
-- Tray "Pause sync" check mark does not update after a click (pause itself works); a Ghostty copy is published twice
-  (LIVE run 2026-11-12, below).
+- Re-check F1 (Ghostty copy once) and F2 (tray state rows on Omarchy) live after the next install (fixed, LIVE run below).
 - Pairing flake on the Windows tunnel ("No addressing information available"): fixed 2026-11-11 (`RELAY_WAIT` 6 s, see
   "Known issues"); one Windows-offer pairing passed since (more runs needed to confirm). The local "connection lost" flake is fixed.
 - Platform emit gate: the backend deploy and the Mac/Windows releases with the tolerant decoder.
@@ -752,15 +751,20 @@ evidence format: `docs/how-to/linux-live-checks.md`.
 | G3 received files paste in Nautilus (GNOME) | pass |
 | G4 drag-drop from Nautilus (GNOME) | pass |
 
-Findings (each one is its own fix task):
+Findings (fixed on branch `fix/linux-live-findings`, 2026-11-12; re-check live after the next install):
 - **F1, Ghostty copy published twice.** Every Ctrl+Shift+C in Ghostty on Hyprland reaches the peer as two clips with
   different ids about 2 ms apart (`clip delivered` twice in the debug log). Primary selection is ignored, no clipboard
   manager runs, and tray "Send clipboard now" sends once: the backend sees two regular selections for one copy and the
-  outbound path does not drop an identical repeat.
+  outbound path does not drop an identical repeat. Fix: an automatic change whose content equals the last automatic
+  publish within 1 s (`AUTO_REPEAT_WINDOW`) is dropped; explicit sends always publish (`sync/tests_repeat.rs`).
 - **F2, tray "Pause sync" check mark.** `toggle_pause` flips the engine state (verified: no publish while paused), but
-  the menu keeps showing the old state on Omarchy's tray.
+  the menu keeps showing the old state on Omarchy's tray. Cause: ksni signals a check mark or enabled change with
+  `ItemsPropertiesUpdated`, which Quickshell ignores; it re-reads the menu only on `LayoutUpdated`. Fix: state is shown
+  by which rows exist ("Sync is paused" while paused; "Paste received clip" only while one is held), so each change is
+  a layout change. A pending clip replaced by another one only changes a label: still stale there (minor).
 - **F3, stale Hyprland help.** README and `shortcut_help` give `bind = SUPER ALT, C, exec, ...` for
   `~/.config/hypr/bindings.conf`; current Omarchy uses `~/.config/hypr/bindings.lua` with
-  `o.bind("SUPER + ALT + C", "...", "fsync-linux --clip-send")`.
+  `o.bind("SUPER + ALT + C", "...", "fsync-linux --clip-send")`. Fix: separate Omarchy (`bindings.lua`) and Hyprland
+  (`hyprland.conf`) entries in `shortcut_help` and the README.
 - Observation: once, tray or bind sends of one clip came 4 times in 0.7 s; not reproduced.
 

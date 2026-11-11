@@ -2,6 +2,15 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-11-12 - Linux app: LIVE findings F1-F3 fixed
+
+Branch `fix/linux-live-findings`, ADR [014](./adr/014-linux-desktop-app.md) "LIVE run".
+
+### Fixed
+- Clipboard: one copy that the copying app announces twice (Ghostty sets the selection twice, 2 ms apart) is published once. An automatic change equal to the last automatic publish within 1 s is dropped; tray / hotkey sends always publish. Severity: low (a duplicate clip on every peer).
+- Tray: the paused state and a held clip now show on the Omarchy tray (Quickshell). "Sync is paused" appears while paused and "Paste received clip" only while a clip is held, so each change is a menu layout change. Before, the "Pause sync" check mark never changed there. Severity: low (display only).
+- Hotkey help (Settings, `--help`, README): Omarchy binds go in `~/.config/hypr/bindings.lua` as `o.bind(...)`; plain Hyprland keeps `hyprland.conf`.
+
 ## 2026-11-12 - Linux app LIVE checks (Hyprland + GNOME VM)
 
 Plan `plans/261110-2344-linux-app-follow-ups` phase 05, ADR [014](./adr/014-linux-desktop-app.md) "LIVE run".
