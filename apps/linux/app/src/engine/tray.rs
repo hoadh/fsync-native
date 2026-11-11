@@ -195,11 +195,13 @@ pub fn start(core: Arc<Core>) {
                     core.hub.poke_engine();
                     // Holding the handle keeps the service alive; a wake-up with the dirty flag set
                     // re-reads the menu (several status changes collapse into one update).
+                    // The flag is checked before parking: a change made before `tray_thread` was set
+                    // (it could not wake us) is picked up on the first pass.
                     loop {
-                        std::thread::park();
                         if core.tray_dirty.swap(false, Ordering::SeqCst) {
                             handle.update(|_| ());
                         }
+                        std::thread::park();
                     }
                 }
                 Err(e) => {

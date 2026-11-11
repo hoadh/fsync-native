@@ -6,6 +6,13 @@ use super::tests_rig::*;
 use fsync_proto::ClipKind;
 use std::time::{Duration, Instant};
 
+/// A rig whose repeat window is far wider than any runner delay: "within the window" holds.
+fn wide_rig() -> Rig {
+    let r = rig(true, true, false);
+    r.engine.set_repeat_window(Duration::from_secs(60));
+    r
+}
+
 fn copy(r: &Rig, text: &[u8]) {
     let (c, _) = change(&[("text/plain", text)], None);
     r.tx.send(c).expect("send");
@@ -30,36 +37,22 @@ fn expect_published(r: &Rig, n: usize) {
 
 #[test]
 fn a_cancelled_job_neither_sends_nor_records() {
-    let now = Instant::now();
+    let (now, w) = (Instant::now(), AUTO_REPEAT_WINDOW);
+    let ms = Duration::from_millis;
     let mut last = None;
     // The first selection's job was replaced before it could send: it must not record, or the
     // second (identical) selection would be dropped and nothing would go out.
-    assert!(!admit_auto(&mut last, 7, true, now));
+    assert!(!admit_auto(&mut last, 7, true, now, w));
     assert!(last.is_none());
-    assert!(admit_auto(&mut last, 7, false, now));
-    assert!(!admit_auto(
-        &mut last,
-        7,
-        false,
-        now + Duration::from_millis(5)
-    ));
-    assert!(admit_auto(
-        &mut last,
-        8,
-        false,
-        now + Duration::from_millis(6)
-    ));
-    assert!(admit_auto(
-        &mut last,
-        8,
-        false,
-        now + AUTO_REPEAT_WINDOW * 2
-    ));
+    assert!(admit_auto(&mut last, 7, false, now, w));
+    assert!(!admit_auto(&mut last, 7, false, now + ms(5), w));
+    assert!(admit_auto(&mut last, 8, false, now + ms(6), w));
+    assert!(admit_auto(&mut last, 8, false, now + w * 2, w));
 }
 
 #[test]
 fn the_same_copy_seen_twice_while_the_first_publishes_is_published_once() {
-    let r = rig(true, true, false);
+    let r = wide_rig();
     // The first publish is still running when the second selection arrives (the live case).
     *r.service.publish_delay.lock().expect("d") = Duration::from_millis(200);
     copy(&r, b"twice");
@@ -71,7 +64,7 @@ fn the_same_copy_seen_twice_while_the_first_publishes_is_published_once() {
 
 #[test]
 fn the_same_copy_seen_twice_after_the_first_publish_is_published_once() {
-    let r = rig(true, true, false);
+    let r = wide_rig();
     copy(&r, b"twice");
     expect_published(&r, 1);
     copy(&r, b"twice");
@@ -81,7 +74,7 @@ fn the_same_copy_seen_twice_after_the_first_publish_is_published_once() {
 
 #[test]
 fn different_content_and_explicit_sends_are_always_published() {
-    let r = rig(true, true, false);
+    let r = wide_rig();
     copy(&r, b"one");
     expect_published(&r, 1);
     copy(&r, b"two");
@@ -100,7 +93,7 @@ fn different_content_and_explicit_sends_are_always_published() {
 
 #[test]
 fn a_received_clip_resets_the_record() {
-    let r = rig(true, true, false);
+    let r = wide_rig();
     copy(&r, b"mine");
     expect_published(&r, 1);
     // A peer's clip is written to the clipboard: peers now hold it, not "mine".
@@ -115,9 +108,10 @@ fn a_received_clip_resets_the_record() {
 #[test]
 fn the_same_content_copied_again_after_the_window_is_published() {
     let r = rig(true, true, false);
+    r.engine.set_repeat_window(Duration::from_millis(50));
     copy(&r, b"again");
     expect_published(&r, 1);
-    std::thread::sleep(AUTO_REPEAT_WINDOW);
+    std::thread::sleep(Duration::from_millis(100));
     copy(&r, b"again");
     expect_published(&r, 1);
     r.engine.shutdown(Duration::from_secs(1));

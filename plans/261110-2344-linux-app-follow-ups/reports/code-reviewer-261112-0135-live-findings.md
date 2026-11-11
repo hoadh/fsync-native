@@ -92,3 +92,32 @@ The window is short, so the chance is low, but the loss is silent. Fix: set `*lo
 ## Unresolved questions
 - Does the installed Quickshell 0.3.2.r7 really drop `ItemsPropertiesUpdated`, or does the Omarchy QML tear down the opener on click? This decides whether M2 matters.
 - Are the two Ghostty selections byte-identical (MIME set included)?
+
+## Re-review (fe2db13..13bc7a1)
+
+Score: **8.5 / 10**. All earlier High and Medium findings are fixed. Two new Low findings, neither blocking.
+
+| Finding | Verdict |
+|---|---|
+| H1 lost copy | **Fixed.** `publish_auto` (`shared.rs:110-119`) hashes outside the lock, then checks cancel and records in one `admit_auto` call under `last_auto`. `send` has no cancel check, so a job either records and sends or does neither. If cancel flips after admission, the older content is sent, followed by the newer job: the same as a job that is cancelled during the core publish today. `a_cancelled_job_neither_sends_nor_records` covers the logic deterministically, with no threads. |
+| H2 tray never refreshed | **Fixed.** Status notify (`clipboard_runtime.rs:67`) leads to `tray::refresh`, which sets a flag and unparks the thread without blocking. The tray thread swaps the flag and calls `handle.update`. `StatusCell` calls notify after releasing its lock (`status.rs:56-77`), and `refresh` only stores and unparks, so a click callback (`toggle_pause` on the ksni service thread) cannot deadlock. Bursts collapse into one update. A duplicate update after a click emits nothing. Pause from the window or IPC, a received clip and a paste on another thread all reach the tray now. |
+| M1 cause wording | **Fixed.** The `tray.rs` module doc and ADR 014 F2 name the missing `update` as the cause and leave the Quickshell part open. |
+| M2 equal row counts | **Fixed.** A held clip adds a row plus a separator, giving counts 1/2/3/4. The test asserts all four states. A label-only change of a held clip stays stale on Quickshell, as documented. |
+| M3 stale record | **Fixed.** `forget_last_auto` runs in `publish_explicit` (`Explicit` and `Clip`) and in `Shared::write` (inbound apply, paste, history copy-back). Covered by `a_received_clip_resets_the_record` and the new step after `send_now`. |
+| L1 timing | **Improved.** A 3 s wait per expected publish removes the false failure when a publish arrives late. Residual risk is noted in R2. |
+
+### New findings
+**R1 (Low). A refresh before the tray thread registers itself is lost until the next status change** (`app/src/engine/tray.rs:192-203`).
+`tray_thread.set(current())` runs after `spawn()` has built the first menu, and the loop parks before it checks `tray_dirty`. If a status change happens in that gap (for example a held clip or a pause applied during startup), the flag is set but nothing unparks the thread. The thread parks with `tray_dirty == true`, and the menu stays stale until the next status change. Fix: check the flag before parking (`loop { if core.tray_dirty.swap(false, SeqCst) { handle.update(|_| ()); } std::thread::park(); }`), or set `tray_thread` before `spawn()`. Either is a one-line change.
+
+**R2 (Low, tests). The reset and window tests can pass without the fix on a slow runner, and one can fail on a loaded one.**
+- `a_received_clip_resets_the_record` and the step after `send_now` only prove the reset if the second copy lands within 1 s of the first record. On a slow runner (each `expect_published` already waits 250 ms, plus the inbound fetch), they pass even without the reset.
+- `the_same_copy_seen_twice_after_the_first_publish...` still fails if more than 1 s passes between the first record and the second admission. The margin is about 700 ms.
+
+An injectable window (a `Shared` field the tests set to 10 s) would make all of these exact. This is optional.
+
+### Not re-run
+I did not re-run tests or clippy. I relied on the coordinator's results for 13bc7a1: clippy `-D warnings` clean, 241 passed / 0 failed workspace-wide, 38 sync tests passed. No target dir was created this round, so `~/.cache/fsync-f-review-target` is absent.
+
+### Still open
+- F1 and F2 still need the live re-check on Omarchy: a Ghostty copy is sent once (confirms L2: both selections identical), and the Pause check and paste row update.

@@ -10,7 +10,7 @@ use crate::clipboard::filters::Skip;
 use crate::clipboard::{Backend, ClipChange, OwnedEntry};
 use fsync_core::service::LocalClip;
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -40,6 +40,8 @@ pub(super) struct Shared {
     pub(super) closed: AtomicBool,
     /// Content fingerprint and time of the last automatic publish (see `AUTO_REPEAT_WINDOW`).
     pub(super) last_auto: Mutex<Option<(u64, Instant)>>,
+    /// `AUTO_REPEAT_WINDOW` in ms; tests widen it so their timing cannot matter.
+    pub(super) repeat_window_ms: AtomicU64,
 }
 
 /// Content fingerprint of a clip (not a security hash: it only spots a repeat of our own copy).
@@ -54,19 +56,20 @@ fn fingerprint(clip: &LocalClip) -> u64 {
 }
 
 /// Whether an automatic publish with fingerprint `fp` goes out, recording it when it does. A
-/// cancelled job neither sends nor records; a repeat within `AUTO_REPEAT_WINDOW` is dropped.
+/// cancelled job neither sends nor records; a repeat within `window` is dropped.
 pub(super) fn admit_auto(
     last: &mut Option<(u64, Instant)>,
     fp: u64,
     cancelled: bool,
     now: Instant,
+    window: Duration,
 ) -> bool {
     if cancelled {
         return false;
     }
     if let Some((prev, at)) = *last
         && prev == fp
-        && now.saturating_duration_since(at) < AUTO_REPEAT_WINDOW
+        && now.saturating_duration_since(at) < window
     {
         tracing::debug!("clipboard: the same copy seen twice; published once");
         return false;
@@ -111,7 +114,8 @@ impl Shared {
         let fp = fingerprint(&clip);
         let admitted = {
             let mut last = lock(&self.last_auto);
-            admit_auto(&mut last, fp, cancel.is_cancelled(), Instant::now())
+            let window = Duration::from_millis(self.repeat_window_ms.load(Ordering::Relaxed));
+            admit_auto(&mut last, fp, cancel.is_cancelled(), Instant::now(), window)
         };
         if admitted {
             self.send(clip);

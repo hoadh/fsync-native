@@ -4,14 +4,14 @@
 
 use super::engine_types::{Paste, SyncEnv};
 use super::lanes::Lane;
-use super::shared::{OutJob, Shared, lock};
+use super::shared::{AUTO_REPEAT_WINDOW, OutJob, Shared, lock};
 use super::status::{StatusCell, SyncStatus};
 use super::{ClipService, SyncSettings};
 use crate::clipboard::echo::WriteGuard;
 use crate::clipboard::filters::Skip;
 use crate::clipboard::{Backend, ClipChange, OwnedEntry};
 use fsync_core::service::{ClipItem, LocalClip};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -43,6 +43,7 @@ impl SyncEngine {
             paused: AtomicBool::new(false),
             closed: AtomicBool::new(false),
             last_auto: Mutex::new(None),
+            repeat_window_ms: AtomicU64::new(AUTO_REPEAT_WINDOW.as_millis() as u64),
         });
         let s1 = Arc::clone(&sh);
         let out = Lane::spawn("out", move |job, cancel| s1.run_out(job, &cancel))?;
@@ -87,6 +88,14 @@ impl SyncEngine {
 
     pub fn paused(&self) -> bool {
         self.sh.paused.load(Ordering::SeqCst)
+    }
+
+    /// Tests: a wide window makes "within the window" independent of the runner's speed.
+    #[cfg(test)]
+    pub(crate) fn set_repeat_window(&self, window: std::time::Duration) {
+        self.sh
+            .repeat_window_ms
+            .store(window.as_millis() as u64, Ordering::Relaxed);
     }
 
     /// Explicit send of the latest clipboard change (Manual mode, tray, hotkey).
