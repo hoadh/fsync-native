@@ -22,7 +22,13 @@ use zeroize::Zeroizing;
 const OFFER_TTL: Duration = Duration::from_secs(300);
 /// How long `pairing_join` waits for the SAS to be ready.
 const JOIN_WAIT: Duration = Duration::from_secs(60);
-const RELAY_WAIT: Duration = Duration::from_secs(3);
+/// How long an offer waits for the home relay. iroh picks the home relay when its first net
+/// report ends: exactly its 3 s probe timeout when QUIC address discovery gets no answer (a
+/// TCP-only tunnel to the relay, a test relay), so a 3 s wait raced it and lost about half the
+/// time (an offer without a relay URL: the joiner's "No addressing information available").
+/// Waiting past the 5 s report timeout makes the offer carry the URL; it costs time only when
+/// no relay is reachable at all.
+const RELAY_WAIT: Duration = Duration::from_secs(6);
 
 impl Inner {
     /// Our relay URL for the offer; waits (bounded) for the relay connection.
@@ -178,5 +184,17 @@ impl FsyncService {
     /// Abandons the current offer / join: closes the window and rejects a pending confirm.
     pub fn pairing_cancel(&self) -> SvcResult<()> {
         self.inner.pairing_cancel()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// iroh's net report ends after its 3 s probe timeout (5 s overall) when QAD gets no answer:
+    /// the offer's relay wait must outlast it (see `RELAY_WAIT`).
+    #[test]
+    fn relay_wait_outlasts_the_net_report_timeout() {
+        assert!(RELAY_WAIT > Duration::from_secs(5));
     }
 }
