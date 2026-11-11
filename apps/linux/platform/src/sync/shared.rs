@@ -9,8 +9,15 @@ use crate::clipboard::echo::WriteGuard;
 use crate::clipboard::filters::Skip;
 use crate::clipboard::{Backend, ClipChange, OwnedEntry};
 use fsync_core::service::LocalClip;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+/// An automatic change with the same content as the previous automatic publish within this
+/// window is the same copy seen twice (some apps set the selection twice per copy, a few ms
+/// apart): it is dropped. Explicit sends are never dropped.
+pub(super) const AUTO_REPEAT_WINDOW: Duration = Duration::from_secs(1);
 
 pub(super) enum OutJob {
     Auto(ClipChange),
@@ -31,6 +38,19 @@ pub(super) struct Shared {
     pub(super) current_files: Mutex<Option<String>>,
     pub(super) paused: AtomicBool,
     pub(super) closed: AtomicBool,
+    /// Content fingerprint and time of the last automatic publish (see `AUTO_REPEAT_WINDOW`).
+    pub(super) last_auto: Mutex<Option<(u64, Instant)>>,
+}
+
+/// Content fingerprint of a clip (not a security hash: it only spots a repeat of our own copy).
+fn fingerprint(clip: &LocalClip) -> u64 {
+    let mut h = DefaultHasher::new();
+    for r in &clip.reps {
+        r.mime.hash(&mut h);
+        r.data.hash(&mut h);
+    }
+    clip.files.hash(&mut h);
+    h.finish()
 }
 
 pub(super) fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -45,9 +65,35 @@ impl Shared {
             OutJob::Explicit(c) => (c, true),
         };
         match self.collect_local(&change) {
-            Ok(clip) => self.publish(clip, cancel),
+            Ok(clip) if explicit => self.publish(clip, cancel),
+            Ok(clip) => {
+                if cancel.is_cancelled() {
+                    return;
+                }
+                if self.repeats_last_auto(&clip) {
+                    tracing::debug!("clipboard: the same copy seen twice; published once");
+                    return;
+                }
+                self.publish(clip, cancel);
+            }
             Err(skip) => self.skipped(&skip, explicit),
         }
+    }
+
+    /// True when `clip` equals the last automatic publish within `AUTO_REPEAT_WINDOW`; otherwise
+    /// records it as the last one. Called only right before a publish, so a cancelled job never
+    /// hides the change that replaced it.
+    fn repeats_last_auto(&self, clip: &LocalClip) -> bool {
+        let fp = fingerprint(clip);
+        let mut last = lock(&self.last_auto);
+        if let Some((prev, at)) = *last
+            && prev == fp
+            && at.elapsed() < AUTO_REPEAT_WINDOW
+        {
+            return true;
+        }
+        *last = Some((fp, Instant::now()));
+        false
     }
 
     /// Shows whether background sync is on: a backend exists and core's mode is Auto.

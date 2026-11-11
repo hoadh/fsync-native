@@ -42,6 +42,7 @@ impl SyncEngine {
             current_files: Mutex::new(None),
             paused: AtomicBool::new(false),
             closed: AtomicBool::new(false),
+            last_auto: Mutex::new(None),
         });
         let s1 = Arc::clone(&sh);
         let out = Lane::spawn("out", move |job, cancel| s1.run_out(job, &cancel))?;
