@@ -107,7 +107,8 @@ win_prepare() { # build + pair runs; run_windows_legs calls it once
   # the offer event is read over plain ssh from the file the peer writes (read-only probing).
   local offer_path="(Join-Path \$env:TEMP 'fsync-cross-os\\pair-offer.out')"   # PowerShell expression, expanded on the worker
   ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" "powershell -NoProfile -Command \"Remove-Item -Force -ErrorAction SilentlyContinue $offer_path\"" >/dev/null 2>&1 || true
-  win_remote 300 "$WORK/win-pair.out" -- "$WIN_PEER" -Step pair -Api "$API" -Relay "$RELAY" -Email "$EMAIL" -Otp "$otp" -Name "$WIN_NAME" -DeadlineSec 200 &
+  win_remote 300 "$WORK/win-pair.out" -- "$WIN_PEER" -Step pair -Api "$API" -Relay "$RELAY" -Email "$EMAIL" -Otp "$otp" -Name "$WIN_NAME" -DeadlineSec 200 ${WIN_RUST_LOG:+-RustLog "$WIN_RUST_LOG"} \
+    &
   WINPAIR=$!; PIDS+=("$WINPAIR")
   local code=""
   for i in $(seq 1 240); do
