@@ -8,7 +8,7 @@ Branch `fix/linux-live-findings`, ADR [014](./adr/014-linux-desktop-app.md) "LIV
 
 ### Fixed
 - Clipboard: one copy that the copying app announces twice (Ghostty sets the selection twice, 2 ms apart) is published once. An automatic change equal to the last automatic publish within 1 s is dropped; tray / hotkey sends always publish. Severity: low (a duplicate clip on every peer).
-- Tray: the paused state and a held clip now show on the Omarchy tray (Quickshell). "Sync is paused" appears while paused and "Paste received clip" only while a clip is held, so each change is a menu layout change. Before, the "Pause sync" check mark never changed there. Severity: low (display only).
+- Tray: the menu now follows the clipboard state on every tray host. ksni re-reads the menu only on a row click or `Handle::update`, and the app never called `update`: a pause from the window, a held clip (Manual mode) or a tray paste never showed. Every status change now updates the tray, and each state has its own row count ("Sync is paused" while paused, "Paste received clip" only while a clip is held) because the Omarchy tray kept a stale check mark on property updates. Severity: low (display; a stale "Pause sync" row could unpause when the user meant to pause).
 - Hotkey help (Settings, `--help`, README): Omarchy binds go in `~/.config/hypr/bindings.lua` as `o.bind(...)`; plain Hyprland keeps `hyprland.conf`.
 
 ## 2026-11-12 - Linux app LIVE checks (Hyprland + GNOME VM)

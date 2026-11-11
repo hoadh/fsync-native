@@ -84,6 +84,7 @@ impl Shared {
 
     pub(super) fn write(&self, entry: &OwnedEntry) -> Result<(), WriteError> {
         let backend = self.backend.as_ref().ok_or(WriteError::Closed)?;
+        self.forget_last_auto();
         self.guard.remember(entry);
         backend
             .write(entry.clone())

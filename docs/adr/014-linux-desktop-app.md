@@ -756,12 +756,17 @@ Findings (fixed on branch `fix/linux-live-findings`, 2026-11-12; re-check live a
   different ids about 2 ms apart (`clip delivered` twice in the debug log). Primary selection is ignored, no clipboard
   manager runs, and tray "Send clipboard now" sends once: the backend sees two regular selections for one copy and the
   outbound path does not drop an identical repeat. Fix: an automatic change whose content equals the last automatic
-  publish within 1 s (`AUTO_REPEAT_WINDOW`) is dropped; explicit sends always publish (`sync/tests_repeat.rs`).
+  publish within 1 s (`AUTO_REPEAT_WINDOW`) is dropped; explicit sends always publish and, like a received clip written
+  to the clipboard, reset the record. The cancel check and the record share one lock, so a replaced job never hides the
+  change that replaced it (`sync/tests_repeat.rs`).
 - **F2, tray "Pause sync" check mark.** `toggle_pause` flips the engine state (verified: no publish while paused), but
-  the menu keeps showing the old state on Omarchy's tray. Cause: ksni signals a check mark or enabled change with
-  `ItemsPropertiesUpdated`, which Quickshell ignores; it re-reads the menu only on `LayoutUpdated`. Fix: state is shown
-  by which rows exist ("Sync is paused" while paused; "Paste received clip" only while one is held), so each change is
-  a layout change. A pending clip replaced by another one only changes a label: still stale there (minor).
+  the menu keeps showing the old state on Omarchy's tray. Causes: (1) ksni re-reads `menu()` only after a click on one
+  of its rows or on `Handle::update`, and the app never called `update`, so a pause from the window, a held clip or a
+  tray paste never reached any tray host; (2) on Omarchy even the click's `ItemsPropertiesUpdated` left the check mark
+  stale (whether Quickshell 0.3.2 or the Omarchy QML drops it is not settled). Fix: every clipboard status change wakes
+  the tray thread to call `Handle::update`, and each state has its own row count ("Sync is paused" while paused;
+  "Paste received clip" plus a separator only while a clip is held), so each change is a `LayoutUpdated`. A held clip
+  replaced by another one only changes a label: possibly stale on Omarchy (minor).
 - **F3, stale Hyprland help.** README and `shortcut_help` give `bind = SUPER ALT, C, exec, ...` for
   `~/.config/hypr/bindings.conf`; current Omarchy uses `~/.config/hypr/bindings.lua` with
   `o.bind("SUPER + ALT + C", "...", "fsync-linux --clip-send")`. Fix: separate Omarchy (`bindings.lua`) and Hyprland

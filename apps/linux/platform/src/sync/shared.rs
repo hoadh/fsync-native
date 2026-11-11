@@ -53,6 +53,28 @@ fn fingerprint(clip: &LocalClip) -> u64 {
     h.finish()
 }
 
+/// Whether an automatic publish with fingerprint `fp` goes out, recording it when it does. A
+/// cancelled job neither sends nor records; a repeat within `AUTO_REPEAT_WINDOW` is dropped.
+pub(super) fn admit_auto(
+    last: &mut Option<(u64, Instant)>,
+    fp: u64,
+    cancelled: bool,
+    now: Instant,
+) -> bool {
+    if cancelled {
+        return false;
+    }
+    if let Some((prev, at)) = *last
+        && prev == fp
+        && now.saturating_duration_since(at) < AUTO_REPEAT_WINDOW
+    {
+        tracing::debug!("clipboard: the same copy seen twice; published once");
+        return false;
+    }
+    *last = Some((fp, now));
+    true
+}
+
 pub(super) fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|p| p.into_inner())
 }
@@ -60,40 +82,46 @@ pub(super) fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 impl Shared {
     pub(super) fn run_out(&self, job: OutJob, cancel: &Cancel) {
         let (change, explicit) = match job {
-            OutJob::Clip(clip) => return self.publish(clip, cancel),
+            OutJob::Clip(clip) => return self.publish_explicit(clip, cancel),
             OutJob::Auto(c) => (c, false),
             OutJob::Explicit(c) => (c, true),
         };
         match self.collect_local(&change) {
-            Ok(clip) if explicit => self.publish(clip, cancel),
-            Ok(clip) => {
-                if cancel.is_cancelled() {
-                    return;
-                }
-                if self.repeats_last_auto(&clip) {
-                    tracing::debug!("clipboard: the same copy seen twice; published once");
-                    return;
-                }
-                self.publish(clip, cancel);
-            }
+            Ok(clip) if explicit => self.publish_explicit(clip, cancel),
+            Ok(clip) => self.publish_auto(clip, cancel),
             Err(skip) => self.skipped(&skip, explicit),
         }
     }
 
-    /// True when `clip` equals the last automatic publish within `AUTO_REPEAT_WINDOW`; otherwise
-    /// records it as the last one. Called only right before a publish, so a cancelled job never
-    /// hides the change that replaced it.
-    fn repeats_last_auto(&self, clip: &LocalClip) -> bool {
-        let fp = fingerprint(clip);
-        let mut last = lock(&self.last_auto);
-        if let Some((prev, at)) = *last
-            && prev == fp
-            && at.elapsed() < AUTO_REPEAT_WINDOW
-        {
-            return true;
+    /// An explicit publish (tray, hotkey, "send to"): never deduplicated. What peers hold changes,
+    /// so the next automatic copy is compared against nothing.
+    fn publish_explicit(&self, clip: LocalClip, cancel: &Cancel) {
+        if cancel.is_cancelled() {
+            return;
         }
-        *last = Some((fp, Instant::now()));
-        false
+        self.forget_last_auto();
+        self.send(clip);
+    }
+
+    /// An automatic publish, dropped when it repeats the last one within `AUTO_REPEAT_WINDOW`.
+    /// The cancel check and the record happen under one lock, after the (possibly slow) hash, and
+    /// the send that follows has no second cancel check: a job either records and sends, or
+    /// neither, so a cancelled job can never hide the change that replaced it.
+    fn publish_auto(&self, clip: LocalClip, cancel: &Cancel) {
+        let fp = fingerprint(&clip);
+        let admitted = {
+            let mut last = lock(&self.last_auto);
+            admit_auto(&mut last, fp, cancel.is_cancelled(), Instant::now())
+        };
+        if admitted {
+            self.send(clip);
+        }
+    }
+
+    /// The clipboard or the peers' clip changed another way (a received clip was written, an
+    /// explicit send): a later copy of the earlier content is new again.
+    pub(super) fn forget_last_auto(&self) {
+        *lock(&self.last_auto) = None;
     }
 
     /// Shows whether background sync is on: a backend exists and core's mode is Auto.
@@ -126,10 +154,7 @@ impl Shared {
         }
     }
 
-    fn publish(&self, clip: LocalClip, cancel: &Cancel) {
-        if cancel.is_cancelled() {
-            return;
-        }
+    fn send(&self, clip: LocalClip) {
         // A publish can take long (large files): an event written meanwhile (a received clip)
         // is newer than this outcome and must stay visible.
         let seq = self.status.event_seq();

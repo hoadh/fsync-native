@@ -3,9 +3,13 @@
 //! Pause sync (with a "Sync is paused" line while paused) and Quit. The watcher may appear after
 //! us (Waybar starting late): ksni re-registers on its own and tells us through `watcher_*`.
 //!
-//! State is shown by which rows exist, not only by row properties: ksni sends `LayoutUpdated` only
-//! when the rows change, and some hosts (Quickshell, the Omarchy tray) ignore
-//! `ItemsPropertiesUpdated`, so a check mark or an enabled flag alone would stay stale there.
+//! ksni re-reads `menu()` only after a click on one of its rows or on `Handle::update`, so every
+//! clipboard status change calls `refresh`, which wakes the tray thread to run `update` (never from
+//! a menu callback, which runs on the service thread and would wait for itself).
+//!
+//! State is also shown by which rows exist, not only by row properties: ksni sends `LayoutUpdated`
+//! only when the row count changes, and the Omarchy tray (Quickshell) showed a stale check mark
+//! after `ItemsPropertiesUpdated` in the 2026-11-12 LIVE run. Every state has its own row count.
 
 use super::clipboard_actions::{Action, request};
 use super::clipboard_runtime;
@@ -129,6 +133,14 @@ impl ksni::Tray for FsyncTray {
     }
 }
 
+/// The clipboard status changed (pause, a held clip, ...): the tray menu must be re-read.
+pub fn refresh(core: &Core) {
+    core.tray_dirty.store(true, Ordering::SeqCst);
+    if let Some(t) = core.tray_thread.get() {
+        t.unpark();
+    }
+}
+
 /// The rows that depend on the clipboard state. Each state change adds or removes a row, so every
 /// tray host refreshes the menu (see the module doc).
 fn state_rows(paused: bool, pending: Option<String>) -> Vec<MenuItem<FsyncTray>> {
@@ -142,6 +154,8 @@ fn state_rows(paused: bool, pending: Option<String>) -> Vec<MenuItem<FsyncTray>>
             }
             .into(),
         );
+        // Two rows for a held clip, one for "paused": all four states differ in row count.
+        rows.push(MenuItem::Separator);
     }
     if paused {
         rows.push(
@@ -177,11 +191,15 @@ pub fn start(core: Arc<Core>) {
             };
             match tray.assume_sni_available(true).spawn() {
                 Ok(handle) => {
+                    let _ = core.tray_thread.set(std::thread::current());
                     core.hub.poke_engine();
-                    // Park: dropping the handle would stop the tray service.
+                    // Holding the handle keeps the service alive; a wake-up with the dirty flag set
+                    // re-reads the menu (several status changes collapse into one update).
                     loop {
                         std::thread::park();
-                        let _keep_alive = &handle;
+                        if core.tray_dirty.swap(false, Ordering::SeqCst) {
+                            handle.update(|_| ());
+                        }
                     }
                 }
                 Err(e) => {
@@ -211,18 +229,34 @@ mod tests {
     }
 
     #[test]
-    fn every_state_change_changes_the_rows() {
+    fn every_state_has_its_own_row_count() {
+        let clip = || Some("text from rock".to_owned());
         let idle = labels(&state_rows(false, None));
         let paused = labels(&state_rows(true, None));
-        let pending = labels(&state_rows(false, Some("text from rock".into())));
+        let pending = labels(&state_rows(false, clip()));
+        let both = labels(&state_rows(true, clip()));
         assert_eq!(idle, ["Pause sync [false]"]);
         assert_eq!(paused, ["Sync is paused", "Pause sync [true]"]);
         assert_eq!(
             pending,
-            ["Paste received clip (text from rock)", "Pause sync [false]"]
+            [
+                "Paste received clip (text from rock)",
+                "other",
+                "Pause sync [false]"
+            ]
         );
-        // Row counts differ, so ksni sends LayoutUpdated, which every host honours.
-        assert_ne!(idle.len(), paused.len());
-        assert_ne!(idle.len(), pending.len());
+        assert_eq!(
+            both,
+            [
+                "Paste received clip (text from rock)",
+                "other",
+                "Sync is paused",
+                "Pause sync [true]"
+            ]
+        );
+        // Any change between two states changes the row count, so ksni sends LayoutUpdated.
+        let mut counts = [idle.len(), paused.len(), pending.len(), both.len()];
+        counts.sort_unstable();
+        assert_eq!(counts, [1, 2, 3, 4]);
     }
 }
