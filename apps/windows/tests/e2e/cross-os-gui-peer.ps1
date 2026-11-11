@@ -309,22 +309,23 @@ try {
                     if (-not $helperReady.Wait(30000) -or $helperReady.Result -ne 'READY') { throw 'paste helper did not become ready' }
                     $st.helper_ready_ms = Now-Ms
                     Sync-Put 'ready-file'; $st.ready_ms = Now-Ms
-                    $presses = @{ n = 0 }   # a hashtable: the script block below runs in a child scope
-                    Wait-Until -Seconds $DeadlineSec -What 'virtual files on the Windows clipboard (Win+Alt+V)' {
+                    $presses = @{ n = 0 }
+                    # Own loop (50 ms): Wait-Until polls at 250 ms, which is a visible part of this latency.
+                    $limit = [DateTime]::UtcNow.AddSeconds($DeadlineSec); $haveFormats = $false
+                    while (-not $haveFormats) {
+                        if ([DateTime]::UtcNow -gt $limit) { throw "timeout after ${DeadlineSec}s waiting for virtual files on the Windows clipboard (Win+Alt+V)" }
                         if (-not $st.Contains('clip_logged_ms')) { $t = Get-LogStageMs $logOffset 'clipboard: received files'; if ($t) { $st.clip_logged_ms = $t } }
                         # The log line is the readiness signal; after 20 s without it press anyway (log format changed?).
-                        if (-not ($st.Contains('clip_logged_ms') -or $presses.n -gt 0 -or ((Now-Ms) - $st.ready_ms) -gt 20000)) { return $false }
+                        if (-not ($st.Contains('clip_logged_ms') -or $presses.n -gt 0 -or ((Now-Ms) - $st.ready_ms) -gt 20000)) { Start-Sleep -Milliseconds 50; continue }
                         $presses.n++
                         if (-not $st.Contains('paste_trigger_ms')) { $st.paste_trigger_ms = Now-Ms }
                         Send-WinAlt 'V'
-                        # Poll the clipboard formats every 100 ms; press again only after 1.5 s without them.
+                        # Poll the clipboard formats every 50 ms; press again only after 1.5 s without them.
                         $until = [DateTime]::UtcNow.AddMilliseconds(1500)
-                        while ([DateTime]::UtcNow -lt $until) {
-                            if ((Get-ClipFormats) -contains 'FileGroupDescriptorW') { $st.formats_seen_ms = Now-Ms; return $true }
-                            Start-Sleep -Milliseconds 100
+                        while (-not $haveFormats -and [DateTime]::UtcNow -lt $until) {
+                            if ((Get-ClipFormats) -contains 'FileGroupDescriptorW') { $st.formats_seen_ms = Now-Ms; $haveFormats = $true } else { Start-Sleep -Milliseconds 50 }
                         }
-                        $false
-                    } | Out-Null
+                    }
                     $res.hotkey_presses = $presses.n
                     $st.helper_start_ms = Now-Ms
                     $helper.StandardInput.WriteLine('paste')
