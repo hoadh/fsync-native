@@ -148,6 +148,22 @@ for line in sys.stdin:
 # Common peer args for a leg run.
 win_leg_args() { echo -Step leg -Leg "$1" -Api "$API" -Relay "$RELAY" -Name "$WIN_NAME" -Nonce "$2" -DeadlineSec "$3" ${FORCE_RELAY:+-ForceRelay}; }
 
+# win_wait_cli_ready NONCE PID: the first copy of a text-in leg waits for a real readiness signal, not for the
+# `remote run` call to return: (1) the CLI's own `ready` event in its stdout file on the worker (read over ssh, the
+# nonce makes the file this run's), then (2) the Linux app's backend presence listing the device as online. Copying
+# earlier hits an offline peer, and the offline-peer retry schedule (2 s + stage stall) ends up in the latency.
+win_wait_cli_ready() {
+  local nonce="$1" pid="$2" ready_path
+  ready_path="(Join-Path \$env:TEMP 'fsync-cross-os\\work-$nonce\\text-in.out')"   # PowerShell expression, expanded on the worker
+  for _ in $(seq 1 240); do
+    ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" "powershell -NoProfile -Command \"Get-Content -ErrorAction SilentlyContinue $ready_path\"" 2>/dev/null \
+      | grep -q '"event":"ready"' && break
+    kill -0 "$pid" 2>/dev/null || { wait "$pid" || true; fail "windows text-in run ended before the CLI was ready"; }
+    sleep 0.25
+  done
+  peer_online L1 "$WIN_NAME"
+}
+
 # --- the four legs; TAG labels results (x2 / x5), SIZE_B is the file size ---
 win_text_to_win() { # app copies text (repeated every 8 s until the run ends); windows receives
   win_measure_skew
@@ -156,6 +172,8 @@ win_text_to_win() { # app copies text (repeated every 8 s until the run ends); w
   # shellcheck disable=SC2046
   win_remote 300 "$out" -- "$WIN_PEER" $(win_leg_args text-in "$nonce" 240) -TextPrefix "$prefix" ${WIN_RUST_LOG:+-RustLog "$WIN_RUST_LOG"} & pid=$!; PIDS+=("$pid")
   local t_launch; t_launch="$(now_ms)"
+  win_wait_cli_ready "$nonce" "$pid"
+  local t_ready_seen; t_ready_seen="$(now_ms)"
   while kill -0 "$pid" 2>/dev/null; do
     n=$((n + 1)); ts[$n]="$(now_ms)"; printf %s "$prefix-$n" | wl_a wl-copy
     for _ in $(seq 1 40); do kill -0 "$pid" 2>/dev/null || break; sleep 0.2; done
@@ -169,7 +187,7 @@ win_text_to_win() { # app copies text (repeated every 8 s until the run ends); w
   local stages="copy #$k of $n (first copy ${ts[1]} ms host clock)"
   [[ -z "$la" ]] || stages+="; windows CLI launched $((la - WIN_SKEW_MS - ts[1])) ms after copy #1"
   [[ -z "$rd" ]] || stages+="; ready (online) $((rd - WIN_SKEW_MS - ts[1])) ms after copy #1"
-  stages+="; arrived $((rx - WIN_SKEW_MS - ts[1])) ms after copy #1; remote-run launch $((ts[1] - t_launch)) ms after run start"
+  stages+="; arrived $((rx - WIN_SKEW_MS - ts[1])) ms after copy #1; first copy $((ts[1] - t_launch)) ms after run start (CLI ready + backend presence seen at $((t_ready_seen - t_launch)))"
   log "$tag text app-to-win stages: $stages"
   if [[ -n "${WIN_RUST_LOG:-}" ]]; then   # RUST_LOG run: pull the CLI's stderr (data, read-only)
     ssh -o BatchMode=yes -o ConnectTimeout=10 "$WIN_SSH" "powershell -NoProfile -Command \"Get-Content -ErrorAction SilentlyContinue (Join-Path \$env:TEMP 'fsync-cross-os\\work-$nonce\\text-in.out.err')\"" >"$WORK/win-$tag-text-in.cli.log" 2>&1 || true

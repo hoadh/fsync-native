@@ -300,26 +300,34 @@ try {
                     if (-not (Test-Path $pasteHelper)) { throw "missing $pasteHelper (run -Step build-app)" }
                     $logOffset = Get-LogLength
                     $st = [ordered]@{}   # stage timestamps, Windows clock (epoch ms), no skew involved
+                    # Warm helper: process + COM start-up are paid before the clip arrives; it pastes on the "paste" line.
+                    $pasteDir = Join-Path $base 'pasted'; New-Item -ItemType Directory -Force $pasteDir | Out-Null
+                    $psi = New-Object System.Diagnostics.ProcessStartInfo $pasteHelper
+                    $psi.Arguments = "`"$pasteDir`" --warm"; $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.CreateNoWindow = $true
+                    $helper = [System.Diagnostics.Process]::Start($psi)
+                    $helperReady = $helper.StandardOutput.ReadLineAsync()
+                    if (-not $helperReady.Wait(30000) -or $helperReady.Result -ne 'READY') { throw 'paste helper did not become ready' }
+                    $st.helper_ready_ms = Now-Ms
                     Sync-Put 'ready-file'; $st.ready_ms = Now-Ms
-                    $presses = 0
+                    $presses = @{ n = 0 }   # a hashtable: the script block below runs in a child scope
                     Wait-Until -Seconds $DeadlineSec -What 'virtual files on the Windows clipboard (Win+Alt+V)' {
                         if (-not $st.Contains('clip_logged_ms')) { $t = Get-LogStageMs $logOffset 'clipboard: received files'; if ($t) { $st.clip_logged_ms = $t } }
                         # The log line is the readiness signal; after 20 s without it press anyway (log format changed?).
-                        if ($st.Contains('clip_logged_ms') -or $presses -gt 0 -or ((Now-Ms) - $st.ready_ms) -gt 20000) {
-                            $presses++
-                            if (-not $st.Contains('paste_trigger_ms')) { $st.paste_trigger_ms = Now-Ms }
-                            Send-WinAlt 'V'; Start-Sleep -Milliseconds 1500
+                        if (-not ($st.Contains('clip_logged_ms') -or $presses.n -gt 0 -or ((Now-Ms) - $st.ready_ms) -gt 20000)) { return $false }
+                        $presses.n++
+                        if (-not $st.Contains('paste_trigger_ms')) { $st.paste_trigger_ms = Now-Ms }
+                        Send-WinAlt 'V'
+                        # Poll the clipboard formats every 100 ms; press again only after 1.5 s without them.
+                        $until = [DateTime]::UtcNow.AddMilliseconds(1500)
+                        while ([DateTime]::UtcNow -lt $until) {
+                            if ((Get-ClipFormats) -contains 'FileGroupDescriptorW') { $st.formats_seen_ms = Now-Ms; return $true }
+                            Start-Sleep -Milliseconds 100
                         }
-                        $has = (Get-ClipFormats) -contains 'FileGroupDescriptorW'
-                        if ($has) { $st.formats_seen_ms = Now-Ms }
-                        $has
+                        $false
                     } | Out-Null
-                    $res.hotkey_presses = $presses
-                    $pasteDir = Join-Path $base 'pasted'; New-Item -ItemType Directory -Force $pasteDir | Out-Null
-                    $psi = New-Object System.Diagnostics.ProcessStartInfo $pasteHelper
-                    $psi.Arguments = "`"$pasteDir`""; $psi.UseShellExecute = $false; $psi.RedirectStandardInput = $true; $psi.CreateNoWindow = $true
+                    $res.hotkey_presses = $presses.n
                     $st.helper_start_ms = Now-Ms
-                    $helper = [System.Diagnostics.Process]::Start($psi)
+                    $helper.StandardInput.WriteLine('paste')
                     $pasted = Join-Path $pasteDir "gui-$Nonce-in.bin"
                     Wait-Until -Seconds 120 -What 'pasted file closed' {
                         if (-not $st.Contains('file_created_ms') -and (Test-Path $pasted)) { $st.file_created_ms = [DateTimeOffset]::new((Get-Item $pasted).CreationTimeUtc).ToUnixTimeMilliseconds() }

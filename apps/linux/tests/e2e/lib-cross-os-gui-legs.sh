@@ -300,7 +300,7 @@ for line in open(sys.argv[1], errors="replace"):
         except ValueError: continue
         if o.get("leg") == "in-lazy" and isinstance(o.get("stages"), dict):
             st = o["stages"]; presses = o.get("hotkey_presses", "")
-names = ["ready_ms", "clip_logged_ms", "paste_trigger_ms", "formats_seen_ms", "helper_start_ms", "file_created_ms", "file_closed_ms", "wrote_logged_ms"]
+names = ["helper_ready_ms", "ready_ms", "clip_logged_ms", "paste_trigger_ms", "formats_seen_ms", "helper_start_ms", "file_created_ms", "file_closed_ms", "wrote_logged_ms"]
 out = []
 for n in names:
     v = st.get(n)
