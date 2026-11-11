@@ -53,6 +53,9 @@ pub struct Core {
     pub hub: Hub,
     /// Set by the tray thread while a StatusNotifierWatcher hosts our icon.
     pub tray_registered: Arc<AtomicBool>,
+    /// The tray thread (set once it runs) and its "menu is stale" flag: see `tray::refresh`.
+    pub tray_thread: OnceLock<std::thread::Thread>,
+    pub tray_dirty: AtomicBool,
     /// Bound only by the `app.lock` holder; taken (and stopped) at shutdown.
     pub ipc: Mutex<Option<IpcServer>>,
     /// Clipboard sync (started once the service exists, taken and stopped at shutdown).
@@ -103,6 +106,8 @@ impl Core {
             gate: Gate::default(),
             hub: Hub::default(),
             tray_registered: Arc::new(AtomicBool::new(false)),
+            tray_thread: OnceLock::new(),
+            tray_dirty: AtomicBool::new(false),
             ipc: Mutex::new(None),
             clip: Mutex::new(None),
             clip_notice: AtomicBool::new(false),

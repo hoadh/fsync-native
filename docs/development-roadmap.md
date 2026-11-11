@@ -32,10 +32,10 @@ Plan `261106-1414-linux-native-app`, ADR [014](./adr/014-linux-desktop-app.md). 
 | Phase | Scope | Status | Notes |
 |-------|-------|--------|-------|
 | 01 | Spike (CXX-Qt on Qt 6.2), scaffold, GNOME test host, ADR 014 draft | Done | Qt 6.2 floor builds; `--smoke` passes on Ubuntu 22.04, Debian 12, Fedora and Arch containers. |
-| 02 | Engine bridge, app shell, single instance, tray, sign-in, pairing, devices, secrets | In progress | Code done, review 9.5/10. LIVE pass 2026-11-12: GNOME without AppIndicator, keyring relaunch, Omarchy tray / login / QR / raise. Open: tray Pause sync check mark does not update (F2). |
-| 03 | Clipboard: Wayland data-control, X11 (thin), GNOME manual window, filters, eager inbound | In progress | Implemented. GNOME VM manual send/paste pass (2026-11-07). Open: a Ghostty copy is published twice (F1, LIVE 2026-11-12); KeePassXC / Bitwarden check deferred (no manager on the test host). |
+| 02 | Engine bridge, app shell, single instance, tray, sign-in, pairing, devices, secrets | In progress | Code done, review 9.5/10. LIVE pass 2026-11-12: GNOME without AppIndicator, keyring relaunch, Omarchy tray / login / QR / raise. Tray state fix (F2) on `fix/linux-live-findings`; re-check live. |
+| 03 | Clipboard: Wayland data-control, X11 (thin), GNOME manual window, filters, eager inbound | In progress | Implemented. GNOME VM manual send/paste pass (2026-11-07). Ghostty double publish (F1) fixed on `fix/linux-live-findings`; re-check live. KeePassXC / Bitwarden check deferred (no manager on the test host). |
 | 04a | Eager file inbox, retention, offers, history copy-back | In progress | Code done. LIVE pass 2026-11-12: file clip paste in Nautilus on Omarchy and on GNOME. |
-| 04b | Settings, drag-drop send, CLI hotkey binds | In progress | Code done. LIVE pass 2026-11-12: Manual bind, settings after restart, Nautilus drag-drop (Hyprland, GNOME). Open: Hyprland help text is stale for Lua configs (F3). |
+| 04b | Settings, drag-drop send, CLI hotkey binds | In progress | Code done. LIVE pass 2026-11-12: Manual bind, settings after restart, Nautilus drag-drop (Hyprland, GNOME). Omarchy Lua bind help fixed (F3). |
 | 05 | Packaging: PKGBUILD, `.deb`, `.rpm`, AppImage; release guard; install smoke | Done | Container smoke passes for every format (2026-11-07). AppImage on GNOME 50 (xcb) pass. Omarchy `makepkg -si` + autostart pass (2026-11-09). |
 | 06 | Cross-OS test (fsync-cli here and on waso-vm; Windows app GUI) + docs, ADR 014 final | In progress | X1, X3, X4 PASS (2026-11-10, sha 312a67a). X2, X5 PASS (re-run 2026-11-11, sha aed5ec8). ADR 014 accepted 2026-11-10. Open: X4 QR text, LIVE on Hyprland and GNOME, tunnel check, review and merge. |
 

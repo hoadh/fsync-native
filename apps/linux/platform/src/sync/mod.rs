@@ -22,6 +22,8 @@ mod tests_modes;
 #[cfg(test)]
 mod tests_outbound;
 #[cfg(test)]
+mod tests_repeat;
+#[cfg(test)]
 mod tests_rig;
 
 pub use engine::SyncEngine;

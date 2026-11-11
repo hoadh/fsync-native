@@ -9,7 +9,7 @@ use crate::clipboard::{ClipChange, OwnedEntry, WriteError};
 use fsync_core::service::ClipItem;
 use fsync_proto::ClipKind;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Who and what, for the status line and the pending slot.
 pub(super) fn pending_info(item: &ClipItem) -> PendingInfo {
@@ -84,6 +84,7 @@ impl Shared {
 
     pub(super) fn write(&self, entry: &OwnedEntry) -> Result<(), WriteError> {
         let backend = self.backend.as_ref().ok_or(WriteError::Closed)?;
+        self.forget_last_auto();
         self.guard.remember(entry);
         backend
             .write(entry.clone())
@@ -110,7 +111,7 @@ impl Shared {
                     self.note_mode(&settings);
                     *lock(&self.last) = Some(change.clone());
                     if !self.paused.load(Ordering::SeqCst) && settings.auto {
-                        out.submit(OutJob::Auto(change));
+                        out.submit(OutJob::Auto(change, Instant::now()));
                     }
                 }
                 Err(Timeout) => {}

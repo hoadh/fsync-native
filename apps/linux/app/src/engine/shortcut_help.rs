@@ -13,8 +13,16 @@ pub struct Bind {
 
 pub const BINDS: &[Bind] = &[
     Bind {
-        desktop: "Hyprland (Omarchy)",
-        how: "Add to ~/.config/hypr/bindings.conf (or hyprland.conf):",
+        desktop: "Omarchy",
+        how: "Add to ~/.config/hypr/bindings.lua (check `omarchy menu keybindings --print` for a clash first):",
+        lines: &[
+            r#"o.bind("SUPER + ALT + C", "fsync: send clipboard", "fsync-linux --clip-send")"#,
+            r#"o.bind("SUPER + ALT + V", "fsync: paste received clip", "fsync-linux --clip-paste")"#,
+        ],
+    },
+    Bind {
+        desktop: "Hyprland",
+        how: "Add to ~/.config/hypr/hyprland.conf:",
         lines: &[
             "bind = SUPER ALT, C, exec, fsync-linux --clip-send",
             "bind = SUPER ALT, V, exec, fsync-linux --clip-paste",

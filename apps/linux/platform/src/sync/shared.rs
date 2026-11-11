@@ -9,11 +9,20 @@ use crate::clipboard::echo::WriteGuard;
 use crate::clipboard::filters::Skip;
 use crate::clipboard::{Backend, ClipChange, OwnedEntry};
 use fsync_core::service::LocalClip;
-use std::sync::atomic::AtomicBool;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+/// An automatic change with the same content as the previous automatic publish within this
+/// window is the same copy seen twice (some apps set the selection twice per copy, a few ms
+/// apart): it is dropped. Explicit sends are never dropped.
+pub(super) const AUTO_REPEAT_WINDOW: Duration = Duration::from_secs(1);
 
 pub(super) enum OutJob {
-    Auto(ClipChange),
+    /// A background change and when the watcher saw it (the repeat window is measured between
+    /// sightings, not between publishes: a publish can wait 1.5 s for confirmations).
+    Auto(ClipChange, Instant),
     Explicit(ClipChange),
     Clip(LocalClip),
 }
@@ -31,6 +40,45 @@ pub(super) struct Shared {
     pub(super) current_files: Mutex<Option<String>>,
     pub(super) paused: AtomicBool,
     pub(super) closed: AtomicBool,
+    /// Content fingerprint and time of the last automatic publish (see `AUTO_REPEAT_WINDOW`).
+    pub(super) last_auto: Mutex<Option<(u64, Instant)>>,
+    /// `AUTO_REPEAT_WINDOW` in ms; tests widen it so their timing cannot matter.
+    pub(super) repeat_window_ms: AtomicU64,
+}
+
+/// Content fingerprint of a clip (not a security hash: it only spots a repeat of our own copy).
+fn fingerprint(clip: &LocalClip) -> u64 {
+    let mut h = DefaultHasher::new();
+    for r in &clip.reps {
+        r.mime.hash(&mut h);
+        r.data.hash(&mut h);
+    }
+    clip.files.hash(&mut h);
+    h.finish()
+}
+
+/// Whether an automatic change with fingerprint `fp`, seen at `now`, is published, recording it
+/// when it is (times are sightings, so a slow earlier publish does not stretch the window). A
+/// cancelled job neither sends nor records; a repeat within `window` is dropped.
+pub(super) fn admit_auto(
+    last: &mut Option<(u64, Instant)>,
+    fp: u64,
+    cancelled: bool,
+    now: Instant,
+    window: Duration,
+) -> bool {
+    if cancelled {
+        return false;
+    }
+    if let Some((prev, at)) = *last
+        && prev == fp
+        && now.saturating_duration_since(at) < window
+    {
+        tracing::debug!("clipboard: the same copy seen twice; published once");
+        return false;
+    }
+    *last = Some((fp, now));
+    true
 }
 
 pub(super) fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -39,15 +87,50 @@ pub(super) fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 impl Shared {
     pub(super) fn run_out(&self, job: OutJob, cancel: &Cancel) {
-        let (change, explicit) = match job {
-            OutJob::Clip(clip) => return self.publish(clip, cancel),
-            OutJob::Auto(c) => (c, false),
-            OutJob::Explicit(c) => (c, true),
+        let (change, seen) = match job {
+            OutJob::Clip(clip) => return self.publish_explicit(clip, cancel),
+            OutJob::Auto(c, seen) => (c, Some(seen)),
+            OutJob::Explicit(c) => (c, None),
         };
-        match self.collect_local(&change) {
-            Ok(clip) => self.publish(clip, cancel),
-            Err(skip) => self.skipped(&skip, explicit),
+        match (self.collect_local(&change), seen) {
+            (Ok(clip), Some(seen)) => self.publish_auto(clip, seen, cancel),
+            (Ok(clip), None) => self.publish_explicit(clip, cancel),
+            (Err(skip), seen) => self.skipped(&skip, seen.is_none()),
         }
+    }
+
+    /// An explicit publish (tray, hotkey, "send to"): never deduplicated. What peers hold changes,
+    /// so the next automatic copy is compared against nothing.
+    fn publish_explicit(&self, clip: LocalClip, cancel: &Cancel) {
+        if cancel.is_cancelled() {
+            return;
+        }
+        self.forget_last_auto();
+        self.send(clip);
+    }
+
+    /// An automatic publish, dropped when it repeats the last one seen within `AUTO_REPEAT_WINDOW`
+    /// (`seen`: when the watcher got the change; the second sighting of one copy may wait in the
+    /// lane while the first publish runs, which can take longer than the window).
+    /// The cancel check and the record happen under one lock, after the (possibly slow) hash, and
+    /// the send that follows has no second cancel check: a job either records and sends, or
+    /// neither, so a cancelled job can never hide the change that replaced it.
+    fn publish_auto(&self, clip: LocalClip, seen: Instant, cancel: &Cancel) {
+        let fp = fingerprint(&clip);
+        let admitted = {
+            let mut last = lock(&self.last_auto);
+            let window = Duration::from_millis(self.repeat_window_ms.load(Ordering::Relaxed));
+            admit_auto(&mut last, fp, cancel.is_cancelled(), seen, window)
+        };
+        if admitted {
+            self.send(clip);
+        }
+    }
+
+    /// The clipboard or the peers' clip changed another way (a received clip was written, an
+    /// explicit send): a later copy of the earlier content is new again.
+    pub(super) fn forget_last_auto(&self) {
+        *lock(&self.last_auto) = None;
     }
 
     /// Shows whether background sync is on: a backend exists and core's mode is Auto.
@@ -80,10 +163,7 @@ impl Shared {
         }
     }
 
-    fn publish(&self, clip: LocalClip, cancel: &Cancel) {
-        if cancel.is_cancelled() {
-            return;
-        }
+    fn send(&self, clip: LocalClip) {
         // A publish can take long (large files): an event written meanwhile (a received clip)
         // is newer than this outcome and must stay visible.
         let seq = self.status.event_seq();

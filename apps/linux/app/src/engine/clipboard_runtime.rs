@@ -64,6 +64,7 @@ pub fn start(core: &Arc<Core>) {
     let notify: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
         if let Some(c) = weak.upgrade() {
             c.hub.poke_clipboard();
+            super::tray::refresh(&c);
         }
     });
     let env = SyncEnv {
