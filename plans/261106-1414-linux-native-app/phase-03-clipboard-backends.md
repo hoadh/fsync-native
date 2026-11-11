@@ -95,7 +95,7 @@ Modify: `app/src/main.rs`, `app/src/shutdown.rs` (clipboard step), `app/src/brid
 ## Pending Live Verification
 <!-- red-team 2026-11-06 #14 --> KDE, Sway live session, X11 desktop (Xfce/i3) -> ADR 014 "untested" (Sway/X11 covered headless by e2e).
 - [x] LIVE(blocking): GNOME VM manual send/paste via QuickClipWindow + activation token — evidence: ADR 014 table (2026-11-07)
-- [ ] LIVE: Hyprland KeePassXC / Bitwarden copy not sent — evidence: phase 06 report
+- [ ] LIVE: Hyprland KeePassXC / Bitwarden copy not sent — deferred 2026-11-12 (no manager on the test host; roadmap)
 
 ## Risk Assessment
 | Risk | L x I | Mitigation |

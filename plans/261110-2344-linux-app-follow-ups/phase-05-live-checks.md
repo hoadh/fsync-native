@@ -22,11 +22,11 @@ Open LIVE items carried from plan 261106:
 5. Record each result in the ADR 014 LIVE table (pass / fail / untested, with the date). A failure becomes its own fix task. It does not block the close-out if it is in a known-untested area.
 
 ## Todo
-- [ ] Checklist doc
-- [ ] Hyprland: password manager, tray/login/QR/raise, drag-drop
-- [ ] GNOME VM: no-tray launcher, keyring relaunch, Nautilus paste, drag-drop
-- [ ] Tunnel leftover check recorded
-- [ ] ADR 014 LIVE table updated
+- [x] Checklist doc (`docs/how-to/linux-live-checks.md`)
+- [ ] Hyprland: tray/login/QR/raise, manual bind, file paste, drag-drop pass 2026-11-12; password manager deferred; autostart + relogin pass (journal, 2026-11-11 login)
+- [x] GNOME VM: no-tray launcher, keyring relaunch, Nautilus paste, drag-drop (pass 2026-11-12)
+- [x] Tunnel leftover check recorded (none, 2026-11-11)
+- [x] ADR 014 LIVE table updated (section "LIVE run", findings F1-F3)
 
 ## Risks
 Needs the user's time at both desktops. Items they skip are recorded as "untested" (allowed by plan 261106's cross-cutting rules).
