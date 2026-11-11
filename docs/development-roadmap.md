@@ -41,7 +41,7 @@ Plan `261106-1414-linux-native-app`, ADR [014](./adr/014-linux-desktop-app.md). 
 
 Phase 05 is marked "Completed" in the plan's overview table; its phase file says In Progress, and this page follows the phase file.
 
-Follow-ups plan `261110-2344-linux-app-follow-ups`: phase 01 (pairing "connection lost" flake, PR #3) and phase 04 (packaging hardening, license `MIT OR Apache-2.0`, maintainer, PR #2) done 2026-11-11. Review low L5 (supply-chain pinning) moved to MVP phase 16.
+Follow-ups plan `261110-2344-linux-app-follow-ups`: phase 01 (pairing "connection lost" flake, PR #3) and phase 04 (packaging hardening, license `MIT OR Apache-2.0`, maintainer, PR #2) done 2026-11-11. Phase 02 (latest slot per peer lane, serialized-publish doc, FFI `contract_version` 3 with a macOS startup check) implemented 2026-11-11 on `fix/offline-publish-lows`; macOS and Windows CI pending. Review low L5 (supply-chain pinning) moved to MVP phase 16.
 
 Linux open items: the Platform emit gate (the app sends `Cli` until the backend and Mac/Windows releases decode `Linux`), the Windows-tunnel pairing flake in ADR 014 (the local "connection lost" flake is fixed, follow-up plan `261110-2344` phase 01), the untested desktops (KDE, Sway live, other X11), the X4 QR-text pairing path (untested), and an offline account device that delays each following Windows publish by up to 7 s (product issue, open).
 

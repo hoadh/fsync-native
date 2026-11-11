@@ -2,6 +2,19 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-11-11 - Offline-publish lows; FFI contract 3
+
+Plan `plans/261110-2344-linux-app-follow-ups` phase 02 (review lows L1, L2, L-new-1 of the offline-peer publish). Branch `fix/offline-publish-lows`.
+
+### Changed
+- Core: each peer's clip lane keeps one "latest" slot instead of a queue. One attempt runs at a time; a newer clip replaces the one waiting behind it (the replaced clip is reported as not delivered, "superseded", and its offer withdrawn), and the running attempt keeps its own clip. A copy burst behind a dead peer now holds at most two clip frames (up to about 256 KiB each) instead of one per copy for up to 7 s. Latest-wins is unchanged.
+- Core: `publish_clip` (engine, service, FFI) documents that publishes must be serialized for ordering; two overlapping publishes are logged at debug level. No locking change (the apps publish one clip at a time).
+- FFI: `contract_version()` is 3 (`Published.pending` was appended in a positional record, so an older binding fails at the first `publish_clip` decode). The Windows startup check and the macOS and C# contract tests expect 3. Swift and C# bindings regenerated (doc comment and the `contract_version` checksum only; the UniFFI checksum covers the doc comment, so an old binding now also fails its load-time checksum check).
+
+### Added
+- macOS app: a startup check of `contractVersion()` before the engine is created (`EngineBridge.expectedContract`); a mismatch shows "fsync could not load its engine" as a boot failure, like Windows.
+- Core tests: lane unit tests (replace, burst bound, aborted runner frees the lane) and `a_burst_to_a_dead_peer_holds_at_most_two_frames` (50 publishes to a dead peer; test hook `Engine::clip_frames_held`, feature `test-hooks`).
+
 ## 2026-11-11 - Pairing "connection lost" flake fixed
 
 Plan `plans/261110-2344-linux-app-follow-ups` phase 01, ADR [014](./adr/014-linux-desktop-app.md) "Known issues". PR #3 (`fix/pairing-flake`).

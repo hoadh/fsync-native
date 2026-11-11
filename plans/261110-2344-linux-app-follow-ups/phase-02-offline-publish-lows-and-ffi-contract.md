@@ -22,9 +22,9 @@
 5. Update `docs/protocol-spec.md` or the FFI contract doc and the changelog.
 
 ## Todo
-- [ ] Latest slot + test (frames held bounded)
-- [ ] L1 doc + overlap log
-- [ ] contract_version 3, bindings regenerated, app checks raised
+- [x] Latest slot + test (frames held bounded)
+- [x] L1 doc + overlap log
+- [x] contract_version 3, bindings regenerated, app checks raised
 - [ ] Rust, macOS, Windows CI green; review >= 9.5; PR
 
 ## Success
