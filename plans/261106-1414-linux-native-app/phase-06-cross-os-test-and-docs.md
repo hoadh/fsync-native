@@ -79,7 +79,7 @@ Modify:
 - [x] Docs (architecture, roadmap, changelog, codebase-summary, README, ADR 014 sections) updated; ADR 014 accepted 2026-11-10
 - [ ] Platform emit gate: stays closed. Opens only when backend and Mac/Windows releases decode `Linux`
 - [ ] Re-run X2 + X5 at HEAD (current harness; last pass 994119f)
-- [ ] Confirm no tunnel process left on waso-vm or this host (step 8; the harness trap should do it, not yet recorded)
+- [x] Confirm no tunnel process left on waso-vm or this host: none on 2026-11-11 after the phase-03 runs of plan 261110 (`ps` here, `Get-Process ssh,fsync*` on waso-vm)
 - [ ] Review + merge (per user decision)
 
 ## As-Built Notes (2026-11-10)
@@ -99,8 +99,8 @@ Modify:
 
 ## Pending Live Verification
 - [x] LIVE(blocking): Linux app <-> Windows app GUI round trips (X3/X4) — evidence: `docs/test-results/linux-cross-os-261110-1241.json` (X3 and X4 PASS, 312a67a)
-- [ ] LIVE: GNOME VM items carried from 02/03/04a/04b/05 — evidence: ADR 014 table
-- [ ] LIVE: Hyprland items carried from 03 (password manager not sent) — evidence: ADR 014 table
+- [x] LIVE: GNOME VM items carried from 02/03/04a/04b/05 — evidence: ADR 014 "LIVE run" (G1-G4 pass 2026-11-12)
+- [ ] LIVE: Hyprland items carried from 03 (password manager not sent) — deferred 2026-11-12 (no manager on the test host); other Hyprland items pass (ADR 014 "LIVE run")
 
 ## Risk Assessment
 | Risk | L x I | Mitigation |
