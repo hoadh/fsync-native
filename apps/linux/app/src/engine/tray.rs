@@ -1,7 +1,15 @@
 //! Tray icon (StatusNotifierItem via ksni) on its own thread. Left click toggles the window;
-//! the menu offers Open, History, Send clipboard now, Paste received clip (enabled while one is held),
-//! Pause sync and Quit. The watcher may appear after
+//! the menu offers Open, History, Send clipboard now, Paste received clip (only while one is held),
+//! Pause sync (with a "Sync is paused" line while paused) and Quit. The watcher may appear after
 //! us (Waybar starting late): ksni re-registers on its own and tells us through `watcher_*`.
+//!
+//! ksni re-reads `menu()` only after a click on one of its rows or on `Handle::update`, so every
+//! clipboard status change calls `refresh`, which wakes the tray thread to run `update` (never from
+//! a menu callback, which runs on the service thread and would wait for itself).
+//!
+//! State is also shown by which rows exist, not only by row properties: ksni sends `LayoutUpdated`
+//! only when the row count changes, and the Omarchy tray (Quickshell) showed a stale check mark
+//! after `ItemsPropertiesUpdated` in the 2026-11-12 LIVE run. Every state has its own row count.
 
 use super::clipboard_actions::{Action, request};
 use super::clipboard_runtime;
@@ -73,9 +81,8 @@ impl ksni::Tray for FsyncTray {
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
         let status = clipboard_runtime::snapshot(&self.core);
-        let paused = status.paused;
         let pending = (!status.pending.is_empty()).then_some(status.pending);
-        vec![
+        let mut items: Vec<MenuItem<Self>> = vec![
             StandardItem {
                 label: "Open fsync".into(),
                 activate: Box::new(|t: &mut Self| {
@@ -100,23 +107,9 @@ impl ksni::Tray for FsyncTray {
                 ..Default::default()
             }
             .into(),
-            StandardItem {
-                label: match pending.as_deref() {
-                    Some(p) => format!("Paste received clip ({p})"),
-                    None => "Paste received clip".into(),
-                },
-                enabled: pending.is_some(),
-                activate: Box::new(|t: &mut Self| t.clip_action(Action::Paste)),
-                ..Default::default()
-            }
-            .into(),
-            CheckmarkItem {
-                label: "Pause sync".into(),
-                checked: paused,
-                activate: Box::new(|t: &mut Self| clipboard_runtime::toggle_pause(&t.core)),
-                ..Default::default()
-            }
-            .into(),
+        ];
+        items.extend(state_rows(status.paused, pending));
+        items.extend([
             MenuItem::Separator,
             StandardItem {
                 label: "Quit".into(),
@@ -124,7 +117,8 @@ impl ksni::Tray for FsyncTray {
                 ..Default::default()
             }
             .into(),
-        ]
+        ]);
+        items
     }
 
     fn watcher_online(&self) {
@@ -139,6 +133,52 @@ impl ksni::Tray for FsyncTray {
     }
 }
 
+/// The clipboard status changed (pause, a held clip, ...): the tray menu must be re-read.
+pub fn refresh(core: &Core) {
+    core.tray_dirty.store(true, Ordering::SeqCst);
+    if let Some(t) = core.tray_thread.get() {
+        t.unpark();
+    }
+}
+
+/// The rows that depend on the clipboard state. Each state change adds or removes a row, so every
+/// tray host refreshes the menu (see the module doc).
+fn state_rows(paused: bool, pending: Option<String>) -> Vec<MenuItem<FsyncTray>> {
+    let mut rows = Vec::new();
+    if let Some(p) = pending {
+        rows.push(
+            StandardItem {
+                label: format!("Paste received clip ({p})"),
+                activate: Box::new(|t: &mut FsyncTray| t.clip_action(Action::Paste)),
+                ..Default::default()
+            }
+            .into(),
+        );
+        // Two rows for a held clip, one for "paused": all four states differ in row count.
+        rows.push(MenuItem::Separator);
+    }
+    if paused {
+        rows.push(
+            StandardItem {
+                label: "Sync is paused".into(),
+                enabled: false,
+                ..Default::default()
+            }
+            .into(),
+        );
+    }
+    rows.push(
+        CheckmarkItem {
+            label: "Pause sync".into(),
+            checked: paused,
+            activate: Box::new(|t: &mut FsyncTray| clipboard_runtime::toggle_pause(&t.core)),
+            ..Default::default()
+        }
+        .into(),
+    );
+    rows
+}
+
 /// Starts the tray thread. Without a session bus or watcher the app simply has no tray.
 pub fn start(core: Arc<Core>) {
     let spawned = std::thread::Builder::new()
@@ -151,11 +191,17 @@ pub fn start(core: Arc<Core>) {
             };
             match tray.assume_sni_available(true).spawn() {
                 Ok(handle) => {
+                    let _ = core.tray_thread.set(std::thread::current());
                     core.hub.poke_engine();
-                    // Park: dropping the handle would stop the tray service.
+                    // Holding the handle keeps the service alive; a wake-up with the dirty flag set
+                    // re-reads the menu (several status changes collapse into one update).
+                    // The flag is checked before parking: a change made before `tray_thread` was set
+                    // (it could not wake us) is picked up on the first pass.
                     loop {
+                        if core.tray_dirty.swap(false, Ordering::SeqCst) {
+                            handle.update(|_| ());
+                        }
                         std::thread::park();
-                        let _keep_alive = &handle;
                     }
                 }
                 Err(e) => {
@@ -167,5 +213,52 @@ pub fn start(core: Arc<Core>) {
         });
     if let Err(e) = spawned {
         tracing::warn!("cannot start tray thread: {e}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn labels(rows: &[MenuItem<FsyncTray>]) -> Vec<String> {
+        rows.iter()
+            .map(|r| match r {
+                MenuItem::Standard(i) => i.label.clone(),
+                MenuItem::Checkmark(i) => format!("{} [{}]", i.label, i.checked),
+                _ => "other".into(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn every_state_has_its_own_row_count() {
+        let clip = || Some("text from rock".to_owned());
+        let idle = labels(&state_rows(false, None));
+        let paused = labels(&state_rows(true, None));
+        let pending = labels(&state_rows(false, clip()));
+        let both = labels(&state_rows(true, clip()));
+        assert_eq!(idle, ["Pause sync [false]"]);
+        assert_eq!(paused, ["Sync is paused", "Pause sync [true]"]);
+        assert_eq!(
+            pending,
+            [
+                "Paste received clip (text from rock)",
+                "other",
+                "Pause sync [false]"
+            ]
+        );
+        assert_eq!(
+            both,
+            [
+                "Paste received clip (text from rock)",
+                "other",
+                "Sync is paused",
+                "Pause sync [true]"
+            ]
+        );
+        // Any change between two states changes the row count, so ksni sends LayoutUpdated.
+        let mut counts = [idle.len(), paused.len(), pending.len(), both.len()];
+        counts.sort_unstable();
+        assert_eq!(counts, [1, 2, 3, 4]);
     }
 }

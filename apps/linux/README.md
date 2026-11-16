@@ -137,7 +137,8 @@ Super+Alt+C (send) and Super+Alt+V (paste); never Ctrl+Alt, it is AltGr on many 
 
 | Desktop | Where | Lines |
 |---|---|---|
-| Hyprland (Omarchy) | `~/.config/hypr/bindings.conf` | `bind = SUPER ALT, C, exec, fsync-linux --clip-send`<br>`bind = SUPER ALT, V, exec, fsync-linux --clip-paste` |
+| Omarchy | `~/.config/hypr/bindings.lua` | `o.bind("SUPER + ALT + C", "fsync: send clipboard", "fsync-linux --clip-send")`<br>`o.bind("SUPER + ALT + V", "fsync: paste received clip", "fsync-linux --clip-paste")` |
+| Hyprland | `~/.config/hypr/hyprland.conf` | `bind = SUPER ALT, C, exec, fsync-linux --clip-send`<br>`bind = SUPER ALT, V, exec, fsync-linux --clip-paste` |
 | Sway | `~/.config/sway/config` | `bindsym Mod4+Mod1+c exec fsync-linux --clip-send`<br>`bindsym Mod4+Mod1+v exec fsync-linux --clip-paste` |
 | KDE Plasma | System Settings > Keyboard > Shortcuts > Add Command | `fsync-linux --clip-send`, `fsync-linux --clip-paste` |
 | GNOME | Settings > Keyboard > Custom Shortcuts | `fsync-linux --clip-send`, `fsync-linux --clip-paste` (a small window opens and takes the focus) |
