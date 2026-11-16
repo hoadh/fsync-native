@@ -8,7 +8,7 @@
 - Docs to update: `README.md`, `docs/system-architecture.md`, `docs/development-roadmap.md`, `docs/project-changelog.md`, `docs/codebase-summary.md`, `docs/adr/014-linux-desktop-app.md`
 
 ## Overview
-- Priority: P2. Status: In Progress. X1-X5 all PASS across two runs (X1+X4+X3 at 312a67a on 2026-11-10; X1+X2+X5 at 994119f on 2026-11-09). ADR 014 accepted 2026-11-10. Stays In Progress for open LIVE items (GNOME VM, Hyprland), the tunnel check, and review + merge. Estimate: 4 d. Gate owned here: **Cross-OS transport** (plan.md Gates).
+- Priority: P2. Status: Completed 2026-11-17. X1-X5 all PASS (X1+X4+X3 at 312a67a on 2026-11-10; X2+X5 re-run at aed5ec8 on 2026-11-11). ADR 014 accepted 2026-11-10. LIVE GNOME/Hyprland pass 2026-11-12; no tunnel left; merged as PR #1. Estimate: 4 d. Gate owned here: **Cross-OS transport** (plan.md Gates).
 - Prove Linux app <-> fsync-cli (here) and Linux app <-> Windows app (waso-vm) both ways for text, image, file; record evidence; finalize docs.
 - Prerequisite (user, privileged): reinstall Rig on waso-vm (doctor FAILs `rig-version`), then `node ~/.claude/skills/remote/scripts/remote.cjs setup waso-vm` -> `setup: ok`, `doctor waso-vm` all PASS.
 
@@ -68,19 +68,19 @@ Modify:
 8. Confirm the per-run reverse tunnel is gone (the harness trap kills it). Code review (code-reviewer) of the whole branch; fix; merge per user decision.
 
 ## Todo List
-- [ ] waso-vm Rig reinstall + setup + doctor green (user)
+- [x] waso-vm Rig reinstall + setup + doctor green (user): Rig reinstalled 2026-11-10, doctor ok
 - [x] Build run on waso-vm (PASS 261109 after Perl install; tunnel verify run r261109101828-d7b97c; report implementer-261109-1000-phase-06.md)
 - [x] Port-forward transport verified from waso-vm (reverse ssh -R tunnel instead; verify-only run PASS, docs/test-results/linux-cross-os-261109-1753.json)
 - [x] X1 local PASS (docs/test-results/linux-cross-os-261109-1628.json)
 - [x] X2 + X5 via split `remote run`s PASS (docs/test-results/linux-cross-os-261109-1753.json, ref 994119f)
 - [x] X3 + X4 PASS (run `linux-cross-os-261110-1241.json`, 312a67a); taskMode restored to headless after the run (process step)
 - [x] X4 code path (SAS equal, peer listed as Cli). QR text: **not tested**, open (ADR 014 "Open")
-- [ ] LIVE items: waso-vm legs done; GNOME VM and Hyprland items carried from 02-05 still open (non-blocking)
+- [x] LIVE items: waso-vm legs done; GNOME VM and Hyprland items pass 2026-11-12 (ADR 014 "LIVE run"); password-manager check deferred to the roadmap
 - [x] Docs (architecture, roadmap, changelog, codebase-summary, README, ADR 014 sections) updated; ADR 014 accepted 2026-11-10
-- [ ] Platform emit gate: stays closed. Opens only when backend and Mac/Windows releases decode `Linux`
-- [ ] Re-run X2 + X5 at HEAD (current harness; last pass 994119f)
+- [x] Platform emit gate recorded (ADR 014): stays closed. Opens only when backend and Mac/Windows releases decode `Linux` (future release, out of scope)
+- [x] Re-run X2 + X5 at HEAD: pass 2026-11-11 (`docs/test-results/linux-cross-os-261111-1206.json`, aed5ec8)
 - [x] Confirm no tunnel process left on waso-vm or this host: none on 2026-11-11 after the phase-03 runs of plan 261110 (`ps` here, `Get-Process ssh,fsync*` on waso-vm)
-- [ ] Review + merge (per user decision)
+- [x] Review + merge: PR #1 (4e7b33b); follow-ups in plan 261110 (PRs #2-#7)
 
 ## As-Built Notes (2026-11-10)
 - Transport: reverse `ssh -R` opened per run by the Linux host, forwarding waso-vm's `127.0.0.1:18080/18090` (not portproxy, not `ssh -L`).
@@ -100,7 +100,7 @@ Modify:
 ## Pending Live Verification
 - [x] LIVE(blocking): Linux app <-> Windows app GUI round trips (X3/X4) — evidence: `docs/test-results/linux-cross-os-261110-1241.json` (X3 and X4 PASS, 312a67a)
 - [x] LIVE: GNOME VM items carried from 02/03/04a/04b/05 — evidence: ADR 014 "LIVE run" (G1-G4 pass 2026-11-12)
-- [ ] LIVE: Hyprland items carried from 03 (password manager not sent) — deferred 2026-11-12 (no manager on the test host); other Hyprland items pass (ADR 014 "LIVE run")
+- [x] LIVE: Hyprland items carried from 03 (password manager not sent) — deferred 2026-11-12, tracked in the roadmap (no manager on the test host); other Hyprland items pass (ADR 014 "LIVE run")
 
 ## Risk Assessment
 | Risk | L x I | Mitigation |

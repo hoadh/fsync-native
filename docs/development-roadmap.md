@@ -1,6 +1,6 @@
 # Development Roadmap
 
-Last updated: 2026-11-11. Plan of record: [plans/261013-2029-fsync-native-mvp](../plans/261013-2029-fsync-native-mvp/plan.md). Its phase files still show "pending"; this page is the current status. The Linux desktop app has its own plan: [plans/261106-1414-linux-native-app](../plans/261106-1414-linux-native-app/plan.md) (table below).
+Last updated: 2026-11-17. Plan of record: [plans/261013-2029-fsync-native-mvp](../plans/261013-2029-fsync-native-mvp/plan.md). Its phase files still show "pending"; this page is the current status. The Linux desktop app has its own plan: [plans/261106-1414-linux-native-app](../plans/261106-1414-linux-native-app/plan.md) (table below).
 
 ## Phase Status
 
@@ -27,21 +27,19 @@ Phase names and dependencies follow the MVP plan. Its own status column still re
 
 ## Linux Desktop App
 
-Plan `261106-1414-linux-native-app`, ADR [014](./adr/014-linux-desktop-app.md). Status as of 2026-11-10: 1 of 7 phases closed (01); phases 02-06 open with LIVE checks.
+Plan `261106-1414-linux-native-app`, ADR [014](./adr/014-linux-desktop-app.md). Status as of 2026-11-17: all 7 phases closed (plan `status: completed`). Open items are listed below the table.
 
 | Phase | Scope | Status | Notes |
 |-------|-------|--------|-------|
 | 01 | Spike (CXX-Qt on Qt 6.2), scaffold, GNOME test host, ADR 014 draft | Done | Qt 6.2 floor builds; `--smoke` passes on Ubuntu 22.04, Debian 12, Fedora and Arch containers. |
-| 02 | Engine bridge, app shell, single instance, tray, sign-in, pairing, devices, secrets | In progress | Code done, review 9.5/10. LIVE pass 2026-11-12: GNOME without AppIndicator, keyring relaunch, Omarchy tray / login / QR / raise. Tray state fix (F2) re-checked live 2026-11-17. |
-| 03 | Clipboard: Wayland data-control, X11 (thin), GNOME manual window, filters, eager inbound | In progress | Implemented. GNOME VM manual send/paste pass (2026-11-07). Ghostty double publish (F1) fixed, re-checked live 2026-11-17. KeePassXC / Bitwarden check deferred (no manager on the test host). |
-| 04a | Eager file inbox, retention, offers, history copy-back | In progress | Code done. LIVE pass 2026-11-12: file clip paste in Nautilus on Omarchy and on GNOME. |
-| 04b | Settings, drag-drop send, CLI hotkey binds | In progress | Code done. LIVE pass 2026-11-12: Manual bind, settings after restart, Nautilus drag-drop (Hyprland, GNOME). Omarchy Lua bind help fixed (F3). |
+| 02 | Engine bridge, app shell, single instance, tray, sign-in, pairing, devices, secrets | Done | Code done, review 9.5/10. LIVE pass 2026-11-12: GNOME without AppIndicator, keyring relaunch, Omarchy tray / login / QR / raise. Tray state fix (F2) re-checked live 2026-11-17. |
+| 03 | Clipboard: Wayland data-control, X11 (thin), GNOME manual window, filters, eager inbound | Done | Implemented. GNOME VM manual send/paste pass (2026-11-07). Ghostty double publish (F1) fixed, re-checked live 2026-11-17. KeePassXC / Bitwarden check deferred (no manager on the test host). |
+| 04a | Eager file inbox, retention, offers, history copy-back | Done | Code done. LIVE pass 2026-11-12: file clip paste in Nautilus on Omarchy and on GNOME. |
+| 04b | Settings, drag-drop send, CLI hotkey binds | Done | Code done. LIVE pass 2026-11-12: Manual bind, settings after restart, Nautilus drag-drop (Hyprland, GNOME). Omarchy Lua bind help fixed (F3). |
 | 05 | Packaging: PKGBUILD, `.deb`, `.rpm`, AppImage; release guard; install smoke | Done | Container smoke passes for every format (2026-11-07). AppImage on GNOME 50 (xcb) pass. Omarchy `makepkg -si` + autostart pass (2026-11-09). |
-| 06 | Cross-OS test (fsync-cli here and on waso-vm; Windows app GUI) + docs, ADR 014 final | In progress | X1, X3, X4 PASS (2026-11-10, sha 312a67a). X2, X5 PASS (re-run 2026-11-11, sha aed5ec8). ADR 014 accepted 2026-11-10. Open: X4 QR text, LIVE on Hyprland and GNOME, tunnel check, review and merge. |
+| 06 | Cross-OS test (fsync-cli here and on waso-vm; Windows app GUI) + docs, ADR 014 final | Done | X1, X3, X4 PASS (2026-11-10, sha 312a67a). X2, X5 PASS (re-run 2026-11-11, sha aed5ec8). ADR 014 accepted 2026-11-10. LIVE on Hyprland and GNOME pass 2026-11-12; no tunnel left; merged as PR #1. Open: X4 QR text. |
 
-Phase 05 is marked "Completed" in the plan's overview table; its phase file says In Progress, and this page follows the phase file.
-
-Follow-ups plan `261110-2344-linux-app-follow-ups`: phase 01 (pairing "connection lost" flake, PR #3) and phase 04 (packaging hardening, license `MIT OR Apache-2.0`, maintainer, PR #2) done 2026-11-11. Phase 02 (latest slot per peer lane, serialized-publish doc, FFI `contract_version` 3 with a macOS startup check) implemented 2026-11-11 on `fix/offline-publish-lows`; macOS and Windows CI pending. Review low L5 (supply-chain pinning) moved to MVP phase 16. Phase 03 (lazy-file and text latency to Windows, dial follows new addresses, offer relay wait) done 2026-11-11 on `fix/lazy-file-latency`: X3 lazy file median 2977 ms (was 4577-8701), X2/X5 text 60-66 ms; open: the 2 s first send after idle.
+Follow-ups plan `261110-2344-linux-app-follow-ups`: completed 2026-11-17. Phase 01 pairing "connection lost" flake (PR #3); 02 latest slot per peer lane, serialized-publish doc, FFI `contract_version` 3 (PR #4); 03 lazy-file latency to Windows, median 2977 ms (was 4577-8701), text 60-66 ms, dial follows new addresses (PR #5); 04 packaging hardening, license `MIT OR Apache-2.0` (PR #2); 05 LIVE checks on Hyprland and GNOME (PR #6) and fixes for findings F1-F3, re-checked live 2026-11-17 (PR #7). Review low L5 (supply-chain pinning) moved to MVP phase 16. Open: the 2 s first send after idle.
 
 Linux open items: the Platform emit gate (the app sends `Cli` until the backend and Mac/Windows releases decode `Linux`), the Windows-tunnel pairing flake in ADR 014 (the local "connection lost" flake and the relay-URL race are fixed; confirm over more runs), the untested desktops (KDE, Sway live, other X11), the X4 QR-text pairing path (untested), an offline account device that delays each following Windows publish by up to 7 s (product issue, open), the 2 s first send after idle (product, open), and the Hyprland password-manager check (a KeePassXC / Bitwarden copy is not sent): deferred on 2026-11-12 because neither manager is installed on the test host; run it on a host that has one.
 
@@ -80,5 +78,7 @@ Linux open items: the Platform emit gate (the app sends `Cli` until the backend 
 | 2026-11-11 | Pairing "connection lost" flake root-caused and fixed in core (new device reported `Completed` before `Done` was delivered); loop 30/30 |
 | 2026-11-11 | Linux app: lazy-file latency to Windows median 2977 ms; X2/X5 text 60-66 ms; dial follows new addresses (plan 261110 phase 03) |
 | 2026-11-11 | Repo licensed `MIT OR Apache-2.0`; Linux packaging hardening (git sha in the PKGBUILD, one asset list, maintainer, licenses in every package; plan 261110 phase 04) |
+| 2026-11-12 | Linux app: LIVE checks on Hyprland and GNOME pass (H5 password manager deferred); findings F1-F3 |
+| 2026-11-17 | Linux app: F1 (Ghostty double publish) and F2 (tray state) fixes re-checked live; plans 261106 and 261110 completed |
 
 See [project-changelog.md](./project-changelog.md) for details.

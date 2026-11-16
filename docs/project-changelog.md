@@ -2,6 +2,10 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-11-17 - Linux app plans closed
+
+Plans `261106-1414-linux-native-app` (PR #1) and `261110-2344-linux-app-follow-ups` (PRs #2-#7) are completed. Items still open are in ADR [014](./adr/014-linux-desktop-app.md) "Open" and the roadmap: X4 QR-text pairing, the Hyprland password-manager check, the Platform emit gate, the 2 s first send after idle.
+
 ## 2026-11-12 - Linux app: LIVE findings F1-F3 fixed
 
 Branch `fix/linux-live-findings`, ADR [014](./adr/014-linux-desktop-app.md) "LIVE run".

@@ -31,11 +31,11 @@
 7. Run `smoke-install.sh` for all targets, including arch with namcap.
 
 ## Todo
-- [ ] FSYNC_GIT_SHA in PKGBUILD (both modes) + check
-- [ ] L3, L4, L8
-- [ ] Maintainer line; MIT OR Apache-2.0 across repo + packages
-- [ ] L5 moved to MVP phase 16
-- [ ] All smoke targets pass; review >= 9.5; PR
+- [x] FSYNC_GIT_SHA in PKGBUILD (both modes) + check
+- [x] L3, L4, L8
+- [x] Maintainer line; MIT OR Apache-2.0 across repo + packages
+- [x] L5 moved to MVP phase 16
+- [x] All smoke targets pass; review >= 9.5; PR (PR #2, 7dd4ca4)
 
 ## Risks
 The arch smoke takes about 30 min, so run it once at the end. A namcap rule change fails the arch smoke.
