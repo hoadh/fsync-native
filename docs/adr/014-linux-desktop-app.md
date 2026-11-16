@@ -722,7 +722,7 @@ Nothing below blocks acceptance (the acceptance condition is X3 and X4, met abov
 - **Codec gaps.** 32-bpp images with non-standard masks are refused with a log line, not converted. Alpha is not tested.
   16-bpp masks other than 565/555 reach WIC unchecked.
 - LIVE: the password-manager check (deferred, no manager on the test host); confirm autostart for 5b257a9 in the journal after the next login.
-- Re-check F1 (Ghostty copy once) and F2 (tray state rows on Omarchy) live after the next install (fixed, LIVE run below).
+- ~~Re-check F1 (Ghostty copy once) and F2 (tray state rows on Omarchy) live after the next install.~~ Pass 2026-11-17 on d6228e0 (LIVE run below).
 - Pairing flake on the Windows tunnel ("No addressing information available"): fixed 2026-11-11 (`RELAY_WAIT` 6 s, see
   "Known issues"); one Windows-offer pairing passed since (more runs needed to confirm). The local "connection lost" flake is fixed.
 - Platform emit gate: the backend deploy and the Mac/Windows releases with the tolerant decoder.
@@ -751,7 +751,7 @@ evidence format: `docs/how-to/linux-live-checks.md`.
 | G3 received files paste in Nautilus (GNOME) | pass |
 | G4 drag-drop from Nautilus (GNOME) | pass |
 
-Findings (fixed on branch `fix/linux-live-findings`, 2026-11-12; re-check live after the next install):
+Findings (fixed on branch `fix/linux-live-findings`, 2026-11-12; F1 and F2 re-checked live on d6228e0, 2026-11-17):
 - **F1, Ghostty copy published twice.** Every Ctrl+Shift+C in Ghostty on Hyprland reaches the peer as two clips with
   different ids about 2 ms apart (`clip delivered` twice in the debug log). Primary selection is ignored, no clipboard
   manager runs, and tray "Send clipboard now" sends once: the backend sees two regular selections for one copy and the
@@ -760,7 +760,8 @@ Findings (fixed on branch `fix/linux-live-findings`, 2026-11-12; re-check live a
   re-check of baaf93f still sent the copy twice, 1.5 s apart, because the second sighting waited in the lane while the
   first publish waited 1.5 s for confirmations) is dropped; explicit sends always publish and, like a received clip written
   to the clipboard, reset the record. The cancel check and the record share one lock, so a replaced job never hides the
-  change that replaced it (`sync/tests_repeat.rs`).
+  change that replaced it (`sync/tests_repeat.rs`). Re-check 2026-11-17 (d6228e0): one Ghostty copy, one receipt on the
+  CLI peer.
 - **F2, tray "Pause sync" check mark.** `toggle_pause` flips the engine state (verified: no publish while paused), but
   the menu keeps showing the old state on Omarchy's tray. Causes: (1) ksni re-reads `menu()` only after a click on one
   of its rows or on `Handle::update`, and the app never called `update`, so a pause from the window, a held clip or a
@@ -768,7 +769,9 @@ Findings (fixed on branch `fix/linux-live-findings`, 2026-11-12; re-check live a
   stale (whether Quickshell 0.3.2 or the Omarchy QML drops it is not settled). Fix: every clipboard status change wakes
   the tray thread to call `Handle::update`, and each state has its own row count ("Sync is paused" while paused;
   "Paste received clip" plus a separator only while a clip is held), so each change is a `LayoutUpdated`. A held clip
-  replaced by another one only changes a label: possibly stale on Omarchy (minor).
+  replaced by another one only changes a label: possibly stale on Omarchy (minor). Re-check 2026-11-17 (d6228e0), read
+  over dbusmenu `GetLayout`: idle, paused, held clip and paused with a held clip each show the expected rows and check
+  mark, the revision rises on every change, and a tray paste writes the held clip and removes its row.
 - **F3, stale Hyprland help.** README and `shortcut_help` give `bind = SUPER ALT, C, exec, ...` for
   `~/.config/hypr/bindings.conf`; current Omarchy uses `~/.config/hypr/bindings.lua` with
   `o.bind("SUPER + ALT + C", "...", "fsync-linux --clip-send")`. Fix: separate Omarchy (`bindings.lua`) and Hyprland

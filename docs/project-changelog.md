@@ -11,6 +11,9 @@ Branch `fix/linux-live-findings`, ADR [014](./adr/014-linux-desktop-app.md) "LIV
 - Tray: the menu now follows the clipboard state on every tray host. ksni re-reads the menu only on a row click or `Handle::update`, and the app never called `update`: a pause from the window, a held clip (Manual mode) or a tray paste never showed. Every status change now updates the tray, and each state has its own row count ("Sync is paused" while paused, "Paste received clip" only while a clip is held) because the Omarchy tray kept a stale check mark on property updates. Severity: low (display; a stale "Pause sync" row could unpause when the user meant to pause).
 - Hotkey help (Settings, `--help`, README): Omarchy binds go in `~/.config/hypr/bindings.lua` as `o.bind(...)`; plain Hyprland keeps `hyprland.conf`.
 
+### Verified
+- 2026-11-17, live on d6228e0: one Ghostty copy reaches the peer once; the tray shows the right rows and check mark in all four states (idle, paused, held clip, both).
+
 ## 2026-11-12 - Linux app LIVE checks (Hyprland + GNOME VM)
 
 Plan `plans/261110-2344-linux-app-follow-ups` phase 05, ADR [014](./adr/014-linux-desktop-app.md) "LIVE run".
