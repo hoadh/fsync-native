@@ -100,6 +100,8 @@ impl Shared {
         while !self.closed.load(Ordering::SeqCst) {
             match rx.recv_timeout(Duration::from_millis(250)) {
                 Ok(change) => {
+                    // Stamped on arrival, before any call that could wait on a running publish.
+                    let seen = Instant::now();
                     if is_own(&change.mimes) {
                         self.guard.clear();
                         continue;
@@ -111,7 +113,7 @@ impl Shared {
                     self.note_mode(&settings);
                     *lock(&self.last) = Some(change.clone());
                     if !self.paused.load(Ordering::SeqCst) && settings.auto {
-                        out.submit(OutJob::Auto(change, Instant::now()));
+                        out.submit(OutJob::Auto(change, seen));
                     }
                 }
                 Err(Timeout) => {}

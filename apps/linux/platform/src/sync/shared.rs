@@ -14,8 +14,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// An automatic change with the same content as the previous automatic publish within this
-/// window is the same copy seen twice (some apps set the selection twice per copy, a few ms
+/// An automatic change with the same content as the last published automatic change, seen
+/// within this window of that one's sighting, is the same copy seen twice (some apps set the selection twice per copy, a few ms
 /// apart): it is dropped. Explicit sends are never dropped.
 pub(super) const AUTO_REPEAT_WINDOW: Duration = Duration::from_secs(1);
 
@@ -40,7 +40,8 @@ pub(super) struct Shared {
     pub(super) current_files: Mutex<Option<String>>,
     pub(super) paused: AtomicBool,
     pub(super) closed: AtomicBool,
-    /// Content fingerprint and time of the last automatic publish (see `AUTO_REPEAT_WINDOW`).
+    /// Content fingerprint and sighting time of the last published automatic change (see
+    /// `AUTO_REPEAT_WINDOW`).
     pub(super) last_auto: Mutex<Option<(u64, Instant)>>,
     /// `AUTO_REPEAT_WINDOW` in ms; tests widen it so their timing cannot matter.
     pub(super) repeat_window_ms: AtomicU64,
