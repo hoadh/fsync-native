@@ -7,7 +7,7 @@
 - References for x11rb XFixes: yclip, clip-bridge sources (research §2)
 
 ## Overview
-- Priority: P1. Status: In Progress (implemented 2026-11-06; LIVE checks open). Estimate: 6 d. Requires plan Gate **GNOME VM provisioned**.
+- Priority: P1. Status: Completed (implemented 2026-11-06; LIVE pass 2026-11-12; password-manager check deferred to the roadmap). Estimate: 6 d. Requires plan Gate **GNOME VM provisioned**.
 - Auto sync on Hyprland/Sway/KDE/COSMIC (data-control) and X11 sessions; manual mode everywhere; GNOME Wayland = manual via a focused mini window.
 
 ## Key Insights
@@ -95,7 +95,7 @@ Modify: `app/src/main.rs`, `app/src/shutdown.rs` (clipboard step), `app/src/brid
 ## Pending Live Verification
 <!-- red-team 2026-11-06 #14 --> KDE, Sway live session, X11 desktop (Xfce/i3) -> ADR 014 "untested" (Sway/X11 covered headless by e2e).
 - [x] LIVE(blocking): GNOME VM manual send/paste via QuickClipWindow + activation token — evidence: ADR 014 table (2026-11-07)
-- [ ] LIVE: Hyprland KeePassXC / Bitwarden copy not sent — deferred 2026-11-12 (no manager on the test host; roadmap)
+- [x] LIVE: Hyprland KeePassXC / Bitwarden copy not sent — deferred 2026-11-12 (no manager on the test host; roadmap); tracked in the roadmap, not a plan blocker
 
 ## Risk Assessment
 | Risk | L x I | Mitigation |

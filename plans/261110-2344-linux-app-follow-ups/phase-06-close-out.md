@@ -17,7 +17,7 @@
 5. Set this plan's `status: completed`.
 
 ## Todo
-- [ ] Plan 261106 closed
-- [ ] Roadmap, changelog, codebase summary
-- [ ] Devlog
-- [ ] Branch, waso-vm runs and backup file cleaned (asked)
+- [x] Plan 261106 closed (status completed 2026-11-17)
+- [x] Roadmap, changelog (codebase summary unchanged: no new modules)
+- [x] Devlog (`docs/devlog/`, four entries + INDEX)
+- [x] Branch, waso-vm runs and backup file cleaned (asked 2026-11-17): 7 Linux branches deleted local + remote; 51 finished waso-vm runs > 14 d removed (5 left); `CLAUDE.md.rig1x.bak` was already gone; local worktrees/caches and LIVE test files (host + GNOME VM) removed

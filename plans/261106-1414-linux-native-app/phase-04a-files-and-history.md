@@ -8,7 +8,7 @@
 - Core: `service/clips.rs` (`fetch_file_to`, `cancel`), `service/history_api.rs` (`history`, `pin`, `delete`, `clear`), `service/history_reps.rs` (`history_item_reps`)
 
 ## Overview
-- Priority: P2. Status: In Progress (implemented; open: manual Omarchy file-manager paste, LIVE Nautilus). Estimate: 3 d.
+- Priority: P2. Status: Completed (LIVE Omarchy and Nautilus file paste pass 2026-11-12). Estimate: 3 d.
 - File clips received -> local files on the clipboard; pushed files (offers) with accept UI; history view with copy-back.
 
 ## Key Insights

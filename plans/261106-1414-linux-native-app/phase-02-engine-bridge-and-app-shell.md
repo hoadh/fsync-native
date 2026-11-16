@@ -8,7 +8,7 @@
 - Platform wire format: `core/fsync-proto/src/device_list.rs` (`Platform`, `SignedDeviceList::{decode,hash}`, `DeviceList::successor`), `core/fsync-proto/src/pairing.rs` (`PairFrame::DeviceInfo { platform }`), `core/fsync-proto/src/verify.rs`, `core/fsync-core/src/trust/ingest.rs`, `backend/src/devices/verify.rs`, `core/fsync-ffi/src/types_device.rs`
 
 ## Overview
-- Priority: P1. Status: In Progress (code done, review 9.5/10; LIVE checks open). Depends on 01 go. Estimate: 7 d (1 d core Platform commit).
+- Priority: P1. Status: Completed (code review 9.5/10; LIVE pass 2026-11-12). Depends on 01 go. Estimate: 7 d (1 d core Platform commit).
 - Working app without clipboard: sign in (email OTP), pair (code/QR/SAS), device list with status, remove device, trust-reset prompt, sign out (pending revoke), tray, autostart, single instance with IPC forwarding.
 
 ## Key Insights

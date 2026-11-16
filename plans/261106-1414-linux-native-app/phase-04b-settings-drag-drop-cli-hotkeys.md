@@ -8,7 +8,7 @@
 - Core: `service/clips.rs` (`send_files`), `service/history_api.rs` (`settings`, `set_settings`), `settings.rs`
 
 ## Overview
-- Priority: P3. Status: In Progress (code + automated checks done; LIVE item open). Estimate: 2 d.
+- Priority: P3. Status: Completed (Omarchy binds pass 2026-11-12). Estimate: 2 d.
 - Full Settings view; drag-drop and `--send` to a device; documented CLI hotkey binds per desktop. No portal GlobalShortcuts (cut).
 
 ## Key Insights

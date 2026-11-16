@@ -1,7 +1,7 @@
 ---
 title: "fsync Linux desktop app (Qt6/QML + CXX-Qt)"
 description: "Linux tray/desktop app at feature parity with Windows phases 13+14: Rust + CXX-Qt over FsyncService, Wayland/X11 clipboard, files, history, packages, cross-OS test."
-status: in-progress
+status: completed
 priority: P2
 branch: main
 tags: [feature, linux, desktop]
@@ -19,14 +19,14 @@ Inputs: [brainstorm](../reports/brainstorm-261106-1354-linux-native-app.md), [re
 | Phase | Name | Status |
 |---|---|---|
 | [01](phase-01-spike-and-scaffold.md) | Spike (CXX-Qt on Qt 6.2, cross-distro run, go/no-go) + scaffold + GNOME VM + ADR 014 draft (3 d) | Completed |
-| [02](phase-02-engine-bridge-and-app-shell.md) | Tolerant `Platform` decode, engine bridge, single instance + IPC, tray, sign-in, pairing, devices, secrets, autostart (7 d) | In Progress (LIVE checks open) |
-| [03](phase-03-clipboard-backends.md) | Clipboard: Wayland data-control, thin X11, GNOME manual window, filters, eager inbound, lifecycle (6 d) | In Progress |
-| [04a](phase-04a-files-and-history.md) | Eager file inbox, retention, offers, history copy-back (3 d) | In Progress (code done, review 9.5; LIVE checks open) |
-| [04b](phase-04b-settings-drag-drop-cli-hotkeys.md) | Settings, drag-drop send, CLI hotkey binds (2 d, below MVP cut line) | In Progress (code done, review 9.5; manual Omarchy checks open) |
+| [02](phase-02-engine-bridge-and-app-shell.md) | Tolerant `Platform` decode, engine bridge, single instance + IPC, tray, sign-in, pairing, devices, secrets, autostart (7 d) | Completed (LIVE pass 2026-11-12) |
+| [03](phase-03-clipboard-backends.md) | Clipboard: Wayland data-control, thin X11, GNOME manual window, filters, eager inbound, lifecycle (6 d) | Completed (LIVE pass 2026-11-12; password-manager check deferred to the roadmap) |
+| [04a](phase-04a-files-and-history.md) | Eager file inbox, retention, offers, history copy-back (3 d) | Completed (review 9.5; LIVE pass 2026-11-12) |
+| [04b](phase-04b-settings-drag-drop-cli-hotkeys.md) | Settings, drag-drop send, CLI hotkey binds (2 d, below MVP cut line) | Completed (review 9.5; Omarchy binds pass 2026-11-12) |
 | [05](phase-05-packaging-and-distro-smoke.md) | PKGBUILD, .deb, .rpm, AppImage; release guard; install smoke (4 d) | Completed (review 9.5; container smoke, GNOME AppImage xcb LIVE, Omarchy makepkg + autostart pass) |
-| [06](phase-06-cross-os-test-and-docs.md) | Cross-OS (fsync-cli, Windows app on waso-vm via port-forward) + docs, ADR 014 final (4 d) | In Progress (X1-X5 PASS: X1/X3/X4 at 312a67a on 2026-11-10, X2/X5 at 994119f; ADR 014 accepted 2026-11-10. Open: X4 QR text, X2/X5 re-run at HEAD, LIVE GNOME/Hyprland, tunnel check, review) |
+| [06](phase-06-cross-os-test-and-docs.md) | Cross-OS (fsync-cli, Windows app on waso-vm via port-forward) + docs, ADR 014 final (4 d) | Completed (X1-X5 PASS, X2/X5 re-run 2026-11-11; ADR 014 accepted; merged as PR #1, follow-ups in plan 261110) |
 
-Progress: 1/7 (01 completed). Estimate ~29 working days (single dev).
+Progress: 7/7 completed 2026-11-17. Open items (X4 QR text, password-manager check, Platform emit gate) are in ADR 014 "Open" and the roadmap. Estimate ~29 working days (single dev).
 
 # Dependencies
 - Sequential: 01 -> 02 -> 03 -> 04a -> 04b -> 05 -> 06. 03/04a/04b all touch `app/src/bridge/mod.rs`, `main.rs`, `Main.qml`, `tray.rs`: no parallel run.
@@ -42,7 +42,7 @@ Progress: 1/7 (01 completed). Estimate ~29 working days (single dev).
 - **Test-feature release guard** (phases 02 + 05): `e2e-control` in a release build is a compile error; packaged binaries checked via `--build-info`.
 
 # Cross-cutting rules
-- Source files < 200 lines (`docs/code-standards.md`), Rust `snake_case.rs`, QML `PascalCase.qml`, scripts `kebab-case`.
+- Source files < 200 lines (`docs/code-standards.md`; as built, a few single-concern files reach 200-280 lines, under the ~500-line split rule), Rust `snake_case.rs`, QML `PascalCase.qml`, scripts `kebab-case`.
 - Core stays Qt-free. `apps/linux` is its own Cargo workspace: root `cargo test --workspace` never needs Qt.
 - Engine calls never on the Qt GUI thread; callbacks reach QML only via `CxxQtThread::queue`.
 - `e2e-control` never in packaged builds (`compile_error!` + `--build-info` check, see Gates).

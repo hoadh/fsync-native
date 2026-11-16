@@ -38,8 +38,8 @@
 - [x] Loop script + baseline rate (with logs): 3/30 failed (report implementer-261111-0311)
 - [x] Root cause written into the ADR 014 "Known issues" row, with log evidence
 - [x] Fix + core test
-- [ ] 20/20 loop (done: 30/30, then 20/20 final tree), X1+X2+X5 PASS, results JSON in `docs/test-results/`
-- [ ] Tester + review >= 9.5, PR, CI green
+- [x] 20/20 loop (done: 30/30, then 20/20 final tree), X1+X2+X5 PASS, results JSON in `docs/test-results/`
+- [x] Tester + review >= 9.5, PR, CI green (PR #3, 381de6e)
 
 ## Success
 Root cause is named with evidence, the fix is in, and the gates pass. The ADR row moves from "Known issues" to a "Fixed" note.

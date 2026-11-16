@@ -1,7 +1,7 @@
 ---
 title: "Linux app follow-ups after the PR #1 merge"
 description: "Pairing flake root cause, lazy-file latency, offline-publish lows + FFI contract bump, packaging hardening, LIVE checks, close-out of plan 261106."
-status: pending
+status: completed
 priority: P2
 branch: fix/linux-app-follow-ups (one branch per phase, PR each)
 tags: [fix, linux, core, packaging, test]
@@ -26,14 +26,14 @@ Inputs:
 # Phases
 | Phase | Name | Status |
 |---|---|---|
-| [01](phase-01-pairing-flake-root-cause.md) | Pairing "connection lost" flake: reproduce, root-cause, fix (3 d) | Pending |
-| [02](phase-02-offline-publish-lows-and-ffi-contract.md) | Offline-publish L1/L2 (latest slot per lane, serialized ordering doc) + `contract_version` 3 (1 d) | Pending |
+| [01](phase-01-pairing-flake-root-cause.md) | Pairing "connection lost" flake: reproduce, root-cause, fix (3 d) | Done |
+| [02](phase-02-offline-publish-lows-and-ffi-contract.md) | Offline-publish L1/L2 (latest slot per lane, serialized ordering doc) + `contract_version` 3 (1 d) | Done |
 | [03](phase-03-lazy-file-latency.md) | Linux -> Windows lazy file 8.7 s vs 10 s gate: measure, cut the wait (1.5 d) | Done |
-| [04](phase-04-packaging-hardening.md) | PKGBUILD git sha, Phase 05 lows L3/L4/L6/L8, maintainer, repo license MIT OR Apache-2.0 (1.5 d) | Pending |
-| [05](phase-05-live-checks.md) | LIVE checks on Hyprland + GNOME VM; tunnel-leftover check (1 d, user at the desktop) | Pending |
-| [06](phase-06-close-out.md) | Devlog, plan 261106 close-out, branch + waso-vm run cleanup (0.5 d) | Pending |
+| [04](phase-04-packaging-hardening.md) | PKGBUILD git sha, Phase 05 lows L3/L4/L6/L8, maintainer, repo license MIT OR Apache-2.0 (1.5 d) | Done |
+| [05](phase-05-live-checks.md) | LIVE checks on Hyprland + GNOME VM; tunnel-leftover check (1 d, user at the desktop) | Done |
+| [06](phase-06-close-out.md) | Devlog, plan 261106 close-out, branch + waso-vm run cleanup (0.5 d) | Done |
 
-Estimate: about 8.5 working days.
+Estimate: about 8.5 working days. Completed 2026-11-17: PRs #2 (04), #3 (01), #4 (02), #5 (03), #6 (05), #7 (LIVE fixes F1-F3).
 
 # Dependencies
 - 01 and 02 both touch `core/fsync-core/src/clip/` and `net/`, so run them one after the other: 01 first, because it may change the dial path that 02's lanes sit on.

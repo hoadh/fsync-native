@@ -25,7 +25,7 @@
 - [x] Latest slot + test (frames held bounded)
 - [x] L1 doc + overlap log
 - [x] contract_version 3, bindings regenerated, app checks raised
-- [ ] Rust, macOS, Windows CI green; review >= 9.5; PR
+- [x] Rust, macOS, Windows CI green; review >= 9.5; PR (PR #4, e21fb8a)
 
 ## Success
 Bounded memory under a dead peer, latest-wins still proven, and all three CI jobs green with contract 3.
