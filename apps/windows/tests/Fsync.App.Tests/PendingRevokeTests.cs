@@ -25,7 +25,18 @@ public sealed class PendingRevokeTests
     {
         string? Env(string k) => k switch { "FSYNC_RELAY" => "https://a.example,https://b.example", "FSYNC_DATA_DIR" => Path.GetTempPath(), _ => null };
         Assert.Equal(["https://a.example", "https://b.example"], AppSettings.FromEnvironment(Env).RelayUrls);
-        Assert.Empty(AppSettings.FromEnvironment(_ => null).RelayUrls);
+    }
+
+    [Fact]
+    public void UnsetApiMeansProductionBackendAndRelays()
+    {
+        var prod = AppSettings.FromEnvironment(_ => null);
+        Assert.Equal("https://api-fsync.10z.one", prod.ApiBase);
+        Assert.False(prod.AllowInsecureHttp);
+        Assert.Equal(["https://relay-fsync.10z.one", "https://relay-sg-fsync.10z.one"], prod.RelayUrls);
+        // A dev or e2e backend never falls back to the production relays.
+        string? Dev(string k) => k == "FSYNC_API" ? "http://127.0.0.1:8080" : null;
+        Assert.Empty(AppSettings.FromEnvironment(Dev).RelayUrls);
     }
 
     // ---- store

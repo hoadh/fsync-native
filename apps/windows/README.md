@@ -56,7 +56,7 @@ dotnet build apps/windows/src/Fsync.App -c Release -p:Platform=x64 -r win-x64   
 ```
 
 ## Run
-Environment (same names as `fsync-cli`): `FSYNC_API` (default `http://127.0.0.1:8080`; plain http
+Environment (same names as `fsync-cli`): `FSYNC_API` (default production `https://api-fsync.10z.one`; plain http
 only for loopback), `FSYNC_RELAY`, `FSYNC_DEVICE_NAME` (default: computer name), `FSYNC_DATA_DIR`
 (default `%LOCALAPPDATA%\fsync`; one instance per data dir, so a second dir runs a second device).
 `--background` starts in the tray without opening the window (used by start with Windows).

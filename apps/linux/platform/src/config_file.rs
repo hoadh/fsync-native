@@ -4,7 +4,7 @@ use crate::paths::EnvFn;
 use serde::Deserialize;
 use std::path::Path;
 
-/// Packaged default: production backend (the Windows dev default is loopback; Linux ships prod).
+/// Packaged default: production backend and relays (Windows ships the same defaults).
 pub const DEFAULT_API: &str = "https://api-fsync.10z.one";
 pub const DEFAULT_RELAYS: [&str; 2] = [
     "https://relay-fsync.10z.one",

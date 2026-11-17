@@ -7,7 +7,8 @@ namespace Fsync.App.Bridge;
 /// </summary>
 public sealed record AppSettings(string DataDir, string ApiBase, string? RelayUrl, string DeviceName, string? DownloadDirOverride = null)
 {
-    public const string DefaultApi = "http://127.0.0.1:8080";
+    public const string DefaultApi = "https://api-fsync.10z.one";
+    public const string DefaultRelays = "https://relay-fsync.10z.one,https://relay-sg-fsync.10z.one";
 
     public string CoreDir => Path.Combine(DataDir, "core");
     public string SecretsPath => Path.Combine(DataDir, "secrets.dat");
@@ -54,8 +55,9 @@ public sealed record AppSettings(string DataDir, string ApiBase, string? RelayUr
         var dataDir = env("FSYNC_DATA_DIR") is { Length: > 0 } d
             ? NormalizeDir(d)
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "fsync");
-        var api = env("FSYNC_API") is { Length: > 0 } a ? a : DefaultApi;
-        var relay = env("FSYNC_RELAY") is { Length: > 0 } r ? r : null;
+        var customApi = env("FSYNC_API") is { Length: > 0 } a ? a.Trim() : null;
+        var api = customApi ?? DefaultApi;
+        var relay = env("FSYNC_RELAY") is { Length: > 0 } r ? r : customApi is null ? DefaultRelays : null;
         var name = env("FSYNC_DEVICE_NAME") is { Length: > 0 } n ? n : Environment.MachineName;
         var downloads = env("FSYNC_DOWNLOAD_DIR") is { Length: > 0 } dl ? Path.GetFullPath(dl) : null;
         return new AppSettings(dataDir, api, relay, name, downloads);
