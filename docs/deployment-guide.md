@@ -148,7 +148,7 @@ Release clients must carry both relays. A client with no relay is LAN only, and 
 | Client | Command or setting |
 |--------|--------------------|
 | macOS | `apps/macos/scripts/build-fsync-mac-app.sh --api https://api-fsync.10z.one --relay https://relay-fsync.10z.one,https://relay-sg-fsync.10z.one` (add `--sign`, `--profile` for Developer ID). Writes Info.plist `FsyncRelayUrl`. |
-| Windows | `FSYNC_RELAY=https://relay-fsync.10z.one,https://relay-sg-fsync.10z.one` in the environment the app starts from. Read at launch; no build-time value. |
+| Windows | Built-in defaults: `https://api-fsync.10z.one` and both relays when `FSYNC_API` is unset. A set `FSYNC_API` (dev, e2e) gets no default relay; `FSYNC_RELAY` overrides. Read at launch. |
 
 Rules:
 - The list is comma-separated and https only. One bad entry fails engine start for the whole list. Order does not matter: the home relay is picked by latency.

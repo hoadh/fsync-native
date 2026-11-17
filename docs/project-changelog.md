@@ -2,6 +2,11 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-11-17 - Windows app: production defaults
+
+### Changed
+- With `FSYNC_API` unset, the Windows app now uses the production backend `https://api-fsync.10z.one` and both production relays, like the Linux app. Before, it used `http://127.0.0.1:8080` and no relay, so a downloaded build could not sign in. A set `FSYNC_API` (dev, e2e) gets no default relay; `FSYNC_RELAY` still overrides.
+
 ## 2026-11-17 - Linux app plans closed
 
 Plans `261106-1414-linux-native-app` (PR #1) and `261110-2344-linux-app-follow-ups` (PRs #2-#7) are completed. Items still open are in ADR [014](./adr/014-linux-desktop-app.md) "Open" and the roadmap: X4 QR-text pairing, the Hyprland password-manager check, the Platform emit gate, the 2 s first send after idle.
