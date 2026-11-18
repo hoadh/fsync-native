@@ -143,6 +143,8 @@ Ohio's remainder is the path: TCP ~0.26 s RTT with occasional 1 s retransmits, T
 
 ## Client Release Builds
 
+Step-by-step build and publish over ssh (Linux, `waso`, `macmini`): [how-to/build-release-remote.md](./how-to/build-release-remote.md).
+
 Release clients must carry both relays. A client with no relay is LAN only, and no default is built in. The FFI build scripts refuse test-only features (see [code standards](./code-standards.md#test-only-features)).
 
 | Client | Command or setting |

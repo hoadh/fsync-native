@@ -2,6 +2,15 @@
 
 Newest first. Phase numbers refer to [the MVP plan](../plans/261013-2029-fsync-native-mvp/plan.md).
 
+## 2026-11-18 - Remote release build guide
+
+### Added
+- `docs/how-to/build-release-remote.md`: build Linux, Windows (`waso`) and macOS (`macmini`) over ssh and publish a GitHub release, with troubleshooting.
+- `scripts/build-windows-release.ps1`: one-command Windows release (fresh DLLs, tests, self-contained zips per RID). It fails on a stale DLL or stale committed bindings.
+
+### Fixed
+- `waso`: the rustup proxies (`cargo.exe`, `rustc.exe`, ...) were symlinks that Windows does not run over ssh, so the DLL build silently kept the old DLL. They are now hard links.
+
 ## 2026-11-17 - v0.1.0 preview release
 
 GitHub pre-release [v0.1.0](https://github.com/hoadh/fsync-native/releases/tag/v0.1.0) at 9a87605: Windows x64 and ARM64 zips (self-contained, unsigned), Linux `.deb`, `.rpm`, AppImage, macOS arm64 zip (ad-hoc signed, not notarized), `SHA256SUMS`. All use the production backend and both relays.

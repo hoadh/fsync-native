@@ -14,3 +14,4 @@ target/
 /apps/windows/**/runtimes/*/native/*.dll
 /apps/windows/**/TestResults
 /apps/linux/dist/
+/dist/
